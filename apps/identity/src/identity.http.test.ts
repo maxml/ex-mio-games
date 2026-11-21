@@ -871,8 +871,62 @@ describe('INV-S2S: service-to-service tokens and internal endpoints (D-4, MIO-04
     expect((await link(w.a.tenant.id)).statusCode).toBe(404);
   });
 
+  // int/all review: identity epic review F5 is still open after the merge. `integration()` reports
+  // ONE environment (the newest live credential's) and only that environment's secrets. A tenant
+  // that holds a production credential and then issues a sandbox one (the X-3 flow) loses its
+  // production webhook secret: production deposits fail the signature check, and whatever verifies
+  // is taken as sandbox (unmetered, D-13). The integration must let engagement learn, for EVERY
+  // live credential, its secret and that credential's environment, so `sandbox` is derived from the
+  // key that verified (D-15 X-3). The shape is the coder's (per-environment lists, or entries with
+  // an environment); this test finds the environment next to each secret, whichever shape is used.
+  // Mutation: serve only the newest credential's environment (today's code).
+  it('F5-1 with a production and a newer sandbox credential, the integration serves BOTH secrets, each with its own environment', async () => {
+    const w = await world();
+    const prod = await w.k.credentials.issue(w.a.tenant.id, 'sim-casino', {
+      environment: 'production',
+    });
+    w.k.advance(5);
+    const sbx = await w.k.credentials.issue(w.a.tenant.id, 'sim-casino', {
+      environment: 'sandbox',
+    });
+    const res = await w.app.inject({
+      method: 'GET',
+      url: `/internal/v1/tenants/${w.a.tenant.id}/integration`,
+      headers: await asService(w),
+    });
+    expect(res.statusCode).toBe(200);
+    // the environment that sits next to a secret: {secret, environment} entries, or {<env>: [...]}
+    const envOf = (node: unknown, secret: string, env?: string): string | undefined => {
+      if (typeof node === 'string') return node === secret ? env : undefined;
+      if (Array.isArray(node)) {
+        for (const x of node) {
+          const hit = envOf(x, secret, env);
+          if (hit) return hit;
+        }
+        return undefined;
+      }
+      if (node && typeof node === 'object') {
+        const obj = node as Record<string, unknown>;
+        const own = typeof obj.environment === 'string' ? obj.environment : env;
+        for (const [k, v] of Object.entries(obj)) {
+          if (k === 'environment') continue;
+          const scoped = k === 'production' || k === 'sandbox' ? k : own;
+          const hit = envOf(v, secret, scoped);
+          if (hit) return hit;
+        }
+      }
+      return undefined;
+    };
+    const body = res.json() as unknown;
+    expect(envOf(body, prod.hmac_secret)).toBe('production');
+    expect(envOf(body, sbx.hmac_secret)).toBe('sandbox');
+  });
+
   // Mutation: add an internal route that is not in the contract, or drop one.
-  it('INV-S2S-6 the internal routes of identity are exactly the five in the contract', () => {
+  // int/all review, D-23: the realtime gateway redeems tickets over a sixth internal route. The
+  // list is pinned as a LITERAL too, so the contract constant and the controllers cannot drift
+  // together (comparing the controllers only to INTERNAL_ROUTES passes when both lose a route).
+  it('INV-S2S-6 the internal routes of identity are exactly the six in the contract (D-23 adds the ticket redeem)', () => {
     const found: string[] = [];
     for (const ctrl of identityControllers) {
       for (const name of Object.getOwnPropertyNames(ctrl.prototype)) {
@@ -882,6 +936,16 @@ describe('INV-S2S: service-to-service tokens and internal endpoints (D-4, MIO-04
         if (path.startsWith('/internal/v1/')) found.push(path);
       }
     }
+    expect(found.sort()).toEqual(
+      [
+        '/internal/v1/integrations/by-slug/:slug',
+        '/internal/v1/realtime-tickets/redeem',
+        '/internal/v1/tenants/:tenantId/integration',
+        '/internal/v1/tenants/:tenantId/players/:userId/link',
+        '/internal/v1/tenants/:tenantId/players/resolve',
+        '/internal/v1/tenants/:tenantId/status',
+      ].sort(),
+    );
     expect(found.sort()).toEqual(Object.values(INTERNAL_ROUTES).sort());
     // D-14: every internal route is in the allow-list of at least one client, and the allow-list
     // names no identity route that does not exist. Mutation: add an internal route nobody may call

@@ -168,21 +168,48 @@ describe('INV-LAUNCH: a launch token becomes a player session only when every ch
   // Reviewer amendment (D-22, coordinator): one single-use exchange gives ONE player session valid
   // for every audience the player needs (closes G-8). Mutation: the session carries only the
   // requested audience, or the verifiers compare `aud` as a single string.
-  it('INV-LAUNCH-8 D-22 one launch yields one player session whose aud array covers engagement, payments and realtime; roles are exactly [player]', async () => {
+  // int/all review, D-23 amendment: the session `aud` is exactly [identity, engagement, payments].
+  // `identity` lets the player call the ticket route; `realtime` is never in a session, only in the
+  // one-time ticket. Mutations: add `realtime` to PLAYER_SESSION_AUDIENCES (a 15-minute socket
+  // bearer), drop `identity` (no ticket), or mint the requested audience alone.
+  it('INV-LAUNCH-8 D-23 one launch yields one player session whose aud is exactly identity, engagement, payments (never realtime); roles are exactly [player]', async () => {
     const { k, sign, exchange } = await world();
     for (const requested of ['engagement', 'web'] as const) {
       const res = await exchange(sign(), requested);
       const payload = decodePayload(res.access_token) as { aud: unknown; roles: unknown };
       expect(payload.roles).toEqual(['player']);
       expect(Array.isArray(payload.aud)).toBe(true);
-      expect(payload.aud).toEqual(expect.arrayContaining(['engagement', 'payments', 'realtime']));
-      for (const audience of ['engagement', 'payments', 'realtime']) {
+      expect([...(payload.aud as string[])].sort()).toEqual(['engagement', 'identity', 'payments']);
+      for (const audience of ['identity', 'engagement', 'payments']) {
         await expect(k.verify(res.access_token, audience)).resolves.toMatchObject({
           sub: res.user_id,
           roles: ['player'],
         });
       }
+      await expect(k.verify(res.access_token, 'realtime')).rejects.toBeDefined();
     }
+  });
+
+  // int/all review, D-23: `realtime` appears ONLY in a ticket. Every other token identity mints (a
+  // launch session, a staff login for each requestable audience, an acting session) is refused by
+  // the realtime verifier and carries no `realtime` in aud; a body cannot ask for it.
+  // Mutation: let login, acting or launch put `realtime` in aud (or accept `audience: 'realtime'`).
+  it('INV-LAUNCH-8b D-23 no session of any kind carries realtime; asking for it is refused', async () => {
+    const { k, a, sign, exchange } = await world();
+    const tokens: string[] = [(await exchange(sign())).access_token];
+    for (const audience of ['identity', 'engagement', 'payments', 'web'] as const) {
+      tokens.push(
+        (await k.sessions.login(a.tenant.id, { email: 'boss@a.test', password: PW, audience }))
+          .access_token,
+      );
+    }
+    expect(tokens).toHaveLength(5);
+    for (const t of tokens) {
+      const aud = ([] as string[]).concat((decodePayload(t) as { aud: string | string[] }).aud);
+      expect(aud).not.toContain('realtime');
+      await expect(k.verify(t, 'realtime')).rejects.toBeDefined();
+    }
+    // the request bodies that would ask for it are refused at the HTTP edge: RT-10 (realtime-ticket test)
   });
 
   // Mutation: verify with HS256 secret derived from the token's own header.

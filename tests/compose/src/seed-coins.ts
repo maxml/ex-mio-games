@@ -20,8 +20,20 @@ export interface SeedOptions {
   sandbox?: boolean;
   /** An operator access token of `tenantId` (aud=payments), used to read the balance back. */
   operatorToken: string;
+  /**
+   * int/all review: the operator route reads the PRODUCTION wallet only (X-2), so a sandbox credit
+   * can never show there and the wait timed out. A sandbox seed reads the balance back as the
+   * sandbox player itself (`GET /v1/me/balance`, wallet chosen by the token's `sbx` claim).
+   */
+  sandboxPlayerHeaders?: Record<string, string>;
   /** How long to wait for the credit to land. */
   timeoutMs?: number;
+}
+
+async function sandboxAvailableOf(headers: Record<string, string>): Promise<number | undefined> {
+  const res = await fetch(`${urls.payments}/v1/me/balance`, { headers });
+  if (res.status !== 200) return undefined;
+  return ((await res.json()) as { available: number }).available;
 }
 
 /** Publishes one confirmed `engagement.spin.completed` for `playerId`; returns the spin id. */
@@ -73,10 +85,17 @@ export async function seedCoins(
   coins: number,
   opts: SeedOptions,
 ): Promise<void> {
-  const before = (await availableOf(tenantId, playerId, opts.operatorToken)) ?? 0;
+  if (opts.sandbox && !opts.sandboxPlayerHeaders) {
+    throw new Error('a sandbox seed needs sandboxPlayerHeaders to read the sandbox wallet back');
+  }
+  const read = () =>
+    opts.sandbox
+      ? sandboxAvailableOf(opts.sandboxPlayerHeaders!)
+      : availableOf(tenantId, playerId, opts.operatorToken);
+  const before = (await read()) ?? 0;
   await publishSpinCompleted(tenantId, playerId, coins, opts.sandbox ?? false);
   await eventually(async () => {
-    const now = await availableOf(tenantId, playerId, opts.operatorToken);
+    const now = await read();
     return now !== undefined && now >= before + coins ? now : undefined;
   }, opts.timeoutMs);
 }

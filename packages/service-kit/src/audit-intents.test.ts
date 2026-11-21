@@ -314,6 +314,9 @@ describe('M1 two-step audit against the outbox (D-21, reviewer tests)', () => {
 
   // Mutation: finalize publishes the envelope stored with the intent (the provisional outcome), or
   // does not delete the intent (it would later be swept as a second, `aborted`, event).
+  // int/all review, D-24 amendment: a 404 from the handler is `allowed` (no guard refused) with the
+  // real status 404; the provisional outcome differs from it in status (the intent is written as
+  // 200 before the handler), so publishing the stored intent still turns this red.
   it('M1-3 finalize publishes the REAL decision and status and deletes the intent, in one transaction', async () => {
     const b = await boot();
     const res = await b.inject({ method: 'GET', url: '/v1/missing' });
@@ -324,7 +327,7 @@ describe('M1 two-step audit against the outbox (D-21, reviewer tests)', () => {
     const events = b.db.publishedEvents();
     expect(events).toHaveLength(1);
     expect(ActingRequestAuditedV1.parse(events[0]?.payload)).toMatchObject({
-      decision: 'refused',
+      decision: 'allowed',
       status: 404,
       route: 'GET /v1/missing',
     });

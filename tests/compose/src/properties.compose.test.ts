@@ -14,12 +14,8 @@ import { connect, type Channel, type ChannelModel, type ConsumeMessage } from 'a
 import type { DataSource } from 'typeorm';
 import { createEvent, uuidv7 } from '@ex-mio/contracts';
 import { createDataSource } from '@ex-mio/service-kit';
-import {
-  enableTenantRls,
-  runWithTenant,
-  TenancyModule,
-  withTenantTransaction,
-} from '@ex-mio/tenancy';
+import * as tenancy from '@ex-mio/tenancy';
+import { enableTenantRls, runWithTenant, withTenantTransaction } from '@ex-mio/tenancy';
 import {
   createBusTables,
   enqueueEvent,
@@ -188,14 +184,13 @@ describe('tenancy choke points (withTenantTransaction + enableTenantRls)', () =>
     ).rejects.toThrow();
   });
 
-  it('T6 FINDING: the header placeholder resolver is refused in production', () => {
-    const old = process.env.NODE_ENV;
-    process.env.NODE_ENV = 'production';
-    try {
-      expect(() => TenancyModule.forRoot()).toThrow();
-    } finally {
-      process.env.NODE_ENV = old;
-    }
+  // int/all review: D-4 removed the placeholder entirely, which is stronger than "refused in
+  // production". The property is kept: no tenancy export can wire a header resolver, in any
+  // environment. Mutation: re-export a `TenancyModule` (or any `*header*` resolver) from tenancy.
+  it('T6 FINDING: the header placeholder resolver is refused in production (it no longer exists)', () => {
+    const exported = Object.keys(tenancy);
+    expect(exported.length).toBeGreaterThan(3); // the import resolved the real package
+    expect(exported.filter((name) => /^TenancyModule$|header/i.test(name))).toEqual([]);
   });
 });
 

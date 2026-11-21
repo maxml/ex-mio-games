@@ -78,6 +78,17 @@ const EXPECTED_GRANTS: Record<Service, Record<string, string[]>> = {
 const BUS_TABLES = ['outbox', 'inbox'];
 
 /**
+ * D-24: a truly global table that carries a tenant_id column is named here WITH its reason, never
+ * skipped silently. Work queues and job tables that hold tenant data are NOT here: they get FORCE
+ * RLS like any tenant table (engagement `redemption_work_queue` is a coder item, D-24).
+ * Mutation: add a table here without a reason, or add a work queue that holds tenant data.
+ */
+const PLATFORM_TABLES: Record<string, string> = {
+  reconciliation_tenants:
+    'payments: an id-only registry (tenant_id PRIMARY KEY, no other column) that the scheduled reconciliation job lists to know which tenants to check, without BYPASSRLS; it holds no tenant data',
+};
+
+/**
  * A table WITH row-level security and a `<table>_tenant_isolation` policy, for the DDL case. Named
  * per service, not "the first granted non-bus table": for identity that would be `tenants`, the
  * registry, which has no RLS and no policy, so the RLS and DROP POLICY statements were not testing
@@ -188,8 +199,23 @@ describe.each(SERVICES)('database roles: %s', (service) => {
          FROM pg_class c
          JOIN pg_attribute a ON a.attrelid = c.oid AND a.attname = 'tenant_id' AND NOT a.attisdropped
         WHERE c.relnamespace = 'public'::regnamespace AND c.relkind = 'r' AND c.relname <> ALL($1)`,
-      [BUS_TABLES],
+      [[...BUS_TABLES, ...Object.keys(PLATFORM_TABLES)]],
     );
+    // A platform table earns its place only while it holds no tenant data: tenant_id and nothing else.
+    for (const name of Object.keys(PLATFORM_TABLES)) {
+      const { rows: cols } = await admin.query(
+        `SELECT column_name::text AS c FROM information_schema.columns
+          WHERE table_schema = 'public' AND table_name = $1`,
+        [name],
+      );
+      if (cols.length > 0) expect([name, cols.map((r) => r.c)]).toEqual([name, ['tenant_id']]);
+    }
+    // every offender by name (D-24), so one run lists all of them
+    expect(
+      tables
+        .filter((t) => !(t.relrowsecurity && t.relforcerowsecurity))
+        .map((t) => t.relname as string),
+    ).toEqual([]);
     for (const t of tables) {
       expect({ table: t.relname, rls: t.relrowsecurity, forced: t.relforcerowsecurity }).toEqual({
         table: t.relname,

@@ -24,8 +24,6 @@ export const serviceSecrets = {
   payments: 'payments-dev-secret-00000',
 };
 
-export const PLATFORM_TOKEN = 'dev-platform-token-0000';
-
 /**
  * The platform admin identity seeds from `PLATFORM_ADMIN_EMAIL` / `PLATFORM_ADMIN_PASSWORD` at boot
  * (idempotent). These are the dev defaults in `.env.example` and `docker-compose.yml`. The platform

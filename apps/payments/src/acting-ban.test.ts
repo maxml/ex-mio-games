@@ -1,5 +1,5 @@
 import 'reflect-metadata';
-import { Controller, Get, Module, Post, UseGuards } from '@nestjs/common';
+import { Controller, Get, Module, Post, type Provider, type Type, UseGuards } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import { FastifyAdapter, type NestFastifyApplication } from '@nestjs/platform-fastify';
 import {
@@ -10,12 +10,7 @@ import {
   type ServiceCallPolicy,
 } from '@ex-mio/contracts';
 import { ServiceAuthModule } from '@ex-mio/service-kit';
-import {
-  accessClaims,
-  generateRsaKey,
-  serviceClaims,
-  signJwt,
-} from '@ex-mio/service-kit/testing';
+import { accessClaims, generateRsaKey, serviceClaims, signJwt } from '@ex-mio/service-kit/testing';
 import { Public } from '@ex-mio/tenancy';
 import { createAppModule } from './app.module';
 import type { Config } from './config';
@@ -130,7 +125,28 @@ class Probe {
   }
 }
 
+/*
+ * Harness (int/all review): the real payments controllers are mounted so the 404 for a credit
+ * route is the real app's answer, but their services need the database and the bus. Each
+ * constructor dependency gets an empty stub, read from the controller's own Nest metadata (so a
+ * new dependency needs no edit here). No test below reaches a real handler: the guard answers
+ * first, or the route does not exist. A stub method call would throw (500), never pass silently.
+ */
+const stubProviders = (controllers: Type[]): Provider[] => {
+  const tokens = new Set<unknown>();
+  for (const ctrl of controllers) {
+    const types = (Reflect.getMetadata('design:paramtypes', ctrl) ?? []) as unknown[];
+    const injected = (Reflect.getMetadata('self:paramtypes', ctrl) ?? []) as {
+      index: number;
+      param: unknown;
+    }[];
+    types.forEach((t, i) => tokens.add(injected.find((x) => x.index === i)?.param ?? t));
+  }
+  return [...tokens].map((provide) => ({ provide, useValue: {} }) as Provider);
+};
+
 @Module({
+  providers: stubProviders(paymentsControllers),
   imports: [
     ServiceAuthModule.forService({
       audience: 'payments',
@@ -151,6 +167,7 @@ let app: NestFastifyApplication;
 beforeAll(async () => {
   app = await NestFactory.create<NestFastifyApplication>(TestApp, new FastifyAdapter(), {
     logger: false,
+    abortOnError: false, // a boot error fails this suite with its message instead of exiting jest
   });
   await app.init();
   await app.getHttpAdapter().getInstance().ready();
@@ -210,7 +227,11 @@ describe('INV-ACTBAN: payments refuses coin operations to an acting token', () =
         kid: 'k1',
         claims: serviceClaims({ now: NOW, service: 'engagement', aud: 'payments' }),
       });
-      const res = await call('POST', `/internal/v1/tenants/${T_A}/probe/${action.split('.')[1]}`, svc);
+      const res = await call(
+        'POST',
+        `/internal/v1/tenants/${T_A}/probe/${action.split('.')[1]}`,
+        svc,
+      );
       expect(res.statusCode).toBe(201);
       expect(res.json()).toEqual({ ran: action });
     },
@@ -231,7 +252,9 @@ describe('INV-ACTBAN: payments refuses coin operations to an acting token', () =
   // Mutation: emit the audit event from an interceptor only (interceptors do not run when a guard refuses).
   it('INV-AUTH-9 an acting coin-value request refused by the guard writes exactly one refused event for service payments', async () => {
     audited.length = 0;
-    const res = await call('POST', '/probe/credit', acting(), { 'idempotency-key': 'key-12345678' });
+    const res = await call('POST', '/probe/credit', acting(), {
+      'idempotency-key': 'key-12345678',
+    });
     expect(res.statusCode).toBe(403);
     expect(res.json()).toMatchObject({ code: 'acting_forbidden' });
     const events = audited.filter((e) => e.type === 'audit.acting_request');
