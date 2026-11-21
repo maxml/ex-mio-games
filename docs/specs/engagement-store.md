@@ -15,15 +15,28 @@ external system (the casino, reached through the shared adapter port):
 
 1. **Order** (engagement, one transaction): conditional decrement of stock and per-player limit, freeze price and
    reward mapping, insert `REQUESTED` with `next_attempt_at = now + 30 s`. No command is written to a bus.
-2. **Reserve** (payments, synchronous, inline in the POST): `POST /internal/v1/coins/reserve`, key `hold:{id}`,
-   `reserve_id = redemption id`. Answer `ok` with the frozen amount -> `RESERVED`. `409 insufficient_funds` ->
+2. **Reserve** (payments, synchronous, inline in the POST): `POST /internal/v1/tenants/:tenantId/reserves`
+   (`PAYMENTS_INTERNAL_ROUTES`, tenant in the path, service token with `aud=payments`; body `ReserveCoinsRequest`
+   with `sandbox` set from the order's server-side flag, X-4), key `hold:{id}`, `reserve_id = redemption id`.
+   Answer `ok` with the frozen amount -> `RESERVED`. `409 insufficient_funds` ->
    `REJECTED_FUNDS`, the stock reservation is released, and **the POST answers 409 `insufficient_funds`** (D-8:
    the player sees it at once). Any other refusal, or an `ok` with another amount than the frozen price ->
    `NEEDS_REVIEW` (`reserve_refused` / `hold_amount_mismatch`); nothing is released and an alert is raised. A
    timeout or transport error leaves `REQUESTED`: the player gets 202, and the sweeper repeats the same call with
-   the same key after the 30 s grace. No casino call happens before the reserve answered `ok`.
-3. **Issue** (the sweeper, never inline in the POST): `RESERVED -> ISSUING` is committed (attempt counted, 60 s
-   lease) **before** the adapter is called, with key `redeem:{id}` and the request built from the FROZEN order.
+   the same key after the 30 s grace. **Transport includes** `409 idempotency_in_progress` and any 401/503 of the
+   auth entry point (`TOKEN_*`, `TENANT_STATUS_UNAVAILABLE`): the same key is retried, never reviewed (X-5). The
+   refusal codes are payments' own (`PaymentsErrorCode`, imported, not redefined): `insufficient_funds` ->
+   `REJECTED_FUNDS`; `reserve_already_captured|released|refunded`, `reserve_not_captured` and `reserve_not_found` ->
+   `NEEDS_REVIEW` `<phase>_refused` with the code in the history cause; `operation_conflict`, `validation_failed`,
+   `idempotency_key_reused`, `forbidden` -> `NEEDS_REVIEW` plus an alert. No casino call happens before the reserve
+   answered `ok`.
+3. **Issue** (the sweeper, never inline in the POST): `ports.forTenant(tenant, {sandbox})` resolves the port and its
+   `info` first (X-6): `undefined` -> `NEEDS_REVIEW` `no_adapter`, coins held; a REJECTED promise (identity down)
+   is transport, the same attempt is rescheduled, never a refund. Then `requests.build(...)` builds the casino
+   request from the FROZEN order and the identity player link: `undefined` -> `NEEDS_REVIEW` `player_unmapped`, coins
+   held, no guessed id. `RESERVED -> ISSUING` is committed (attempt counted, 60 s lease, the built `RewardRequest`
+   frozen on the order, `firstIssuingAt` set once) **before** the adapter is called, with key `redeem:{id}`; every
+   later issue and lookup uses the frozen request, so an erasure cannot change it.
    Result `issued{external_ref}` -> `ISSUED`; `rejected{reason}` -> `REJECTED`; `pending{external_ref?}` ->
    `UNKNOWN` with the ref stored, no further attempt consumed; `unknown` or a thrown error -> `UNKNOWN`, next
    attempt at `now + backoff`.
@@ -33,11 +46,14 @@ external system (the casino, reached through the shared adapter port):
    `not_found` -> retry with the same key (`ISSUING`, attempts + 1, then the issue call) while attempts < 8. At 8
    attempts on `not_found` -> `NEEDS_REVIEW` `attempts_exhausted`. A streak older than 24 h (`unknown_since`)
    that did not end in a decision -> `NEEDS_REVIEW` `unknown_too_long` (also for a ticket that stays `pending`).
-5. **Settle** (the sweeper): `ISSUED` -> `POST .../capture`, key `capture:{id}` -> `COMPLETED` (reservation
-   committed). `REJECTED` -> `POST .../release`, key `release:{id}` -> `RELEASED` (reservation released: stock and
-   limit are back). A transport error reschedules the same call. A refusal (`invalid_reserve_transition`,
-   `reserve_not_found`) -> `NEEDS_REVIEW` `capture_refused` / `release_refused`: payments does not say which
-   conflicting state it holds (D-9), so the reason is ours.
+   **Gate on `info.recovery_mode` (Q-6):** on an `idempotent_replay` adapter a lookup re-sends the issue, so it can
+   issue the reward; the saga looks up only while the coins are held, and the operator path (9) never looks up for a
+   review entered after RELEASED, COMPLETED or a refused capture.
+5. **Settle** (the sweeper): `ISSUED` -> `POST .../reserves/:id/capture`, key `capture:{id}` -> `COMPLETED`
+   (reservation committed). `REJECTED` -> `POST .../release`, key `release:{id}` -> `RELEASED` (reservation
+   released: stock and limit are back). A transport error reschedules the same call. A refusal (the payments
+   transition codes above, `reserve_not_found`) -> `NEEDS_REVIEW` `capture_refused` / `release_refused`; payments
+   does say which conflicting state it holds (D-9), and that code is stored in the history cause.
 6. **Compensation after capture**: a casino report `revoked` on a `COMPLETED` redemption -> `POST .../refund`,
    key `refund:{id}`, then `REFUNDED`. A refusal -> `NEEDS_REVIEW` `refund_refused`. The refund is driven by the
    report; a failed call is repeated when the report is delivered again (reports have a delivery id).
@@ -50,14 +66,18 @@ external system (the casino, reached through the shared adapter port):
    redemption to `NEEDS_REVIEW` with a reason and raises `engagement.redemption.needs_review`. `onCasinoReport`
    takes the delivery id of the report; the inbox row (`engagement.redemption-saga`, delivery id) is written in the
    same transaction as the state change.
-9. **Operator** (owner/admin, audited reason in the history cause):
+9. **Operator** (`operator_admin`, audited reason in the history cause; identity's role vocabulary, X-15). A token
+   carrying `act` (an acting platform_admin) is refused on `resolve` with 403 `ACTING_FORBIDDEN` BEFORE any lookup or
+   coin call (X-11, D-5, D-15 Q-2 (a)); `redemptions.resolve` is in identity's `ACTING_DENIED_ACTIONS`:
    - `resolveReview issued` -> `ISSUED`, then the normal capture follows. Refused (`illegal_transition`) for a
      review entered from `REQUESTED`: the casino was never asked.
    - `resolveReview not_issued` -> a fresh `getRewardStatus` first. `rejected` -> `REJECTED`, then the release
-     follows. `not_found` from a lookup made at or after the **issue deadline** (`at` of the first `ISSUING`
-     history row + 24 h) -> the same. Anything else (`unknown`, `pending`, `issued`, or `not_found` before the
-     deadline) -> 409 `release_not_allowed`, nothing changes. A review entered from `REQUESTED` was never sent to
-     the casino and needs no lookup.
+     follows. `not_found` from a lookup made at or after the **issue deadline** (`firstIssuingAt` +
+     `info.issue_deadline_ms` of the tenant, X-6; not a fixed 24 h) -> the same. Anything else (`unknown`,
+     `pending`, `issued`, or `not_found` before the deadline) -> 409 `release_not_allowed`, nothing changes. The
+     operator's word alone never moves coins or stock (D-15 Q-6): on an `idempotent_replay` casino, after the coins
+     were released, there is no lookup at all and the answer is `release_not_allowed`. A review entered from
+     `REQUESTED` was never sent to the casino and needs no lookup.
    - `replay` (D-8, supersedes D1): allowed ONLY for a review entered from `UNKNOWN` (`attempts_exhausted`,
      `unknown_too_long`), i.e. while the coins are still held. It re-enters `UNKNOWN` with a fresh attempt budget.
      For a review entered from any other state (`RELEASED`, `REJECTED`, `ISSUED`, `COMPLETED`, `REQUESTED`)
@@ -67,12 +87,13 @@ external system (the casino, reached through the shared adapter port):
     `reserved`; `commit` likewise. A second release through any path (RELEASED -> review -> `not_issued` ->
     release again) restores nothing. The choke point is the store's `apply`.
 
-Sandbox: the `sandbox` flag of a redemption comes from the server-side request context (placeholder header
-`x-sandbox` until identity issues key-derived claims), never from a body. A sandbox order is issued only through
-the sandbox adapter, reserves only sandbox coins (the flag selects the sandbox ledger of payments; it is not a body
-field), and every event of it carries `sandbox: true`. Redemptions are not metered: payments meters only
-`engagement.spin.completed`, so the flag on redemption events has no reader today and is kept for the day one
-exists. Lookup of a redemption includes the flag.
+Sandbox: the `sandbox` flag of a redemption comes from the verified token claim `sbx` (set by identity from the
+credential's `environment`, X-3), never from a body or a header (there is no `x-sandbox`). A sandbox order is issued
+only through the sandbox adapter, reserves only sandbox coins (payments keeps separate sandbox wallets, X-2; the
+flag travels in the reserve body, which only a service token can call), and every event of it carries
+`sandbox: true` **on the envelope** (`createEvent`, D-13, X-13), never in a payload. Redemptions are not metered:
+payments meters only `engagement.spin.completed`, so the flag on redemption events has no reader today. Lookup of
+a redemption includes the flag.
 
 ## 2. State tables
 
@@ -108,9 +129,10 @@ ISSUING -> UNKNOWN` (the 24 h age counts from the first one); it is cleared on `
 
 **Reserve (payments)** is the payments service's: `reserved -> captured | released`, `captured -> refunded`.
 Capture, release and refund are idempotent by the state of the reserve: a repeat of an applied transition returns
-the stored result with any key; only a conflicting transition is refused (409 `invalid_reserve_transition`)
-(D-9). The tests carry a fake of its HTTP table (`testing/world.ts` `FakePayments`); the payments service owns the
-real one.
+the stored result with any key; only a conflicting transition is refused, with payments' own code
+(`reserve_already_captured|released|refunded`, `reserve_not_captured`; there is no `invalid_reserve_transition`)
+(D-9, X-5). The tests carry a fake of its HTTP table (`testing/world.ts` `FakePayments`, a literal oracle of the
+payments code table); the payments service owns the real one.
 
 ## 3. Invariants, choke points, tests
 
@@ -131,7 +153,8 @@ real one.
 | I-STOCK-1           | Stock is returned exactly once through RELEASED -> review -> `not_issued` (D-8)                                                                                                                            | `apply`: release conditional on `reservation = reserved`                                  | saga `I-STOCK-1`; store contract 'exactly once through release, review and not_issued', 'a committed reservation ...' |
 | I-REPLAY-1,2        | `replay` only for a review entered from UNKNOWN (D-8)                                                                                                                                                      | `apply` (history guard on `NEEDS_REVIEW -> UNKNOWN`), whoever calls it                    | saga `I-REPLAY-1,2`; store contract 'replay is refused unless ...' (4 origins + REQUESTED + latest entry)             |
 | I-REFUND-1,2        | At most one refund per redemption (MIO-144); a refused refund goes to review                                                                                                                               | `apply` guard `expectFrom: COMPLETED`; payments by-state idempotency                      | saga `I-REFUND-1,2`                                                                                                   |
-| I-REVIEW-1,2,3      | Only owner/admin resolve; the reason is audited; `issued` is refused for a review the casino never saw                                                                                                     | saga `resolveReview` + controller                                                         | saga `I-REVIEW-*`; controller `I-OPS-2`, `I-OPS-4`                                                                    |
+| I-PORT-1..6         | The saga uses the registry and the request builder: per-tenant issue deadline, no adapter / unmapped player go to review with coins held, a rejected lookup is transport, the request is frozen at ISSUING, no lookup on a replay casino after RELEASED (X-6, Q-6) | saga issue step; `ports`, `requests` | saga `I-PORT-1..6` |
+| I-REVIEW-1,2,3      | Only `operator_admin` resolves (X-15); the reason is audited; `issued` is refused for a review the casino never saw                                                                                                     | saga `resolveReview` + controller                                                         | saga `I-REVIEW-*`; controller `I-OPS-2`, `I-OPS-4`                                                                    |
 | I-CRASH-1..8        | Killed at each durable boundary the run ends as the no-crash run, ONE effect in the casino and in payments, ledger conserved (MIO-066). The world places the kill on the ports; the saga has no crash hook | single-transaction `apply`; the sweeper; payments by-state idempotency                    | saga `I-CRASH-1..8`                                                                                                   |
 | I-AUDIT             | The adapter is called only while the store row is ISSUING with its attempt already recorded (MIO-066 "attempt durable before the call")                                                                    | `apply` of `RESERVED -> ISSUING` before the call; checked from the store row at call time | `World.auditViolations()`, asserted `afterEach` in every saga test                                                    |
 | I-ATOMIC-1          | A change that fails midway leaves nothing behind (state, history, stock, inbox, outbox)                                                                                                                    | `apply` is one transaction                                                                | store contract 'a change that fails midway ...' (both stores)                                                         |
@@ -140,7 +163,8 @@ real one.
 | I-ISO-1             | A tenant never sees another tenant's items (MIO-065)                                                                                                                                                       | RLS on `store_items`                                                                      | compose `I-ISO-1`                                                                                                     |
 | I-API-1..8          | Roles, price 422, validation before the service, error codes, **POST 409 `insufficient_funds`**                                                                                                            | controllers (zod + role guard + exception filter)                                         | `controllers/store.controllers.test.ts`                                                                               |
 | I-VIEW-1,2,3        | Players see `pending` for `NEEDS_REVIEW` and never its reason; four public words; **the player sees `insufficient_funds`** on GET                                                                          | controller DTO mapper                                                                     | controller `I-VIEW-*`                                                                                                 |
-| I-OPS-1..4          | Operator list and single GET (own tenant); resolve needs owner/admin; saga refusals have their HTTP codes                                                                                                  | controllers                                                                               | controller `I-OPS-*`                                                                                                  |
+| I-OPS-1..5          | Operator list and single GET (own tenant); resolve needs `operator_admin`; an `act` token on resolve is 403 `ACTING_FORBIDDEN` before any call and is audited (X-11, D-5); saga refusals have their HTTP codes | controllers                                                                               | controller `I-OPS-*`                                                                                                  |
+| W-5                 | `GET /v1/me/redemptions` lists the caller's own redemptions with `PublicRedemptionStatus`                                                                                                                  | controller + `RedemptionsService.listOwn(scope)`                                          | controller `W-5`; compose `W-5`                                                                                       |
 | I-SANDBOX-1,2,3     | Sandbox redemptions use only the sandbox adapter and the sandbox ledger, carry `sandbox` on every event, flag never from a body (MIO-092)                                                                  | saga adapter and coin call from the order's flag; `apply` stamps events                   | saga `I-SANDBOX-*`; controller `I-API-5`                                                                              |
 | I-CONTRACT-1        | One casino port, one coin reserve: the store defines neither and registers no hold command or event (D-1, D-2, D-9)                                                                                        | `packages/contracts`                                                                      | `packages/contracts/src/store.contracts.test.ts`                                                                      |
 
@@ -163,9 +187,11 @@ reservation is `reserved`. Implementations take a clock: `new PgRedemptionStore(
 implementation wraps `runWithTenant` around the explicit `tenantId`.
 
 4.2 `RedemptionSagaService` (`services/redemption-saga.service.ts`), constructed with `SagaDeps = { store, coins,
-adapterFor(tenantId, sandbox), rewardRequest(order), clock, random }`. `rewardRequest` builds the `RewardRequest`
-(including the player-id to external-player-id mapping) from the frozen order; the same request goes to
-`issueReward` and to every `getRewardStatus`. Methods: `redeem`, `sweep(now)`, `onCasinoReport(tenantId, id,
+ports: CasinoRewardPorts, requests: RewardRequestBuilder, clock, random }` (X-6: the ingest epic's port, not a
+private one). `ports.forTenant(tenant, {sandbox})` gives the port and `info.recovery_mode` and
+`info.issue_deadline_ms`; `requests.build` builds the `RewardRequest` from the frozen order and the identity link;
+the built request is frozen on the order at ISSUING and the same request goes to `issueReward` and to every
+`getRewardStatus`. Pinned by `I-PORT-1..6`. Methods: `redeem`, `sweep(now)`, `onCasinoReport(tenantId, id,
 report, eventId)`, `replay`, `resolveReview`. There is no crash hook: tests kill the process from outside, on the
 ports. Errors the saga throws carry a `code` (`insufficient_funds`, `forbidden`, `illegal_transition`,
 `release_not_allowed`, `redemption_not_found`). Consumer name for inbox rows: `engagement.redemption-saga`.
@@ -174,16 +200,16 @@ ports. Errors the saga throws carry a `code` (`insufficient_funds`, `forbidden`,
 `backoffDelayMs(attempt, random) = floor(random() * min(300 s, 1 s * 2^(attempt-1)))`. The 30 s grace of a
 `REQUESTED` order is a store constant.
 
-4.4 Services used by controllers: `RedemptionsService` (`redeem`, `getOwn`, `getForOperator`, `listForOperator`,
+4.4 Services used by controllers: `RedemptionsService` (`redeem`, `getOwn`, `listOwn`, `getForOperator`, `listForOperator`,
 `resolveReview`) and `StoreItemsService` (`create`, `update`, `listActive`, `listAll`).
 
-4.5 Names taken from the payments Stage A contract and flagged as ASSUMED until that service's fix round ends:
-the four routes `POST /internal/v1/coins/reserve|capture|release|refund`, the refusal codes `insufficient_funds`,
-`invalid_reserve_transition`, `reserve_not_found`, `operation_conflict`, and the coin events
-`payments.coins.reserved|captured|released|refunded`. The saga consumes none of the events (the HTTP answer is the
-result) and registers none. The compose seeding route in `store.compose.test.ts` (`POST /internal/v1/coins/credit`
-with the service identity) is also assumed. The sandbox ledger of payments is not in its spec yet: the saga passes
-the flag beside the request (never in the body) and the test fake keys wallets by (player, sandbox).
+4.5 Names adopted from payments (X-4, X-5, D-9; no longer assumed): the four routes `PAYMENTS_INTERNAL_ROUTES`
+(`POST /internal/v1/tenants/:tenantId/reserves` and `.../reserves/:reserveId/capture|release|refund`), the refusal
+codes of `PaymentsErrorCode`, and the coin events `payments.coins.reserved|captured|released|refunded`. The saga
+consumes none of the events (the HTTP answer is the result) and registers none. Compose tests fund players through
+`seed-coins.ts` (a real `engagement.spin.completed` publish, reconciliation section 3), with players launched
+through identity (`player-session.ts`); there is no credit route. Payments keeps separate sandbox wallets (X-2): the
+saga sends the order's flag in the reserve body, and the test fake keys wallets by (player, sandbox).
 
 ## 5. Data (engagement database, migration `Store1732300000000`, all tenant tables `ENABLE`+`FORCE` RLS)
 
@@ -199,19 +225,21 @@ the flag beside the request (never in the body) and the test fake keys wallets b
 ## 6. Contracts (`packages/contracts`, pinned by `store.contracts.test.ts`)
 
 `store.ts`: catalog and redemption DTOs, `REDEMPTION_STATUSES`, `PUBLIC_STATUS_OF`, `STORE_ERROR_CODES` (with
-`release_not_allowed`), `PrincipalHeaders`, engagement events `engagement.redemption.status_changed|issued|rejected|
-needs_review`. **Removed** (D-1, D-2): the bus commands `engagement.hold.*`, the events `payments.hold.*`, and
-the store's own adapter port. `casino-adapter.ts` and `ingest.ts` are taken unchanged from the ingest branch
-(commit d822a75) in their own commit. `ErrorBody` gained an optional `code`.
+`release_not_allowed`), engagement events `engagement.redemption.status_changed|issued|rejected|
+needs_review` (payload `player_id: Uuid`; `sandbox` is on the envelope, X-13). **Removed** (D-1, D-2, X-9): the bus
+commands `engagement.hold.*`, the events `payments.hold.*`, the store's own adapter port, and `PrincipalHeaders`
+(role and sandbox come from the verified token). `casino-adapter.ts` and `ingest.ts` are the ingest epic's
+reconciled versions. `ErrorBody` has an optional `code` (foundation).
 
 ## 7. API
 
 Player: `GET /v1/store/items` (active only), `POST /v1/redemptions` (header `Idempotency-Key`, body `{ item_id }`,
 strict) -> 202 + redemption (replay: header `Idempotent-Replayed: true`), **409 `insufficient_funds`** when payments
-refuses the reserve, `GET /v1/redemptions/:id` (own only; shows `failure_reason`, except for `NEEDS_REVIEW`).
-Operator: `POST /v1/store/items`, `PATCH /v1/store/items/:id` (owner, admin), `GET /v1/operator/redemptions?status=`
-and `GET /v1/operator/redemptions/:id` (owner, admin, analyst), `POST /v1/operator/redemptions/:id/resolve` (owner,
-admin).
+refuses the reserve, `GET /v1/redemptions/:id` (own only; shows `failure_reason`, except for `NEEDS_REVIEW`),
+`GET /v1/me/redemptions` (the caller's own list, W-5).
+Operator (identity roles, X-15): `POST /v1/store/items`, `PATCH /v1/store/items/:id` (`operator_admin`),
+`GET /v1/operator/redemptions?status=` and `GET /v1/operator/redemptions/:id` (`operator_admin`, `operator_staff`),
+`POST /v1/operator/redemptions/:id/resolve` (`operator_admin`; never an acting token, 403 `ACTING_FORBIDDEN`).
 Error codes (HTTP): `item_price_invalid` 422, `item_not_found` 404, `item_inactive` 409, `out_of_stock` 409,
 `limit_reached` 409, `insufficient_funds` 409, `idempotency_key_reused` 422, `idempotency_in_progress` 409,
 `redemption_not_found` 404, `forbidden` 403, `illegal_transition` 409, `release_not_allowed` 409. Body schema
@@ -227,7 +255,7 @@ body is 422 (D-3).
   GET and in the event. The public word of `REJECTED_FUNDS` stays `failed_refunded`.
 - **D3** The sweeper acts on an `ISSUING` row only after its lease expires, and then treats it as `UNKNOWN`
   (never as "not issued").
-- **D4** Role and sandbox arrive through placeholder headers until identity lands. Owner tracking: re-point
+- **D4 (closed, X-9)** Role and sandbox came through placeholder headers; they now come from the verified token only. Owner tracking: re-point
   `I-API-5` and the compose `I-OWN` tests at verified claims then.
 - **D5** `pending` (casino B ticket) lands in `UNKNOWN` with the ref stored (no new state, so the oracle changes only
   by the `REQUESTED -> NEEDS_REVIEW` row). The ticket does not consume attempts; it ages out at 24 h.

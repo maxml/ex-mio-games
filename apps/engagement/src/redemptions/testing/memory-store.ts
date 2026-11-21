@@ -84,10 +84,21 @@ export class MemoryStore implements RedemptionStore {
     return this.items.get(id)?.stock ?? null;
   }
 
-  private envelope(tenantId: string, type: string, payload: Record<string, unknown>): OutboxRow {
+  /** X-13/D-13: the sandbox flag goes on the ENVELOPE (createEvent), never into the payload. */
+  private envelope(
+    tenantId: string,
+    type: string,
+    payload: Record<string, unknown>,
+    sandbox: boolean,
+  ): OutboxRow {
     return {
       relayed: false,
-      envelope: createEvent({ type: type as never, tenantId, payload: payload as never }),
+      envelope: createEvent({
+        type: type as never,
+        tenantId,
+        payload: payload as never,
+        sandbox,
+      }),
     };
   }
 
@@ -130,19 +141,25 @@ export class MemoryStore implements RedemptionStore {
       unknownSince: null,
       casinoReference: null,
       failureReason: null,
+      rewardRequest: null,
+      firstIssuingAt: null,
       reservation: 'reserved',
       history: [{ from: null, to: 'REQUESTED', cause: 'order_placed', at }],
       createdAt: at,
       updatedAt: at,
     };
-    const row = this.envelope(rec.tenantId, 'engagement.redemption.status_changed', {
-      redemption_id: rec.id,
-      player_id: rec.playerId,
-      sandbox: rec.sandbox,
-      from: null,
-      to: 'REQUESTED',
-      cause: 'order_placed',
-    });
+    const row = this.envelope(
+      rec.tenantId,
+      'engagement.redemption.status_changed',
+      {
+        redemption_id: rec.id,
+        player_id: rec.playerId,
+        from: null,
+        to: 'REQUESTED',
+        cause: 'order_placed',
+      },
+      rec.sandbox,
+    );
     // every check and every envelope is done: mutate
     if (item.stock !== null) item.stock -= 1;
     this.used.set(usedKey, used + 1);
@@ -181,6 +198,8 @@ export class MemoryStore implements RedemptionStore {
     if (change.nextAttemptAt !== undefined) next.nextAttemptAt = change.nextAttemptAt;
     if (change.casinoReference !== undefined) next.casinoReference = change.casinoReference;
     if (change.failureReason !== undefined) next.failureReason = change.failureReason;
+    if (change.rewardRequest !== undefined) next.rewardRequest = structuredClone(change.rewardRequest);
+    if (change.to === 'ISSUING' && next.firstIssuingAt === null) next.firstIssuingAt = at;
     if (change.to === 'UNKNOWN' && next.unknownSince === null) next.unknownSince = at;
     if (change.to === 'ISSUED' || change.to === 'REJECTED' || change.to === 'NEEDS_REVIEW')
       next.unknownSince = null;
@@ -189,39 +208,45 @@ export class MemoryStore implements RedemptionStore {
       next.reservation = change.reservation === 'commit' ? 'committed' : 'released';
       restoreStock = change.reservation === 'release';
     }
-    const base = { redemption_id: rec.id, player_id: rec.playerId, sandbox: rec.sandbox };
+    const base = { redemption_id: rec.id, player_id: rec.playerId };
+    const sandbox = rec.sandbox;
     const rows: OutboxRow[] = [
-      this.envelope(tenantId, 'engagement.redemption.status_changed', {
-        ...base,
-        from,
-        to: change.to,
-        cause: change.cause,
-      }),
+      this.envelope(
+        tenantId,
+        'engagement.redemption.status_changed',
+        { ...base, from, to: change.to, cause: change.cause },
+        sandbox,
+      ),
     ];
     if (change.to === 'ISSUED' && change.casinoReference)
       rows.push(
-        this.envelope(tenantId, 'engagement.redemption.issued', {
-          ...base,
-          casino_reference: change.casinoReference,
-          price: rec.price,
-        }),
+        this.envelope(
+          tenantId,
+          'engagement.redemption.issued',
+          { ...base, casino_reference: change.casinoReference, price: rec.price },
+          sandbox,
+        ),
       );
     if (change.to === 'REJECTED' || change.to === 'REJECTED_FUNDS')
       rows.push(
-        this.envelope(tenantId, 'engagement.redemption.rejected', {
-          ...base,
-          reason: change.failureReason ?? change.cause,
-        }),
+        this.envelope(
+          tenantId,
+          'engagement.redemption.rejected',
+          { ...base, reason: change.failureReason ?? change.cause },
+          sandbox,
+        ),
       );
     if (change.to === 'NEEDS_REVIEW')
       rows.push(
-        this.envelope(tenantId, 'engagement.redemption.needs_review', {
-          ...base,
-          reason: change.failureReason ?? change.cause,
-        }),
+        this.envelope(
+          tenantId,
+          'engagement.redemption.needs_review',
+          { ...base, reason: change.failureReason ?? change.cause },
+          sandbox,
+        ),
       );
     for (const m of change.outbox ?? [])
-      rows.push(this.envelope(tenantId, m.type, { ...m.payload, ...base }));
+      rows.push(this.envelope(tenantId, m.type, { ...m.payload, ...base }, sandbox));
 
     // commit
     if (dedupeKey) this.inbox.add(dedupeKey);

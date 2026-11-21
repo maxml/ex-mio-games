@@ -1,9 +1,11 @@
 import type {
   CasinoRewardPort,
+  CasinoRewardPorts,
   EventEnvelope,
   IssueResult,
   RedemptionState,
   RewardRequest,
+  RewardRequestBuilder,
   RewardStatus,
 } from '@ex-mio/contracts';
 import type {
@@ -11,7 +13,7 @@ import type {
   CoinsCall,
   CoinsPort,
   CoinsReply,
-  RedemptionRecord,
+  CoinsRefusalCode,
   RedemptionSaga,
   RedemptionStore,
   SagaDeps,
@@ -148,11 +150,21 @@ export class PaymentsDown extends Error {
   }
 }
 
+/** payments answered 409 `idempotency_in_progress`: transport for the saga, retry the SAME key (X-5). */
+export class PaymentsBusy extends Error {
+  constructor() {
+    super('payments: idempotency_in_progress');
+  }
+}
+
 /**
- * Answers like `POST /internal/v1/coins/reserve|capture|release|refund`: 409 insufficient_funds,
- * 409 invalid_reserve_transition, 404 reserve_not_found, 409 operation_conflict. Capture, release
- * and refund are idempotent BY THE STATE of the reserve, whatever key they come with. Wallets are
- * keyed by (player, sandbox): a sandbox order never touches production coins.
+ * Answers like `PAYMENTS_INTERNAL_ROUTES` (reserve, capture, release, refund; tenant in the path):
+ * 409 insufficient_funds, 404 reserve_not_found, 409 operation_conflict and, for a conflicting
+ * transition, payments' own codes `reserve_already_captured|released|refunded` and
+ * `reserve_not_captured` (written here as a literal oracle of the L2 table, X-5: there is no
+ * `invalid_reserve_transition`). Capture, release and refund are idempotent BY THE STATE of the
+ * reserve, whatever key they come with. Wallets are keyed by (player, sandbox): a sandbox order never
+ * touches production coins.
  */
 export class FakePayments implements CoinsPort {
   readonly wallets = new Map<string, { available: number; held: number; captured: number }>();
@@ -195,8 +207,16 @@ export class FakePayments implements CoinsPort {
     return this.calls.filter((c) => c.verb === verb);
   }
 
+  /** The next N calls answer 409 idempotency_in_progress (thrown: transport, retry the same key). */
+  busy = 0;
+
   private enter(verb: Verb, call: CoinsCall, key: string): void {
     if (this.down) throw new PaymentsDown();
+    if (this.busy > 0) {
+      this.busy -= 1;
+      this.calls.push({ verb, key, reserveId: call.reserveId, sandbox: call.sandbox });
+      throw new PaymentsBusy();
+    }
     this.calls.push({ verb, key, reserveId: call.reserveId, sandbox: call.sandbox });
   }
 
@@ -232,7 +252,17 @@ export class FakePayments implements CoinsPort {
     const r = this.reserves.get(call.reserveId);
     if (!r) return { ok: false, code: 'reserve_not_found' };
     if (r.state === to) return { ok: true, amount: r.amount }; // stored result, any key
-    if (r.state !== from) return { ok: false, code: 'invalid_reserve_transition' };
+    if (r.state !== from) {
+      // the conflicting-transition code of payments, by the state the reserve holds (spec D-9)
+      if (verb === 'refund' && r.state === 'reserved') return { ok: false, code: 'reserve_not_captured' };
+      const held: Record<ReserveState, CoinsRefusalCode> = {
+        reserved: 'reserve_not_captured',
+        captured: 'reserve_already_captured',
+        released: 'reserve_already_released',
+        refunded: 'reserve_already_refunded',
+      };
+      return { ok: false, code: held[r.state] };
+    }
     const w = this.wallets.get(r.wallet)!;
     if (verb === 'capture') {
       w.held -= r.amount;
@@ -305,6 +335,16 @@ export class World<S extends RedemptionSaga> {
   readonly clock = new TestClock();
   readonly tenant = '0190a1b2-c3d4-4e5f-8a6b-7c8d9e0f1a2b';
   readonly audit: CasinoCallAudit[] = [];
+  /** Per-tenant issue deadline the registry reports (`info.issue_deadline_ms`); the old default was a hard-coded 24 h. */
+  deadlineMs = 24 * 3_600_000;
+  /** Environments (`sandbox` flag) for which the registry resolves to `undefined`. */
+  readonly noAdapter = new Set<boolean>();
+  /** The integration lookup fails (identity down): `forTenant` REJECTS, it is not "absent". */
+  registryDown = false;
+  /** Player ids with no identity link: the request builder answers `undefined` (erased or never created). */
+  readonly unmapped = new Set<string>();
+  readonly portLookups: { tenantId: string; sandbox: boolean }[] = [];
+  readonly requestBuilds: string[] = [];
   saga!: S;
   restarts = 0;
   private life: Life = { dead: false };
@@ -401,18 +441,45 @@ export class World<S extends RedemptionSaga> {
     const production = wrapCasino(this.casino);
     const sandbox = wrapCasino(this.sandboxCasino);
 
+    // The fake adapter registry and request builder (X-6): the same contracts the ingest epic
+    // implements. The saga cannot tell a fake from the real one, so what it must do with `undefined`
+    // (no adapter, no mapping) and with a rejected lookup is pinned here, not assumed.
+    const ports: CasinoRewardPorts = {
+      forTenant: async (tenantId, opts) => {
+        alive();
+        this.portLookups.push({ tenantId, sandbox: opts.sandbox });
+        if (this.registryDown) throw new Error('identity unreachable');
+        if (this.noAdapter.has(opts.sandbox)) return undefined;
+        const inner = opts.sandbox ? sandbox : production;
+        const fake = opts.sandbox ? this.sandboxCasino : this.casino;
+        return {
+          port: inner,
+          info: {
+            recovery_mode: fake.lookup === 'replay' ? 'idempotent_replay' : 'native_lookup',
+            issue_deadline_ms: this.deadlineMs,
+            sandbox: opts.sandbox,
+          },
+        };
+      },
+    };
+    const requests: RewardRequestBuilder = {
+      build: async (input) => {
+        alive();
+        this.requestBuilds.push(input.userId);
+        if (this.unmapped.has(input.userId)) return undefined;
+        return {
+          external_player_id: `ext-${input.userId}`,
+          reward: input.reward,
+          sandbox: input.sandbox,
+        };
+      },
+    };
+
     this.saga = this.make({
       store,
       coins,
-      adapterFor: (_tenant, isSandbox) => (isSandbox ? sandbox : production),
-      rewardRequest: async (o: RedemptionRecord) => ({
-        external_player_id: `ext-${o.playerId}`,
-        reward: {
-          type: o.reward.type,
-          amount_minor: Number(o.reward.params['count'] ?? o.price),
-          currency: 'EUR',
-        },
-      }),
+      ports,
+      requests,
       clock: this.clock,
       random: () => this.random(),
     });

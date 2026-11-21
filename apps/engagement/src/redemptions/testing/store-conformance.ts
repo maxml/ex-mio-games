@@ -27,9 +27,16 @@ export interface StoreHarness {
   outbox(tenantId: string): Promise<EventEnvelope[]>;
 }
 
+/**
+ * X-13: redemption events carry `player_id: Uuid`, so a symbolic test name ('p1') maps to a fixed uuid.
+ * The mapping is a function of the name, so the same name is the same player everywhere in a test.
+ */
+const pid = (name: string): string =>
+  `0190a1b2-c3d4-7e5f-8a6b-${Buffer.from(name).toString('hex').padStart(12, '0').slice(-12)}`;
+
 const player = (h: StoreHarness, id: string, sandbox = false): Scope => ({
   tenantId: h.tenantId,
-  playerId: id,
+  playerId: pid(id),
   sandbox,
 });
 
@@ -156,7 +163,9 @@ export function storeConformance(label: string, setup: () => Promise<StoreHarnes
       const { id } = await order(h);
       const ev = await events(h, id);
       expect(ev.map((e) => e.type)).toEqual(['engagement.redemption.status_changed']);
-      expect(ev[0]?.payload).toMatchObject({ from: null, to: 'REQUESTED', sandbox: false });
+      expect(ev[0]?.payload).toMatchObject({ from: null, to: 'REQUESTED' });
+      expect('sandbox' in (ev[0]?.payload as object)).toBe(false); // X-13: the envelope holds it
+      expect(ev[0]?.sandbox).toBeUndefined(); // production: absent means production
       const rec = await h.store.getForOperator(h.tenantId, id);
       // The coin reserve is a synchronous call (D-1): no hold command is written. If that call never
       // finished, the sweeper re-sends it 30 s later with the same key.
@@ -269,7 +278,8 @@ export function storeConformance(label: string, setup: () => Promise<StoreHarnes
         .slice(before)
         .filter((e) => e.type === 'engagement.redemption.status_changed');
       expect(changed).toHaveLength(1);
-      expect((changed[0]?.payload as { sandbox: boolean }).sandbox).toBe(false);
+      expect('sandbox' in (changed[0]?.payload as object)).toBe(false);
+      expect(changed[0]?.sandbox).toBeUndefined();
     });
 
     it('apply rejects a pair outside the table', async () => {
@@ -654,7 +664,7 @@ export function storeConformance(label: string, setup: () => Promise<StoreHarnes
       ]);
       const issued = await events(h, ok.id, 'engagement.redemption.issued');
       expect(issued.map((e) => e.payload)).toEqual([
-        expect.objectContaining({ casino_reference: 'ref-9', price: 12, sandbox: false }),
+        expect.objectContaining({ casino_reference: 'ref-9', price: 12 }),
       ]);
 
       const no = await order(h);
@@ -693,7 +703,7 @@ export function storeConformance(label: string, setup: () => Promise<StoreHarnes
       expect(changes).toEqual(['REQUESTED', 'RESERVED', 'ISSUING', 'UNKNOWN', 'NEEDS_REVIEW']);
     });
 
-    it('caller outbox messages are stamped with the redemption, the player and the sandbox flag', async () => {
+    it('caller outbox messages are stamped with the redemption and the player; the sandbox flag goes on the envelope', async () => {
       const { id, scope } = await order(h, { sandbox: true });
       await h.store.apply(h.tenantId, id, {
         expectFrom: all('REQUESTED'),
@@ -703,7 +713,7 @@ export function storeConformance(label: string, setup: () => Promise<StoreHarnes
           {
             type: 'engagement.redemption.needs_review',
             // a caller cannot override the stamp
-            payload: { reason: 'x', redemption_id: 'forged', player_id: 'forged', sandbox: false },
+            payload: { reason: 'x', redemption_id: 'forged', player_id: 'forged' },
           },
         ],
       });
@@ -712,9 +722,10 @@ export function storeConformance(label: string, setup: () => Promise<StoreHarnes
       expect(stamped[0]?.payload).toMatchObject({
         redemption_id: id,
         player_id: scope.playerId,
-        sandbox: true,
         reason: 'x',
       });
+      expect(stamped[0]?.sandbox).toBe(true); // set from the order's server-side flag
+      expect('sandbox' in (stamped[0]?.payload as object)).toBe(false);
     });
 
     it('history is append-only and in order', async () => {
@@ -765,7 +776,7 @@ export function storeConformance(label: string, setup: () => Promise<StoreHarnes
       expect(await h.store.getOwn(player(h, 'p1', true), redemption.id)).toBeNull();
       expect(
         await h.store.getOwn(
-          { tenantId: h.otherTenantId, playerId: 'p1', sandbox: false },
+          { tenantId: h.otherTenantId, playerId: pid('p1'), sandbox: false },
           redemption.id,
         ),
       ).toBeNull();
@@ -787,7 +798,8 @@ export function storeConformance(label: string, setup: () => Promise<StoreHarnes
       expect(await h.store.listForOperator(h.otherTenantId, 'NEEDS_REVIEW')).toHaveLength(0);
     });
 
-    it('a sandbox order carries sandbox=true on its rows and events', async () => {
+    // X-13/D-13. Mutation: put sandbox into a payload, or set the envelope flag from anything but the order.
+    it('a sandbox order carries sandbox=true on its row and on the ENVELOPE of every event, never in a payload', async () => {
       const item = await h.addItem({ price: 10 });
       const { redemption } = await h.store.placeOrder(player(h, 'p1', true), {
         operationKey: 'k',
@@ -796,7 +808,10 @@ export function storeConformance(label: string, setup: () => Promise<StoreHarnes
       expect(redemption.sandbox).toBe(true);
       const events = await h.outbox(h.tenantId);
       expect(events.length).toBeGreaterThan(0);
-      for (const e of events) expect((e.payload as { sandbox: boolean }).sandbox).toBe(true);
+      for (const e of events) {
+        expect(e.sandbox).toBe(true);
+        expect('sandbox' in (e.payload as object)).toBe(false);
+      }
     });
   });
 }

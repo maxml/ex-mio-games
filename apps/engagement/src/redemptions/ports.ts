@@ -2,11 +2,13 @@
 // Spec: docs/specs/engagement-store.md §4. The Postgres implementation of
 // RedemptionStore is Stage B; frozen tests run against it through these types.
 import type {
-  CasinoRewardPort,
+  CasinoRewardPorts,
   EventEnvelope,
+  PaymentsErrorCode,
   RedemptionState,
   RewardMapping,
   RewardRequest,
+  RewardRequestBuilder,
 } from '@ex-mio/contracts';
 
 /** Who is acting. `sandbox` comes from server-side context, never from a body. */
@@ -37,6 +39,10 @@ export interface RedemptionRecord {
   unknownSince: Date | null;
   casinoReference: string | null;
   failureReason: string | null;
+  /** X-6: the request built at RESERVED -> ISSUING and passed unchanged to every issue and lookup. */
+  rewardRequest: RewardRequest | null;
+  /** When the order FIRST entered ISSUING; the issue deadline counts from here (never reset by a replay). */
+  firstIssuingAt: Date | null;
   reservation: 'reserved' | 'committed' | 'released';
   history: { from: RedemptionState | null; to: RedemptionState; cause: string; at: Date }[];
   createdAt: Date;
@@ -72,6 +78,8 @@ export interface StateChange {
   nextAttemptAt?: Date | null;
   casinoReference?: string;
   failureReason?: string;
+  /** Freeze the request (set with the change INTO ISSUING; the store sets `firstIssuingAt` once). */
+  rewardRequest?: RewardRequest;
   /** Record the inbox row (consumer, eventId) in the same transaction; a repeat applies nothing. */
   dedupe?: { consumer: string; eventId: string };
 }
@@ -156,16 +164,28 @@ export interface Clock {
 // ---- the coin reserve: payments' synchronous internal API (decisions D-1, D-9) ----------------
 
 /**
- * Refusal codes of the payments service (its `PAYMENTS_ERROR_CODES`): 409 insufficient_funds,
- * 409 invalid_reserve_transition (a conflicting transition, e.g. capture after release),
- * 404 reserve_not_found, 409 operation_conflict (same reserve id, other parameters).
- * ASSUMED names, copied from the payments Stage A contract; follow it if it moves.
+ * Refusal codes of the payments service, taken from the contracts (X-5, D-9: payments owns the
+ * names and the store never defines a string union of its own). Mapping in the saga:
+ * `insufficient_funds` -> REJECTED_FUNDS (answered to the player as 409); the four transition codes
+ * and `reserve_not_found` -> NEEDS_REVIEW `<phase>_refused` with the code stored as the reason;
+ * `operation_conflict`, `validation_failed`, `idempotency_key_reused`, `forbidden` -> NEEDS_REVIEW plus an
+ * alert. `idempotency_in_progress` (409) and any 401/503 from the auth entry point (`TOKEN_*`,
+ * `TENANT_STATUS_UNAVAILABLE`) are TRANSPORT: the client port throws, the saga retries the same key and
+ * never reviews.
  */
-export type CoinsRefusalCode =
+export type CoinsRefusalCode = Extract<
+  PaymentsErrorCode,
   | 'insufficient_funds'
-  | 'invalid_reserve_transition'
+  | 'reserve_already_captured'
+  | 'reserve_already_released'
+  | 'reserve_already_refunded'
+  | 'reserve_not_captured'
   | 'reserve_not_found'
-  | 'operation_conflict';
+  | 'operation_conflict'
+  | 'validation_failed'
+  | 'idempotency_key_reused'
+  | 'forbidden'
+>;
 
 /** `ok` carries the reserve's amount. A thrown error means timeout or transport: retry the SAME key. */
 export type CoinsReply = { ok: true; amount: number } | { ok: false; code: CoinsRefusalCode };
@@ -173,9 +193,13 @@ export type CoinsReply = { ok: true; amount: number } | { ok: false; code: Coins
 export interface CoinsCall {
   tenantId: string;
   playerId: string;
-  /** Selects the sandbox or the production ledger; never part of the request body. */
+  /**
+   * Which wallet the hold is placed on. The client sends it in the BODY of the reserve only (X-4,
+   * `ReserveCoinsRequest.sandbox`); the tenant is in the PATH (`PAYMENTS_INTERNAL_ROUTES`). It comes from
+   * the order's server-side flag, never from the client.
+   */
   sandbox: boolean;
-  /** The redemption id. */
+  /** The redemption id (the reserve id; in the path of capture, release and refund). */
   reserveId: string;
 }
 
@@ -196,14 +220,21 @@ export interface CoinsPort {
 export interface SagaDeps {
   store: RedemptionStore;
   coins: CoinsPort;
-  /** Sandbox orders get the sandbox adapter, chosen from the ORDER's flag. Per tenant in production. */
-  adapterFor(tenantId: string, sandbox: boolean): CasinoRewardPort;
   /**
-   * Builds the casino request from the FROZEN order (price and mapping on the record), including
-   * the player-id to external-player-id mapping. The same request is passed to `issueReward`
-   * and to every `getRewardStatus`, so a casino without a lookup by key can replay it.
+   * The ONE adapter registry (X-6, D-2, D-12; owned by the ingest epic): resolves the port and its
+   * `info` (`recovery_mode`, `issue_deadline_ms`) per tenant and per ORDER flag. `undefined` means no
+   * adapter for that tenant/environment: NEEDS_REVIEW `no_adapter` with the coins held. A REJECTED
+   * promise (identity down) is transport: reschedule the same attempt, never refund.
    */
-  rewardRequest(order: RedemptionRecord): Promise<RewardRequest>;
+  ports: CasinoRewardPorts;
+  /**
+   * Builds the casino request from the FROZEN order (price and mapping on the record) and the
+   * identity player link. `undefined` means no mapping (erased or never created): NEEDS_REVIEW
+   * `player_unmapped` with the coins held. The built request is FROZEN on the order at
+   * RESERVED -> ISSUING (`StateChange.rewardRequest`), so a later erasure cannot change it and every
+   * lookup gets the same request. The issue deadline is `firstIssuingAt + info.issue_deadline_ms`.
+   */
+  requests: RewardRequestBuilder;
   clock: Clock;
   random: () => number;
 }
@@ -214,9 +245,10 @@ export type CasinoReport =
   | { outcome: 'rejected'; reason: string }
   | { outcome: 'revoked' };
 
+/** Identity's role vocabulary (X-15): `operator_admin` resolves reviews, `operator_staff` only reads. */
 export interface Operator {
   id: string;
-  role: 'owner' | 'admin' | 'analyst';
+  role: 'operator_admin' | 'operator_staff';
 }
 
 export interface RedemptionSaga {

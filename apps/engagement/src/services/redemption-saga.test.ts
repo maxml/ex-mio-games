@@ -57,7 +57,8 @@ const state = (w: W, id: string) => rec(w, id).state;
 const keys = (w: W, verb: 'reserve' | 'capture' | 'release' | 'refund') =>
   w.payments.callsOf(verb).map((c) => c.key);
 const toStates = (w: W, id: string) => rec(w, id).history.map((h) => h.to);
-const operator = (role: 'owner' | 'admin' | 'analyst') => ({ id: 'op-1', role });
+// X-15: identity's role vocabulary. owner/admin -> operator_admin, analyst -> operator_staff.
+const operator = (role: 'operator_admin' | 'operator_staff') => ({ id: 'op-1', role });
 
 /** Casino keeps failing with a 500: attempts run out and the redemption waits for a human. */
 async function exhausted() {
@@ -468,7 +469,7 @@ describe('I-RELEASE-GATE: coins go back only after `rejected` (D-2); never after
     const input = {
       outcome: 'not_issued' as const,
       reason: 'casino says no',
-      operator: operator('admin'),
+      operator: operator('operator_admin'),
     };
 
     // (b) not_found, but the issue deadline (first attempt + 24 h) has not passed
@@ -556,7 +557,7 @@ describe('I-DEDUPE and I-LATE: duplicate and late news', () => {
     await w.saga.resolveReview(w.tenant, r.id, {
       outcome: 'issued',
       reason: 'risk team confirmed the reward stands',
-      operator: operator('admin'),
+      operator: operator('operator_admin'),
     });
     await w.settle();
     expect(state(w, r.id)).toBe('COMPLETED');
@@ -610,9 +611,16 @@ describe('I-DEDUPE and I-LATE: duplicate and late news', () => {
     expect(w.payments.bal(P1)).toEqual({ available: 90, held: 0, captured: 10 });
   });
 
-  // Mutation: ignore a refused capture. Payments does not say WHY (D-9), so the reason is ours.
-  it.each(['invalid_reserve_transition', 'reserve_not_found'] as const)(
-    'I-LATE-3 a capture refused with %s -> NEEDS_REVIEW capture_refused, ledger conserved',
+  // X-5. Mutation: ignore a refused capture, or map payments' codes to a string union of the store's own.
+  // The codes are payments' real ones (D-9: it says WHICH conflicting state it holds), and the reason
+  // stored on the order is that code, so an operator reads what payments said.
+  it.each([
+    'reserve_already_released',
+    'reserve_already_refunded',
+    'reserve_not_captured',
+    'reserve_not_found',
+  ] as const)(
+    'I-LATE-3 a capture refused with %s -> NEEDS_REVIEW capture_refused (reason keeps the code), ledger conserved',
     async (code) => {
       const { w, item } = setup();
       const r = await order(w, item.id);
@@ -622,9 +630,42 @@ describe('I-DEDUPE and I-LATE: duplicate and late news', () => {
       await w.settle(1);
       expect(state(w, r.id)).toBe('NEEDS_REVIEW');
       expect(rec(w, r.id).failureReason).toBe('capture_refused');
+      expect(rec(w, r.id).history.at(-1)?.cause).toContain(code);
       expect(w.payments.total(P1)).toBe(100);
     },
   );
+
+  // X-5. Mutation: treat `operation_conflict`, a validation or a forbidden answer as a retryable
+  // failure (it would loop forever) or as a transition refusal. They go to NEEDS_REVIEW with an alert.
+  it.each(['operation_conflict', 'validation_failed', 'idempotency_key_reused', 'forbidden'] as const)(
+    'I-LATE-3b a capture answered %s -> NEEDS_REVIEW capture_refused with an alert, never retried',
+    async (code) => {
+      const { w, item } = setup();
+      const r = await order(w, item.id);
+      await w.settle(1);
+      const spy = jest.spyOn(w.payments, 'capture').mockResolvedValue({ ok: false, code });
+      await w.settle(3);
+      expect(state(w, r.id)).toBe('NEEDS_REVIEW');
+      expect(spy).toHaveBeenCalledTimes(1);
+      expect(w.events('engagement.redemption.needs_review').length).toBeGreaterThan(0);
+    },
+  );
+
+  // X-5. Mutation: send an `idempotency_in_progress` answer (or an auth entry-point outage) to review.
+  // It is transport: the same key is retried and the redemption completes.
+  it('I-LATE-3c a 409 idempotency_in_progress from payments is retried with the SAME key, never reviewed', async () => {
+    const { w, item } = setup();
+    w.payments.busy = 2;
+    const r = await order(w, item.id);
+    expect(state(w, r.id)).toBe('REQUESTED'); // the inline reserve was busy: left for the sweeper
+    await w.settle();
+    expect(state(w, r.id)).toBe('COMPLETED');
+    const reserveKeys = keys(w, 'reserve');
+    expect(reserveKeys.length).toBeGreaterThanOrEqual(3);
+    expect(new Set(reserveKeys)).toEqual(new Set([`hold:${r.id}`]));
+    expect(w.events('engagement.redemption.needs_review')).toHaveLength(0);
+    expect(w.payments.effects.reserve).toBe(1);
+  });
 
   it('I-LATE-4 a release refused by payments -> NEEDS_REVIEW release_refused', async () => {
     const { w, item } = setup();
@@ -634,7 +675,7 @@ describe('I-DEDUPE and I-LATE: duplicate and late news', () => {
     expect(state(w, r.id)).toBe('REJECTED');
     jest
       .spyOn(w.payments, 'release')
-      .mockResolvedValueOnce({ ok: false, code: 'invalid_reserve_transition' });
+      .mockResolvedValueOnce({ ok: false, code: 'reserve_already_captured' });
     await w.settle(1);
     expect(state(w, r.id)).toBe('NEEDS_REVIEW');
     expect(rec(w, r.id).failureReason).toBe('release_refused');
@@ -663,7 +704,7 @@ describe('I-STOCK and I-REPLAY: money paths through the review (D-8)', () => {
     await w.saga.resolveReview(w.tenant, r.id, {
       outcome: 'not_issued',
       reason: 'the ghost was a duplicate callback',
-      operator: operator('owner'),
+      operator: operator('operator_admin'),
     });
     await w.settle();
     expect(state(w, r.id)).toBe('RELEASED');
@@ -736,7 +777,7 @@ describe('I-REFUND and I-REVIEW: compensation of a captured spend, operator reso
     await w.settle();
     jest
       .spyOn(w.payments, 'refund')
-      .mockResolvedValueOnce({ ok: false, code: 'invalid_reserve_transition' });
+      .mockResolvedValueOnce({ ok: false, code: 'reserve_not_captured' });
     await w.saga.onCasinoReport(w.tenant, r.id, { outcome: 'revoked' }, eid(1));
     expect(state(w, r.id)).toBe('NEEDS_REVIEW');
     expect(rec(w, r.id).failureReason).toBe('refund_refused');
@@ -744,13 +785,13 @@ describe('I-REFUND and I-REVIEW: compensation of a captured spend, operator reso
   });
 
   // Mutation: remove the role check in resolveReview.
-  it('I-REVIEW-1 only owner/admin resolve; an analyst is forbidden and nothing changes', async () => {
+  it('I-REVIEW-1 only operator_admin resolves; operator_staff is forbidden and nothing changes (X-15 vocabulary)', async () => {
     const { w, r } = await exhausted();
     await expect(
       w.saga.resolveReview(w.tenant, r.id, {
         outcome: 'issued',
         reason: 'looks fine to me',
-        operator: operator('analyst'),
+        operator: operator('operator_staff'),
       }),
     ).rejects.toMatchObject({ code: 'forbidden' });
     expect(state(w, r.id)).toBe('NEEDS_REVIEW');
@@ -761,7 +802,7 @@ describe('I-REFUND and I-REVIEW: compensation of a captured spend, operator reso
     await a.w.saga.resolveReview(a.w.tenant, a.r.id, {
       outcome: 'issued',
       reason: 'verified in casino back office',
-      operator: { id: 'op-1', role: 'admin' },
+      operator: { id: 'op-1', role: 'operator_admin' },
     });
     await a.w.settle();
     expect(state(a.w, a.r.id)).toBe('COMPLETED');
@@ -773,7 +814,7 @@ describe('I-REFUND and I-REVIEW: compensation of a captured spend, operator reso
     await b.w.saga.resolveReview(b.w.tenant, b.r.id, {
       outcome: 'not_issued',
       reason: 'casino confirms no reward',
-      operator: { id: 'op-1', role: 'owner' },
+      operator: { id: 'op-1', role: 'operator_admin' },
     });
     await b.w.settle();
     expect(state(b.w, b.r.id)).toBe('RELEASED');
@@ -795,7 +836,7 @@ describe('I-REFUND and I-REVIEW: compensation of a captured spend, operator reso
       w.saga.resolveReview(w.tenant, r.id, {
         outcome: 'issued',
         reason: 'I think so',
-        operator: operator('admin'),
+        operator: operator('operator_admin'),
       }),
     ).rejects.toMatchObject({ code: 'illegal_transition' });
     // payments really holds the coins in this scenario: let the fake hold them for the release
@@ -806,7 +847,7 @@ describe('I-REFUND and I-REVIEW: compensation of a captured spend, operator reso
     await w.saga.resolveReview(w.tenant, r.id, {
       outcome: 'not_issued',
       reason: 'reserve answer unclear, giving back',
-      operator: operator('admin'),
+      operator: operator('operator_admin'),
     });
     await w.settle();
     expect(state(w, r.id)).toBe('RELEASED');
@@ -886,16 +927,18 @@ describe('I-SANDBOX: sandbox redemptions stay in the sandbox and out of metering
     expect(w.casino.issueCalls.map((c) => c.request.external_player_id)).toEqual([`ext-${P1}`]);
   });
 
-  // Mutation: stamp sandbox=false (or omit it) on any outbox message of a sandbox redemption.
-  it('I-SANDBOX-2 every event of a redemption carries its sandbox flag, true only for sandbox', async () => {
+  // X-13/D-13. Mutation: stamp sandbox=false (or omit it) on the envelope of any event of a sandbox
+  // redemption, or put the flag back into a payload (two places for one flag is how they drift).
+  it('I-SANDBOX-2 every event of a redemption carries its sandbox flag on the ENVELOPE, true only for sandbox, never in the payload', async () => {
     const { w, item } = setup();
     w.payments.credit(S1, 100, true);
     const s = await order(w, item.id, S1, 'ks', true);
     const p = await order(w, item.id, P1, 'kp', false);
     await w.settle();
     for (const row of w.store.outbox) {
-      const pl = row.envelope.payload as { redemption_id: string; sandbox: boolean };
-      expect(pl.sandbox).toBe(pl.redemption_id === s.id);
+      const pl = row.envelope.payload as { redemption_id: string };
+      expect(row.envelope.sandbox === true).toBe(pl.redemption_id === s.id);
+      expect('sandbox' in pl).toBe(false);
       expect([s.id, p.id]).toContain(pl.redemption_id);
     }
     expect(w.store.outbox.length).toBeGreaterThan(8);
@@ -914,5 +957,131 @@ describe('I-SANDBOX: sandbox redemptions stay in the sandbox and out of metering
       code: 'insufficient_funds',
     });
     expect(w.payments.bal(S1, true)).toEqual({ available: 100, held: 0, captured: 0 });
+  });
+});
+
+// ---------------------------------------------------------------------------------------------
+// X-6, Q-6 (D-15): the saga talks to the ONE casino port (`CasinoRewardPorts`, `RewardRequestBuilder`,
+// owned by the ingest epic), not to a private adapter and not to a guessed player id.
+describe('I-PORT: the saga uses the registry and the request builder of the casino port', () => {
+  // Mutation: hard-code the 24 h deadline (the old `first ISSUING + 24 h`) instead of the tenant's
+  // `info.issue_deadline_ms`. With a 2 h tenant deadline, an operator `not_issued` is backed by a
+  // `not_found` lookup that is now past the deadline; a 24 h constant still refuses it.
+  it('I-PORT-1 the issue deadline is first ISSUING + the tenant info.issue_deadline_ms', async () => {
+    const { w, item } = setup();
+    w.deadlineMs = 2 * HOUR;
+    w.casino.sticky = 'error500';
+    const r = await order(w, item.id);
+    await w.settle(60); // about 6 h of clock: attempts exhausted, past a 2 h deadline
+    expect(state(w, r.id)).toBe('NEEDS_REVIEW');
+    expect(rec(w, r.id).firstIssuingAt).not.toBeNull();
+    await w.saga.resolveReview(w.tenant, r.id, {
+      outcome: 'not_issued',
+      reason: 'casino confirms: nothing was issued',
+      operator: operator('operator_admin'),
+    });
+    await w.settle();
+    expect(state(w, r.id)).toBe('RELEASED');
+    expect(w.payments.bal(P1)).toEqual({ available: 100, held: 0, captured: 0 });
+  });
+
+  // Mutation: fall back to the production adapter, or refund, when the registry has none.
+  it.each([false, true])(
+    'I-PORT-2 no adapter for the order environment (sandbox=%s) -> NEEDS_REVIEW no_adapter, coins held, the casino never called',
+    async (sandbox) => {
+      const { w, item } = setup();
+      w.payments.credit(S1, 100, true);
+      w.noAdapter.add(sandbox);
+      const r = await order(w, item.id, sandbox ? S1 : P1, 'k1', sandbox);
+      await w.settle();
+      expect(state(w, r.id)).toBe('NEEDS_REVIEW');
+      expect(rec(w, r.id).failureReason).toBe('no_adapter');
+      expect(w.effects).toBe(0);
+      expect(w.casino.issueCalls).toHaveLength(0);
+      expect(w.sandboxCasino.issueCalls).toHaveLength(0);
+      expect(w.payments.callsOf('release')).toHaveLength(0);
+      expect(w.payments.bal(sandbox ? S1 : P1, sandbox).held).toBe(10);
+    },
+  );
+
+  // Mutation: guess `ext-<user id>` (or our user id) when the mapping is gone.
+  it('I-PORT-3 no player mapping (erased) -> NEEDS_REVIEW player_unmapped, coins held, no guessed id reaches the casino', async () => {
+    const { w, item } = setup();
+    w.unmapped.add(P1);
+    const r = await order(w, item.id);
+    await w.settle();
+    expect(state(w, r.id)).toBe('NEEDS_REVIEW');
+    expect(rec(w, r.id).failureReason).toBe('player_unmapped');
+    expect(w.casino.issueCalls).toHaveLength(0);
+    expect(w.payments.callsOf('release')).toHaveLength(0);
+    expect(w.payments.bal(P1).held).toBe(10);
+  });
+
+  // Mutation: treat a rejected registry lookup (identity down) as "no adapter" or as a failure that
+  // refunds. It is transport: the same attempt is retried, and nothing is reviewed or released.
+  it('I-PORT-4 a rejected registry lookup is retried later: no review, no release, then the reward is issued once', async () => {
+    const { w, item } = setup();
+    w.registryDown = true;
+    const r = await order(w, item.id);
+    await w.settle(4);
+    expect(['RESERVED', 'ISSUING', 'UNKNOWN']).toContain(state(w, r.id));
+    expect(w.casino.issueCalls).toHaveLength(0);
+    expect(w.payments.callsOf('release')).toHaveLength(0);
+    expect(w.events('engagement.redemption.needs_review')).toHaveLength(0);
+    w.registryDown = false;
+    await w.settle();
+    expect(state(w, r.id)).toBe('COMPLETED');
+    expect(w.casino.effects).toBe(1);
+  });
+
+  // Mutation: rebuild the request on every attempt, so an erasure between attempts changes (or
+  // removes) what the casino is asked. The request is frozen at RESERVED -> ISSUING.
+  it('I-PORT-5 the casino request is frozen on the order at ISSUING: a mapping erased later changes nothing, every call carries the same request', async () => {
+    const { w, item } = setup();
+    w.casino.plan = ['timeout_noeffect']; // first attempt: unknown
+    const r = await order(w, item.id);
+    await w.settle(1);
+    expect(state(w, r.id)).toBe('UNKNOWN');
+    const frozen = rec(w, r.id).rewardRequest;
+    expect(frozen).toEqual({
+      external_player_id: `ext-${P1}`,
+      reward: { type: 'free_spins', amount_minor: 10, currency: 'EUR' },
+      sandbox: false,
+    });
+    w.unmapped.add(P1); // erasure after the order was frozen
+    await w.settle();
+    expect(state(w, r.id)).toBe('COMPLETED');
+    expect(w.requestBuilds).toHaveLength(1);
+    for (const c of [...w.casino.issueCalls, ...w.casino.statusCalls])
+      expect(c.request).toEqual(frozen);
+  });
+
+  // Q-6 (D-15). On a casino that only replays idempotently, a status lookup re-sends the issue, so
+  // it can issue the reward. After the coins went back, the operator's word alone never moves
+  // coins or stock, and no lookup is made: the redemption stays in review.
+  // Mutation: call getRewardStatus on an idempotent_replay adapter for a review entered after RELEASED.
+  it('I-PORT-6 replay-mode casino: operator not_issued for a review entered after RELEASED makes NO lookup and is release_not_allowed', async () => {
+    const { w, item } = setup();
+    w.casino.lookup = 'replay';
+    w.casino.sticky = 'reject';
+    const r = await order(w, item.id);
+    await w.settle();
+    expect(state(w, r.id)).toBe('RELEASED');
+    await w.saga.onCasinoReport(w.tenant, r.id, { outcome: 'issued', external_ref: 'ghost' }, eid(7));
+    expect(state(w, r.id)).toBe('NEEDS_REVIEW');
+    const lookups = w.casino.statusCalls.length;
+    const issues = w.casino.issueCalls.length;
+    await expect(
+      w.saga.resolveReview(w.tenant, r.id, {
+        outcome: 'not_issued',
+        reason: 'operator is sure it was a duplicate',
+        operator: operator('operator_admin'),
+      }),
+    ).rejects.toMatchObject({ code: 'release_not_allowed' });
+    expect(w.casino.statusCalls.length).toBe(lookups); // no lookup: it could have issued
+    expect(w.casino.issueCalls.length).toBe(issues);
+    expect(state(w, r.id)).toBe('NEEDS_REVIEW');
+    expect(w.store.stockOf(item.id)).toBe(5); // stock came back once, with the first release
+    expect(w.payments.effects.release).toBe(1);
   });
 });

@@ -66,6 +66,16 @@ export interface TestTenant {
   tenantId: string;
   /** Launches a player of this tenant (the same external id gives the same user). */
   player(externalPlayerId?: string): Promise<PlayerSession>;
+  /** Launches a player through a SANDBOX integration credential of this tenant (token claim `sbx: true`, X-3). */
+  sandboxPlayer(externalPlayerId?: string): Promise<PlayerSession>;
+  /**
+   * An access token of this tenant's operator_admin for `audience` (a real login through identity),
+   * for the operator routes of engagement and the operator balance read of payments. No header
+   * placeholder exists anywhere (D-4, D-12).
+   */
+  operatorToken(audience: 'identity' | 'engagement' | 'payments'): Promise<string>;
+  /** `authorization: Bearer <operatorToken>` ready to spread into request headers. */
+  operatorHeaders(audience: 'identity' | 'engagement' | 'payments'): Promise<Record<string, string>>;
 }
 
 const PW = 'correct horse battery';
@@ -90,28 +100,58 @@ export async function newTenant(): Promise<TestTenant> {
   if (issued.status !== 201) throw new Error(`credential issue failed: ${issued.status}`);
   const key = CredentialIssued.parse(issued.json);
   const tenantId = signup.json.tenant.id as string;
+  const operatorToken = async (audience: 'identity' | 'engagement' | 'payments') => {
+    const res = await call('POST', urls.identity, '/v1/auth/login', {
+      host: `${slug}.mio.localhost`,
+      body: { email, password: PW, audience },
+    });
+    if (res.status !== 200) throw new Error(`operator login (${audience}) failed: ${res.status}`);
+    return res.json.access_token as string;
+  };
+  const launchWith = async (
+    k: { key_id: string; hmac_secret: string },
+    externalPlayerId: string,
+  ): Promise<PlayerSession> => {
+    const launched = await call('POST', urls.identity, '/v1/auth/launch', {
+      body: {
+        token: signLaunchToken({
+          keyId: k.key_id,
+          secret: k.hmac_secret,
+          now: Math.floor(Date.now() / 1000),
+          externalPlayerId,
+        }),
+        audience: 'engagement',
+      },
+    });
+    if (launched.status !== 200) throw new Error(`launch failed: ${launched.status}`);
+    const session = LaunchResponse.parse(launched.json);
+    return {
+      tenantId: session.tenant_id,
+      userId: session.user_id,
+      externalPlayerId,
+      headers: { authorization: `Bearer ${session.access_token}` },
+    };
+  };
+  // X-3: a sandbox integration credential (environment: sandbox). A player launched through it gets
+  // an access token with `sbx: true`; the environment is identity's, never a client choice.
+  let sandboxKey: CredentialIssued | undefined;
+  const sandboxCredential = async (): Promise<CredentialIssued> => {
+    if (sandboxKey) return sandboxKey;
+    const sbx = await call('POST', urls.identity, '/v1/credentials', {
+      headers: { authorization: `Bearer ${login.json.access_token as string}` },
+      body: { platform: 'sim-casino', environment: 'sandbox' },
+    });
+    if (sbx.status !== 201) throw new Error(`sandbox credential issue failed: ${sbx.status}`);
+    return (sandboxKey = CredentialIssued.parse(sbx.json));
+  };
   return {
     tenantId,
-    async player(externalPlayerId = `ext-${uniq()}`) {
-      const launched = await call('POST', urls.identity, '/v1/auth/launch', {
-        body: {
-          token: signLaunchToken({
-            keyId: key.key_id,
-            secret: key.hmac_secret,
-            now: Math.floor(Date.now() / 1000),
-            externalPlayerId,
-          }),
-          audience: 'engagement',
-        },
-      });
-      if (launched.status !== 200) throw new Error(`launch failed: ${launched.status}`);
-      const session = LaunchResponse.parse(launched.json);
-      return {
-        tenantId: session.tenant_id,
-        userId: session.user_id,
-        externalPlayerId,
-        headers: { authorization: `Bearer ${session.access_token}` },
-      };
-    },
+    operatorToken,
+    operatorHeaders: async (audience) => ({
+      authorization: `Bearer ${await operatorToken(audience)}`,
+    }),
+    player: (externalPlayerId = `ext-${uniq()}`) => launchWith(key, externalPlayerId),
+    sandboxPlayer: async (externalPlayerId = `ext-${uniq()}`) =>
+      launchWith(await sandboxCredential(), externalPlayerId),
   };
 }
