@@ -1,0 +1,58 @@
+{
+  "schema_version": 1,
+  "diagram_type": "sequence",
+  "meta": {
+    "title": "Deposit to redemption: the 8-step workflow",
+    "output": "sequence.html",
+    "viewBox": [900, 1040],
+    "quality_profile": "standard"
+  },
+  "participants": [
+    { "id": "casino", "type": "external", "label": "Casino A", "sublabel": "simulated platform" },
+    { "id": "engagement", "type": "backend", "label": "engagement", "sublabel": "adapter, rules, wheel, saga" },
+    { "id": "identity", "type": "security", "label": "identity", "sublabel": "player mapping" },
+    { "id": "payments", "type": "backend", "label": "payments", "sublabel": "ledger" },
+    { "id": "player", "type": "frontend", "label": "Player", "sublabel": "widget in web" }
+  ],
+  "segments": [
+    { "from": 150, "to": 340, "label": "1-3 Deposit" },
+    { "from": 350, "to": 540, "label": "4-5 Spin and ledger" },
+    { "from": 550, "to": 800, "label": "6-7 Redeem and issue" },
+    { "from": 850, "to": 990, "label": "8 Status" }
+  ],
+  "messages": [
+    { "id": "m1", "from": "casino", "to": "engagement", "y": 190, "label": "1 deposit event, HMAC signed", "variant": "security" },
+    { "id": "m2", "from": "engagement", "to": "identity", "y": 232, "label": "2 resolve external player id", "variant": "default" },
+    { "id": "m3", "from": "identity", "to": "engagement", "y": 270, "label": "user_id", "variant": "return" },
+    { "id": "m4", "from": "engagement", "to": "casino", "y": 308, "label": "202, duplicates answered the same", "variant": "return" },
+    { "id": "m5", "from": "engagement", "to": "player", "y": 360, "label": "3 one spin available (websocket)", "variant": "dashed" },
+    { "id": "m6", "from": "player", "to": "engagement", "y": 402, "label": "4 POST /spins, Idempotency-Key", "variant": "emphasis" },
+    { "id": "m7", "from": "engagement", "to": "player", "y": 440, "label": "reward from weighted table", "variant": "return" },
+    { "id": "m8", "from": "engagement", "to": "payments", "y": 490, "label": "5 credit coins, operation id = spin id", "variant": "emphasis" },
+    { "id": "m9", "from": "player", "to": "engagement", "y": 570, "label": "6 POST /redemptions", "variant": "emphasis" },
+    { "id": "m10", "from": "engagement", "to": "payments", "y": 612, "label": "hold coins (hold id = redemption id)", "variant": "default" },
+    { "id": "m11", "from": "payments", "to": "engagement", "y": 650, "label": "held", "variant": "return" },
+    { "id": "m12", "from": "engagement", "to": "casino", "y": 700, "label": "7 issue reward, our key", "variant": "emphasis" },
+    { "id": "m13", "from": "casino", "to": "engagement", "y": 738, "label": "ok, or timeout then lookup by our key", "variant": "return" },
+    { "id": "m14", "from": "engagement", "to": "payments", "y": 780, "label": "capture hold", "variant": "default" },
+    { "id": "m15", "from": "payments", "to": "engagement", "y": 818, "label": "captured", "variant": "return" },
+    { "id": "m16", "from": "player", "to": "engagement", "y": 870, "label": "8 GET /redemptions/:id", "variant": "default" },
+    { "id": "m17", "from": "engagement", "to": "player", "y": 908, "label": "ISSUED, then COMPLETED", "variant": "return" }
+  ],
+  "activations": [
+    { "participant": "engagement", "from": 184, "to": 320, "type": "backend" },
+    { "participant": "identity", "from": 226, "to": 276, "type": "security" },
+    { "participant": "engagement", "from": 396, "to": 500, "type": "backend" },
+    { "participant": "payments", "from": 484, "to": 500, "type": "backend" },
+    { "participant": "engagement", "from": 564, "to": 826, "type": "backend" },
+    { "participant": "payments", "from": 606, "to": 656, "type": "backend" },
+    { "participant": "casino", "from": 694, "to": 744, "type": "external" },
+    { "participant": "payments", "from": 774, "to": 824, "type": "backend" },
+    { "participant": "engagement", "from": 864, "to": 914, "type": "backend" }
+  ],
+  "cards": [
+    { "dot": "cyan", "title": "Ingest", "items": ["signature, timestamp window and schema are checked before anything else", "a duplicate event id returns the original result and creates no second spin", "the player is resolved through identity, never by a client field"] },
+    { "dot": "amber", "title": "Spin and ledger", "items": ["the outcome comes from a server secret and a versioned weight table", "one conditional update consumes the spin credit", "the coin credit uses the spin id as operation id"] },
+    { "dot": "emerald", "title": "Redeem", "items": ["coins are held first, captured only after issuance", "a timeout is not a failure: the casino is asked by our key", "the final status is readable through the API"] }
+  ]
+}

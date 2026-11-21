@@ -1,0 +1,49 @@
+{
+  "schema_version": 2,
+  "diagram_type": "workflow",
+  "meta": {
+    "title": "Redemption saga with compensations",
+    "output": "workflow.html",
+    "quality_profile": "standard"
+  },
+  "lanes": [
+    { "id": "engagement", "label": "engagement (saga owner)" },
+    { "id": "payments", "label": "payments (ledger)" },
+    { "id": "casino", "label": "Casino adapter" },
+    { "id": "recovery", "label": "Compensation and recovery", "variant": "exception" }
+  ],
+  "phases": [
+    { "id": "reserve", "label": "Reserve", "fromCol": 0, "toCol": 1 },
+    { "id": "issue", "label": "Issue", "fromCol": 2, "toCol": 3, "variant": "emphasis" },
+    { "id": "settle", "label": "Settle", "fromCol": 4, "toCol": 5, "variant": "dashed" }
+  ],
+  "mainPath": ["reserve", "hold", "request", "issue", "capture", "completed"],
+  "nodes": [
+    { "id": "reserve", "lane": "engagement", "col": 0, "type": "backend", "label": "Reserve", "sublabel": "stock and player limit", "tag": "REQUESTED" },
+    { "id": "hold", "lane": "payments", "col": 1, "type": "database", "label": "Hold coins", "sublabel": "key hold:id", "tag": "HELD" },
+    { "id": "request", "lane": "engagement", "col": 2, "type": "backend", "label": "Request issuance", "sublabel": "our key, retries", "tag": "ISSUING" },
+    { "id": "issue", "lane": "casino", "col": 3, "type": "external", "label": "Casino issues reward", "sublabel": "native lookup or replay", "tag": "ISSUED" },
+    { "id": "capture", "lane": "payments", "col": 4, "type": "database", "label": "Capture hold", "sublabel": "key capture:id" },
+    { "id": "completed", "lane": "engagement", "col": 5, "type": "backend", "label": "Completed", "sublabel": "status via API", "tag": "COMPLETED" },
+    { "id": "no_funds", "lane": "recovery", "col": 1, "type": "security", "label": "Return stock", "sublabel": "not enough coins", "tag": "REJECTED_FUNDS" },
+    { "id": "unknown", "lane": "recovery", "col": 3, "type": "security", "label": "Ask casino by our key", "sublabel": "timeout is not failure", "tag": "UNKNOWN" },
+    { "id": "release", "lane": "payments", "col": 5, "type": "security", "label": "Release hold", "sublabel": "then return stock", "tag": "FAILED" },
+    { "id": "review", "lane": "recovery", "col": 4, "type": "security", "label": "Human review", "sublabel": "after maximum age", "tag": "NEEDS_REVIEW" }
+  ],
+  "edges": [
+    { "id": "e1", "from": "reserve", "to": "hold", "variant": "emphasis" },
+    { "id": "e2", "from": "hold", "to": "request", "variant": "emphasis" },
+    { "id": "e3", "from": "request", "to": "issue", "label": "issue(key)", "variant": "emphasis" },
+    { "id": "e4", "from": "issue", "to": "capture", "label": "ok", "variant": "emphasis" },
+    { "id": "e5", "from": "capture", "to": "completed", "variant": "emphasis" },
+    { "id": "e6", "from": "hold", "to": "no_funds", "label": "insufficient", "variant": "security", "role": "error" },
+    { "id": "e7", "from": "issue", "to": "unknown", "label": "timeout", "variant": "security", "role": "error" },
+    { "id": "e8", "from": "unknown", "to": "release", "label": "refused", "variant": "security", "role": "error" },
+    { "id": "e9", "from": "unknown", "to": "review", "label": "max age", "variant": "dashed", "role": "error" }
+  ],
+  "cards": [
+    { "dot": "cyan", "title": "Two reserves, one order", "items": ["stock and limit are reserved in engagement, coins are held in payments", "compensation runs in reverse: release the hold, then return stock", "every phase has its own idempotency key"] },
+    { "dot": "amber", "title": "Timeout is not failure", "items": ["UNKNOWN triggers a lookup by our key before any decision", "coins stay held while the reward may exist", "success after a timeout moves to ISSUED, never to a second issue"] },
+    { "dot": "rose", "title": "Release versus refund", "items": ["release returns held coins when the casino finally refuses", "refund reverses captured coins when the casino revokes a reward", "late success or rejection after a terminal state is recorded and reconciled"] }
+  ]
+}
