@@ -432,7 +432,7 @@ describe('INV-STACK-2b / 4: engagement and payments take the tenant from the tok
     const reserve = await call(
       'POST',
       urls.payments,
-      PAYMENTS_INTERNAL_ROUTES.reserve.split(' ')[1].replace(':tenantId', a.tenantId),
+      PAYMENTS_INTERNAL_ROUTES.reserve.replace('POST ', '').replace(':tenantId', a.tenantId),
       {
         headers: { ...bearer(a.token), 'idempotency-key': `key-${uniq()}` },
         body: { player_id: player, reserve_id: uuidv7(), amount: 5, sandbox: false },
