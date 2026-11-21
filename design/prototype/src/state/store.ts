@@ -57,6 +57,37 @@ export function simulateDeposit(store: Store = appStore, eur = 40): number {
   return store.get().player.spins - before;
 }
 
+/** Provider round trip of the fake payment provider. */
+export const PAYMENT_MS = 1100;
+const paymentTimers = new Map<string, ReturnType<typeof setTimeout>>();
+
+/**
+ * Stand-in for starting a payment at the provider. The attempt (plan, amount, card) is recorded in
+ * the store; the provider answers after PAYMENT_MS and the reducer decides paid or declined.
+ * Returns the attempt id, or null when the reducer refused to start one.
+ */
+export function startPayment(plan: string, last4: string, store: Store = appStore): string | null {
+  const id = uid('pay');
+  store.dispatch({ type: 'payment/start', id, plan, last4 });
+  if (store.get().operator.payment?.id !== id) return null;
+  paymentTimers.set(
+    id,
+    setTimeout(() => {
+      paymentTimers.delete(id);
+      store.dispatch({ type: 'payment/settle', id });
+    }, PAYMENT_MS),
+  );
+  return id;
+}
+
+/** Cancel an attempt in flight: the store marks it cancelled and its provider answer is dropped. */
+export function cancelPayment(id: string, store: Store = appStore): void {
+  const t = paymentTimers.get(id);
+  if (t !== undefined) clearTimeout(t);
+  paymentTimers.delete(id);
+  store.dispatch({ type: 'payment/cancel', id });
+}
+
 /**
  * Redemption lifecycle (pending, issuing, issued or failed then refunded). The timers live here,
  * not in a component, so leaving the widget never strands a redemption half-way.

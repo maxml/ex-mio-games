@@ -63,28 +63,31 @@ function Signup() {
 }
 
 function Plan() {
-  const { plan, planActive, cardLast4 } = useApp((s) => s.operator);
+  const { plan, planActive, cardLast4, paidPlan, paidAmount, payment } = useApp((s) => s.operator);
   const [paying, setPaying] = useState(false);
   const chosen = PLANS.find((p) => p.id === plan) ?? PLANS[1];
+  const processing = payment?.status === 'processing';
 
   if (planActive) {
+    // What was charged, not what is selected now.
+    const paid = PLANS.find((p) => p.id === paidPlan) ?? chosen;
     return (
       <Card title="Plan active" description="Payment received through the fake provider (test mode).">
         <p className="flex flex-wrap items-center gap-2 text-sm">
           <StatusPill status="active" />
-          <span className="font-semibold">{chosen.name}</span> at {chosen.price} EUR / month, paid with the test card ending {cardLast4}.
+          <span className="font-semibold">{paid.name}</span> at {paidAmount ?? paid.price} EUR / month, paid with the test card ending {cardLast4}.
         </p>
         <StepNav index={1} />
       </Card>
     );
   }
-  if (paying) {
+  if (paying || processing) {
     return (
       <div className="grid gap-4">
         <Checkout
+          plan={chosen.id}
           amount={chosen.price}
           description={`${chosen.name} plan, first month`}
-          onPaid={(last4) => appStore.dispatch({ type: 'invoice/pay', last4 })}
           onCancel={() => setPaying(false)}
         />
       </div>
@@ -115,7 +118,7 @@ function Plan() {
       </div>
       <p className="mt-4 text-sm text-fg-muted">Payment uses the fake provider in test mode; a real card form arrives with the Stripe provider.</p>
       <Button className="mt-4" onClick={() => setPaying(true)}>Choose plan and pay</Button>
-      <StepNav index={1} canContinue={false} hint="Pay for a plan to continue." />
+      <StepNav index={1} canContinue={planActive} hint="Pay for a plan to continue." />
     </Card>
   );
 }
@@ -193,13 +196,24 @@ function Sandbox() {
 }
 
 function GoLive() {
-  const { sandboxPassed, live } = useApp((s) => s.operator);
+  const { accountCreated, planActive, sandboxPassed, live } = useApp((s) => s.operator);
+  const missing = [
+    !accountCreated && { label: 'Create your account', step: 0 },
+    !planActive && { label: 'Pay for a plan', step: 1 },
+    !sandboxPassed && { label: 'Pass the sandbox test', step: 3 },
+  ].filter((m): m is { label: string; step: number } => m !== false);
   return (
     <Card title="Go live" description="Switch from test keys to live keys and wait for the first real deposit from your casino.">
-      {!sandboxPassed ? (
+      {missing.length > 0 && live === 'off' ? (
         <Alert tone="warning">
-          Live keys stay locked until the sandbox test passes.{' '}
-          <button type="button" className="font-semibold underline" onClick={() => appStore.dispatch({ type: 'step/set', step: 3 })}>Go to the sandbox test</button>
+          Live keys stay locked until an account exists, a plan is paid and the sandbox test passes. Still missing:
+          <ul className="mt-1 list-disc pl-5">
+            {missing.map((m) => (
+              <li key={m.step}>
+                <button type="button" className="font-semibold underline" onClick={() => appStore.dispatch({ type: 'step/set', step: m.step })}>{m.label}</button>
+              </li>
+            ))}
+          </ul>
         </Alert>
       ) : (
         <div className="grid gap-4">
@@ -447,9 +461,10 @@ function Redemptions() {
 }
 
 function Billing() {
-  const { plan, invoicePaid, cardLast4, done } = useApp((s) => s.operator);
+  const { plan, invoicePaid, cardLast4, done, paidPlan, payment } = useApp((s) => s.operator);
   const [paying, setPaying] = useState(false);
-  const p = PLANS.find((x) => x.id === plan) ?? PLANS[1];
+  // A paid invoice always shows the plan that was charged, whatever is selected now.
+  const p = PLANS.find((x) => x.id === (invoicePaid ? paidPlan : plan)) ?? PLANS[1];
   const max = Math.max(...USAGE_DAYS);
   const used = 98200;
   const lines = [
@@ -472,16 +487,8 @@ function Billing() {
           ))}
         </div>
       </Card>
-      {paying && !invoicePaid ? (
-        <Checkout
-          amount={p.price}
-          description="Invoice, November 2026"
-          onPaid={(last4) => {
-            appStore.dispatch({ type: 'invoice/pay', last4 });
-            setPaying(false);
-          }}
-          onCancel={() => setPaying(false)}
-        />
+      {(paying || payment?.status === 'processing') && !invoicePaid ? (
+        <Checkout plan={p.id} amount={p.price} description="Invoice, November 2026" onCancel={() => setPaying(false)} />
       ) : (
         <Card
           title="Invoice, November 2026"

@@ -7,7 +7,18 @@
 //   - Operator changes (rules, published weights, catalog) are state here, so the player widget
 //     reads the same values.
 import type { Status, StoreItem } from '../components';
-import { PLAYER_HISTORY, STORE_ITEMS, expectedPayout, WHEEL_REWARDS, WHEEL_VERSIONS, type WheelVersion } from '../mock/data';
+import { PLAYER_HISTORY, PLANS, STORE_ITEMS, expectedPayout, WHEEL_REWARDS, WHEEL_VERSIONS, type WheelVersion } from '../mock/data';
+
+/** The fake payment provider declines the test card ending in this. The decision lives in the reducer, not on a page. */
+export const DECLINED_LAST4 = '0002';
+export interface Payment {
+  id: string;
+  /** Plan and amount the attempt was started for. They never change afterwards. */
+  plan: string;
+  amount: number;
+  last4: string;
+  status: 'processing' | 'declined' | 'cancelled' | 'paid';
+}
 
 export type StepId = 'signup' | 'plan' | 'keys' | 'sandbox' | 'golive' | 'rules' | 'wheel' | 'store' | 'redemptions' | 'billing';
 export const STEPS: { id: StepId; label: string }[] = [
@@ -69,6 +80,10 @@ export interface State {
     planActive: boolean;
     invoicePaid: boolean;
     cardLast4: string | null;
+    /** Latest payment attempt, and what the paid invoice is really for. */
+    payment: Payment | null;
+    paidPlan: string | null;
+    paidAmount: number | null;
     sandboxPassed: boolean;
     live: LiveState;
     rules: Rules;
@@ -101,6 +116,9 @@ export function createInitialState(): State {
       planActive: false,
       invoicePaid: false,
       cardLast4: null,
+      payment: null,
+      paidPlan: null,
+      paidAmount: null,
       sandboxPassed: false,
       live: 'off',
       rules: { ...DEFAULT_RULES },
@@ -123,6 +141,9 @@ export type Action =
   | { type: 'account/create' }
   | { type: 'plan/select'; id: string }
   | { type: 'invoice/pay'; last4: string }
+  | { type: 'payment/start'; id: string; plan: string; last4: string }
+  | { type: 'payment/cancel'; id: string }
+  | { type: 'payment/settle'; id: string }
   | { type: 'sandbox/pass' }
   | { type: 'live/start' }
   | { type: 'live/deposit' }
@@ -220,14 +241,44 @@ export function reducer(s: State, a: Action): State {
     case 'account/create':
       return patchO({ accountCreated: true, done: complete('signup') });
     case 'plan/select':
-      return o.invoicePaid ? s : patchO({ plan: a.id });
-    case 'invoice/pay':
-      if (o.invoicePaid) return s; // paying twice is a no-op
-      return patchO({ invoicePaid: true, planActive: true, cardLast4: a.last4, done: complete('plan') });
+      // No plan change once paid, and none while a payment attempt is in flight.
+      if (o.invoicePaid || o.payment?.status === 'processing' || !PLANS.some((x) => x.id === a.id)) return s;
+      return patchO({ plan: a.id });
+    case 'invoice/pay': {
+      // Synchronous settle with the current plan (what a provider webhook would report).
+      if (o.invoicePaid || a.last4 === DECLINED_LAST4) return s; // paying twice, or a declined card: no-op
+      const plan = PLANS.find((x) => x.id === o.plan);
+      if (!plan) return s;
+      return patchO({ invoicePaid: true, planActive: true, cardLast4: a.last4, paidPlan: plan.id, paidAmount: plan.price, done: complete('plan') });
+    }
+    case 'payment/start': {
+      const plan = PLANS.find((x) => x.id === a.plan);
+      if (!plan || o.invoicePaid || o.payment?.status === 'processing') return s;
+      // The amount comes from the price list, never from the caller. `plan` follows the attempt.
+      return patchO({ plan: plan.id, payment: { id: a.id, plan: plan.id, amount: plan.price, last4: a.last4, status: 'processing' } });
+    }
+    case 'payment/cancel':
+      if (o.payment?.id !== a.id || o.payment.status !== 'processing') return s;
+      return patchO({ payment: { ...o.payment, status: 'cancelled' } });
+    case 'payment/settle': {
+      const pay = o.payment;
+      if (!pay || pay.id !== a.id || pay.status !== 'processing' || o.invoicePaid) return s; // cancelled or stale: never pays
+      if (pay.last4 === DECLINED_LAST4) return patchO({ payment: { ...pay, status: 'declined' } });
+      return patchO({
+        payment: { ...pay, status: 'paid' },
+        invoicePaid: true,
+        planActive: true,
+        cardLast4: pay.last4,
+        paidPlan: pay.plan,
+        paidAmount: pay.amount,
+        done: complete('plan'),
+      });
+    }
     case 'sandbox/pass':
       return patchO({ sandboxPassed: true, done: complete('sandbox') });
     case 'live/start':
-      return o.sandboxPassed && o.live === 'off' ? patchO({ live: 'awaiting' }) : s;
+      // The go-live gate. The step bar lets anyone open this step, so the rule is enforced here.
+      return o.accountCreated && o.planActive && o.sandboxPassed && o.live === 'off' ? patchO({ live: 'awaiting' }) : s;
     case 'live/deposit':
       return o.live === 'awaiting' ? patchO({ live: 'live', done: complete('golive') }) : s;
     case 'rules/save':

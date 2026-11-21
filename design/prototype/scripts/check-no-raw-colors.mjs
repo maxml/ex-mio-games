@@ -3,6 +3,8 @@
 //   - a Tailwind palette colour class (bg-red-500, text-[#fff], ...)
 //   - a CSS named colour used as a colour value: in style props / objects (`color: 'red'`),
 //     in .css declarations (`background: white;`) and in SVG colour attributes (`fill="red"`)
+//   - any string literal in .ts/.tsx that is exactly a CSS named colour (`const ALERT = 'crimson'`)
+// No line can opt out: the old `allow-raw-color` comment escape is gone.
 // Components must use tokens (`var(--fg)`, `bg-surface`, ...).
 import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { join, dirname, relative } from 'node:path';
@@ -78,11 +80,17 @@ for (const file of walk(src)) {
   readFileSync(file, 'utf8')
     .split('\n')
     .forEach((line, i) => {
-      if (line.includes('allow-raw-color')) return;
+      // There is no escape comment: a line cannot opt out of the gate.
       const where = `${relative(root, file)}:${i + 1}: ${line.trim()}`;
       for (const re of RAW) if (re.test(line)) hits.push(where);
       const named = namedColour(line);
       if (named) hits.push(`${where}   <- named colour "${named}"`);
+      // A named colour held in a constant (`const ALERT = 'crimson'`) is caught by the literal itself.
+      if (/\.tsx?$/.test(file)) {
+        for (const m of line.matchAll(/(['"`])\s*([A-Za-z]+)\s*\1/g)) {
+          if (NAMED.has(m[2].toLowerCase())) hits.push(`${where}   <- string literal that is a named colour "${m[2]}"`);
+        }
+      }
     });
 }
 if (hits.length) {

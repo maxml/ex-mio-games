@@ -112,16 +112,25 @@ export function Wheel({ segments, spin, onSpinEnd, size = 320, durationMs = 4200
                 d={slicePath(start, start + step, 98)}
                 style={{ fill: `var(--wheel-${(i % 6) + 1})`, stroke: 'var(--wheel-rim)', strokeWidth: 1 }}
               />
-              <text
-                // Text runs along the radius. The label's final angle is mid + 90; for the right half
-                // that is 90..270 degrees (upside down), so turn it 180 to land in 270..450.
-                transform={`rotate(${mid}) translate(0 -62) rotate(${mid < 180 ? 270 : 90})`}
-                textAnchor="middle"
-                dominantBaseline="middle"
-                style={{ fill: 'var(--wheel-fg)', fontSize: n > 8 ? 9 : 11, fontWeight: 700, fontFamily: 'var(--font-sans)' }}
-              >
-                {s.label}
-              </text>
+              {/* The label sits on its segment but is turned back by the segment angle plus the wheel's
+                  current rotation, so on screen it is upright at rest, mid-spin and after any spin. */}
+              <g transform={`rotate(${mid}) translate(0 -62)`}>
+                <g
+                  data-label-turn={s.id}
+                  style={{
+                    transform: `rotate(${-(mid + rotation)}deg)`,
+                    transition: animating ? `transform ${durationMs}ms cubic-bezier(0.12, 0.7, 0.12, 1)` : 'none',
+                  }}
+                >
+                  <text
+                    textAnchor="middle"
+                    dominantBaseline="middle"
+                    style={{ fill: 'var(--wheel-fg)', fontSize: n > 8 ? 9 : 11, fontWeight: 700, fontFamily: 'var(--font-sans)' }}
+                  >
+                    {s.label}
+                  </text>
+                </g>
+              </g>
             </g>
           );
         })}

@@ -1,7 +1,7 @@
-import { describe, expect, it } from 'vitest';
-import { WHEEL_REWARDS } from '../mock/data';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { PLANS, WHEEL_REWARDS } from '../mock/data';
 import { createInitialState, pickReward } from './reducer';
-import { createStore, requestSpin, simulateDeposit, startRedeem } from './store';
+import { PAYMENT_MS, cancelPayment, createStore, requestSpin, simulateDeposit, startPayment, startRedeem } from './store';
 
 const fresh = () => createStore(createInitialState());
 
@@ -139,15 +139,118 @@ describe('operator flow', () => {
     expect(s.get()).toBe(paid);
   });
 
-  it('go live needs a passed sandbox, then a first live deposit', () => {
+  it('go live needs an account, a paid plan and a passed sandbox, then a first live deposit', () => {
     const s = fresh();
     s.dispatch({ type: 'live/start' });
     expect(s.get().operator.live).toBe('off');
+    s.dispatch({ type: 'account/create' });
+    s.dispatch({ type: 'invoice/pay', last4: '4242' });
+    s.dispatch({ type: 'live/start' });
+    expect(s.get().operator.live).toBe('off'); // sandbox not passed yet
     s.dispatch({ type: 'sandbox/pass' });
     s.dispatch({ type: 'live/start' });
     expect(s.get().operator.live).toBe('awaiting');
     s.dispatch({ type: 'live/deposit' });
     expect(s.get().operator.live).toBe('live');
     expect(s.get().operator.done.golive).toBe(true);
+  });
+
+  it('go live needs a paid plan even with an account and a passed sandbox', () => {
+    const s = fresh();
+    s.dispatch({ type: 'account/create' });
+    s.dispatch({ type: 'sandbox/pass' });
+    s.dispatch({ type: 'live/start' });
+    expect(s.get().operator.live).toBe('off');
+  });
+
+  it('go live needs the sandbox even with an account and a paid plan', () => {
+    const s = fresh();
+    s.dispatch({ type: 'account/create' });
+    s.dispatch({ type: 'invoice/pay', last4: '4242' });
+    s.dispatch({ type: 'live/start' });
+    expect(s.get().operator.live).toBe('off');
+  });
+});
+
+describe('payments: the attempt, its plan and amount, and its outcome live in the store', () => {
+  beforeEach(() => vi.useFakeTimers());
+  afterEach(() => vi.useRealTimers());
+  const starter = PLANS.find((p) => p.id === 'starter')!;
+  const growth = PLANS.find((p) => p.id === 'growth')!;
+
+  it('a successful attempt pays the plan and the amount it was started for', () => {
+    const s = fresh();
+    s.dispatch({ type: 'plan/select', id: 'growth' });
+    startPayment('growth', '4242', s);
+    vi.advanceTimersByTime(PAYMENT_MS);
+    const o = s.get().operator;
+    expect(o.invoicePaid && o.planActive).toBe(true);
+    expect([o.paidPlan, o.paidAmount]).toEqual(['growth', growth.price]);
+    expect(o.payment?.status).toBe('paid');
+  });
+
+  it('cancel aborts the attempt: no timer outlives it and nothing is paid', () => {
+    const s = fresh();
+    const id = startPayment('growth', '4242', s)!;
+    expect(vi.getTimerCount()).toBe(1);
+    cancelPayment(id, s);
+    expect(vi.getTimerCount()).toBe(0);
+    vi.advanceTimersByTime(PAYMENT_MS * 5);
+    expect(s.get().operator.invoicePaid).toBe(false);
+    expect(s.get().operator.payment?.status).toBe('cancelled');
+  });
+
+  it('a late provider answer for a cancelled attempt never pays (reducer level)', () => {
+    const s = fresh();
+    s.dispatch({ type: 'payment/start', id: 'p1', plan: 'growth', last4: '4242' });
+    s.dispatch({ type: 'payment/cancel', id: 'p1' });
+    s.dispatch({ type: 'payment/settle', id: 'p1' });
+    expect(s.get().operator.invoicePaid).toBe(false);
+  });
+
+  it('cancel, change plan, pay again: the paid plan and amount are the ones charged', () => {
+    const s = fresh();
+    const id = startPayment('growth', '4242', s)!;
+    cancelPayment(id, s);
+    s.dispatch({ type: 'plan/select', id: 'starter' });
+    startPayment('starter', '4242', s);
+    vi.advanceTimersByTime(PAYMENT_MS);
+    expect([s.get().operator.paidPlan, s.get().operator.paidAmount]).toEqual(['starter', starter.price]);
+  });
+
+  it('the plan cannot change while an attempt is in flight, nor after payment', () => {
+    const s = fresh();
+    s.dispatch({ type: 'plan/select', id: 'growth' });
+    startPayment('growth', '4242', s);
+    s.dispatch({ type: 'plan/select', id: 'starter' });
+    expect(s.get().operator.plan).toBe('growth');
+    vi.advanceTimersByTime(PAYMENT_MS);
+    s.dispatch({ type: 'plan/select', id: 'scale' });
+    const o = s.get().operator;
+    expect([o.plan, o.paidPlan, o.paidAmount]).toEqual(['growth', 'growth', growth.price]);
+  });
+
+  it('the amount comes from the price list, and a second attempt while one is in flight is refused', () => {
+    const s = fresh();
+    startPayment('scale', '4242', s);
+    const first = s.get().operator.payment!;
+    expect(first.amount).toBe(PLANS.find((p) => p.id === 'scale')!.price);
+    expect(startPayment('starter', '4242', s)).toBeNull();
+    expect(s.get().operator.payment).toBe(first);
+  });
+
+  it('the decline is decided in the store: the declined card is never marked paid', () => {
+    const s = fresh();
+    s.dispatch({ type: 'invoice/pay', last4: '0002' });
+    expect(s.get().operator.invoicePaid).toBe(false);
+    startPayment('growth', '0002', s);
+    vi.advanceTimersByTime(PAYMENT_MS);
+    expect(s.get().operator.invoicePaid).toBe(false);
+    expect(s.get().operator.planActive).toBe(false);
+    expect(s.get().operator.payment?.status).toBe('declined');
+    // and the operator can try again with a good card
+    startPayment('growth', '4242', s);
+    vi.advanceTimersByTime(PAYMENT_MS);
+    expect(s.get().operator.invoicePaid).toBe(true);
   });
 });

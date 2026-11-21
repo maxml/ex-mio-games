@@ -33,6 +33,26 @@ describe('Wheel only animates results that arrive while it is mounted', () => {
     expect(onSpinEnd).toHaveBeenCalledTimes(1);
   });
 
+  it('labels stay upright on screen: segment angle + wheel rotation + label turn is a full turn, before and after spins', () => {
+    const upright = (container: HTMLElement) => {
+      const wheel = container.querySelector('svg[viewBox="-104 -104 208 208"]') as SVGElement;
+      const rot = Number(/rotate\((-?[\d.]+)deg\)/.exec(wheel.getAttribute('style') ?? '')![1]);
+      segments.forEach((s, i) => {
+        const g = container.querySelector(`[data-label-turn="${s.id}"]`) as SVGElement;
+        const turn = Number(/rotate\((-?[\d.]+)deg\)/.exec(g.getAttribute('style') ?? '')![1]);
+        const mid = (i + 0.5) * (360 / segments.length);
+        expect((((mid + rot + turn) % 360) + 360) % 360).toBeCloseTo(0, 5);
+      });
+    };
+    const { container, rerender } = render(<Wheel segments={segments} spin={null} />);
+    upright(container);
+    for (const [id, index] of [['a', 1], ['b', 3], ['c', 0]] as const) {
+      rerender(<Wheel segments={segments} spin={{ id, index }} />);
+      act(() => void vi.advanceTimersByTime(10_000));
+      upright(container);
+    }
+  });
+
   it('unmount and remount with the same result does not report it again', () => {
     const onSpinEnd = vi.fn();
     const spin = { id: 'spin-1', index: 1 };
