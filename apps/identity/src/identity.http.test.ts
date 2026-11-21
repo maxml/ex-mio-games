@@ -2,20 +2,33 @@ import 'reflect-metadata';
 import { Controller, Get } from '@nestjs/common';
 import { IS_PUBLIC } from '@ex-mio/tenancy';
 import {
+  ActingRequestAuditedV1,
+  AuditEntry,
+  CredentialIssued,
+  CredentialSummary,
   IdentityErrorBody,
   INTERNAL_ROUTES,
   InternalResolvePlayerResponse,
   InternalVerifyWebhookResponse,
   JwksResponse,
+  LaunchResponse,
+  PlayerLookup,
+  SERVICE_CALL_POLICY,
+  ServiceCallAuditedV1,
   ServiceTokenClaims,
+  SignupResponse,
+  StaffMember,
   TenantStatusResponse,
+  TenantView,
   TokenResponse,
+  uuidv7,
 } from '@ex-mio/contracts';
 import {
   accessClaims,
   decodePayload,
   generateRsaKey,
   signJwt,
+  signLaunchToken,
   signWebhook,
 } from '@ex-mio/service-kit/testing';
 import { identityControllers } from './controllers'; // RED: module does not exist yet
@@ -273,17 +286,226 @@ describe('INV-EDGE acting through HTTP (MIO-034 negative cases)', () => {
     expect(noReason.statusCode).toBe(400);
   });
 
-  // Mutation: acting token keeps working after expiry.
-  it('INV-EDGE-11 an expired acting session is 401 TOKEN_EXPIRED and nothing is audited', async () => {
+  // N1 / D-14: TTL 900 s + 30 s skew. Valid at +929 s over HTTP (and then audited), TOKEN_EXPIRED at
+  // +931 s with nothing more audited. Mutation: acting token keeps working after expiry; no leeway
+  // (expires at +901); a leeway of 300 (still valid at +931).
+  it('INV-EDGE-11 an acting session is served at +929 s; at +931 s it is 401 TOKEN_EXPIRED and nothing more is audited', async () => {
     const w = await world();
     const token = await actingToken(w, w.a.tenant.id);
-    w.k.advance(901);
+    w.k.advance(929);
+    const inside = await w.get(w, `/v1/tenants/${w.a.tenant.id}`, {
+      authorization: `Bearer ${token}`,
+    });
+    expect(inside.statusCode).toBe(200);
+    expect((await w.k.audit.list(w.a.tenant.id)).map((e) => e.action)).toEqual([
+      'acting.start',
+      'tenant.read',
+    ]);
+    w.k.advance(2);
     const res = await w.get(w, `/v1/tenants/${w.a.tenant.id}`, {
       authorization: `Bearer ${token}`,
     });
     expect(res.statusCode).toBe(401);
     expect(res.json()).toMatchObject({ code: 'TOKEN_EXPIRED' });
-    expect((await w.k.audit.list(w.a.tenant.id)).map((e) => e.action)).toEqual(['acting.start']);
+    expect((await w.k.audit.list(w.a.tenant.id)).map((e) => e.action)).toEqual([
+      'acting.start',
+      'tenant.read',
+    ]);
+  });
+
+  // D-11 item 8, producer side. Identity's own entry point audits the acting requests identity
+  // serves, through the same port as every service (spec 1.7). Mutation: identity wired with a no-op port.
+  it('INV-EDGE-12 an acting request served by identity writes one audit.acting_request event through its outbox', async () => {
+    const w = await world();
+    const token = await actingToken(w, w.a.tenant.id);
+    const before = w.k.outbox.events().filter((e) => e.type === 'audit.acting_request').length;
+    const ok = await w.get(w, `/v1/tenants/${w.a.tenant.id}?q=secret`, {
+      authorization: `Bearer ${token}`,
+    });
+    expect(ok.statusCode).toBe(200);
+    const events = w.k.outbox.events().filter((e) => e.type === 'audit.acting_request');
+    expect(events).toHaveLength(before + 1);
+    const last = events[events.length - 1];
+    expect(last?.tenant_id).toBe(w.a.tenant.id);
+    expect(ActingRequestAuditedV1.parse(last?.payload)).toMatchObject({
+      service: 'identity',
+      route: 'GET /v1/tenants/:id',
+      decision: 'allowed',
+      status: 200,
+      acting_tenant_id: w.a.tenant.id,
+    });
+    expect(JSON.stringify(last)).not.toContain('secret');
+  });
+
+  // D-11 item 8, reader side (a durable record is consumed and described correctly), and N9: the
+  // entry-point event is the REQUEST-level audit, `authorize` rows are the PERMISSION-level audit;
+  // both are kept, with different `action`s, so INV-EDGE-8 (which delivers no events) is unchanged.
+  // Mutation: no consumer; a second row on redelivery; the row drops service/route/decision.
+  it('INV-EDGE-13 the identity consumer turns audit.acting_request into one audit row, idempotent on redelivery, readable by the operator', async () => {
+    const w = await world();
+    const event = {
+      event_id: uuidv7(),
+      type: 'audit.acting_request',
+      version: 1,
+      tenant_id: w.a.tenant.id,
+      occurred_at: new Date(w.k.now() * 1000).toISOString(),
+      correlation_id: uuidv7(),
+      causation_id: null,
+      payload: {
+        actor_user_id: uuidv7(),
+        actor_tenant_id: w.platform.id,
+        acting_tenant_id: w.a.tenant.id,
+        reason: 'ticket 42',
+        service: 'payments',
+        method: 'POST',
+        route: 'POST /v1/credits',
+        decision: 'refused',
+        status: 403,
+        request_id: 'req-12345678',
+        occurred_at: new Date(w.k.now() * 1000).toISOString(),
+      },
+    };
+    await w.k.auditConsumer.handle(event);
+    await w.k.auditConsumer.handle(event); // redelivery
+    const audit = await w.get(w, '/v1/audit', {
+      authorization: `Bearer ${await w.tokenFor(w.a.tenant.id, 'boss@a.test')}`,
+    });
+    expect(audit.statusCode).toBe(200);
+    const rows = AuditEntry.array().parse(audit.json());
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({
+      action: 'acting.request',
+      acting_tenant_id: w.a.tenant.id,
+      service: 'payments',
+      route: 'POST /v1/credits',
+      decision: 'refused',
+      reason: 'ticket 42',
+    });
+    // another tenant's operator never sees it
+    const other = await w.get(w, '/v1/audit', {
+      authorization: `Bearer ${await w.tokenFor(w.b.tenant.id, 'boss@b.test')}`,
+    });
+    expect(other.json()).toEqual([]);
+  });
+
+  // D-14 "every such call is audited": the same consumer turns audit.service_call into a row with no user actor.
+  it('INV-EDGE-13 the consumer also stores audit.service_call (no user actor, no acting tenant), once per event id', async () => {
+    const w = await world();
+    const event = {
+      event_id: uuidv7(),
+      type: 'audit.service_call',
+      version: 1,
+      tenant_id: w.a.tenant.id,
+      occurred_at: new Date(w.k.now() * 1000).toISOString(),
+      correlation_id: uuidv7(),
+      causation_id: null,
+      payload: {
+        caller_service: 'engagement',
+        service: 'payments',
+        method: 'POST',
+        route: 'POST /internal/v1/tenants/:tenantId/reserves',
+        decision: 'allowed',
+        status: 201,
+        request_id: 'req-12345678',
+        occurred_at: new Date(w.k.now() * 1000).toISOString(),
+      },
+    };
+    await w.k.auditConsumer.handle(event);
+    await w.k.auditConsumer.handle(event);
+    const rows = AuditEntry.array().parse(
+      (
+        await w.get(w, '/v1/audit', {
+          authorization: `Bearer ${await w.tokenFor(w.a.tenant.id, 'boss@a.test')}`,
+        })
+      ).json(),
+    );
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({
+      action: 'service.call',
+      actor_user_id: null,
+      acting_tenant_id: null,
+      caller_service: 'engagement',
+      service: 'payments',
+      decision: 'allowed',
+    });
+  });
+});
+
+// F14 / N7: the response schemas in contracts are READ by a test, so a response that drifts from
+// what L5 and L3 build against fails here. Mutation: rename or drop a field of a response, add a
+// secret to the credential list, return the tenant without its status.
+describe('INV-EDGE-14 every response is the contract shape (F14)', () => {
+  const as = async (w: Awaited<ReturnType<typeof world>>, tenantId: string, email: string) => ({
+    authorization: `Bearer ${await w.tokenFor(tenantId, email)}`,
+  });
+
+  it('signup, login, staff, tenant view, credentials, audit, player lookup and launch parse with their schemas', async () => {
+    const w = await world();
+    const signup = await w.app.inject({
+      method: 'POST',
+      url: '/v1/operators/signup',
+      payload: { tenant_name: 'C', slug: 'c', email: 'boss@c.test', password: PW },
+    });
+    expect(signup.statusCode).toBe(201);
+    const created = SignupResponse.parse(signup.json());
+    expect(created.tenant.slug).toBe('c');
+    expect(created.user.email).toBe('boss@c.test');
+    expect(JSON.stringify(signup.json())).not.toMatch(/password/i);
+
+    const login = await w.app.inject({
+      method: 'POST',
+      url: '/v1/auth/login',
+      headers: { host: 'a.mio.test' },
+      payload: { email: 'boss@a.test', password: PW },
+    });
+    expect(TokenResponse.parse(login.json()).token_type).toBe('Bearer');
+
+    const admin = await as(w, w.a.tenant.id, 'boss@a.test');
+    const staff = await w.get(w, '/v1/staff', admin);
+    expect(StaffMember.array().parse(staff.json()).map((s) => s.email)).toEqual(['boss@a.test']);
+    const tenant = await w.get(w, `/v1/tenants/${w.a.tenant.id}`, admin);
+    expect(TenantView.parse(tenant.json())).toMatchObject({ id: w.a.tenant.id, status: 'active' });
+
+    const issued = await w.app.inject({
+      method: 'POST',
+      url: '/v1/credentials',
+      headers: admin,
+      payload: { platform: 'sim-casino' },
+    });
+    expect(issued.statusCode).toBe(201);
+    const key = CredentialIssued.parse(issued.json());
+    const listed = await w.get(w, '/v1/credentials', admin);
+    const summaries = CredentialSummary.array().parse(listed.json()); // strict: no key, no secret
+    expect(summaries.map((s) => s.key_id)).toEqual([key.key_id]);
+    expect(listed.body).not.toContain(key.api_key);
+    expect(listed.body).not.toContain(key.hmac_secret);
+
+    const audit = await w.get(w, '/v1/audit', admin);
+    expect(audit.statusCode).toBe(200);
+    AuditEntry.array().parse(audit.json());
+
+    const { user_id } = await w.k.players.resolveOrCreate(w.a.tenant.id, 'sim-casino', 'ext-7');
+    const lookup = await w.get(w, `/v1/players/${user_id}`, admin);
+    expect(PlayerLookup.parse(lookup.json())).toMatchObject({
+      user_id,
+      platform: 'sim-casino',
+      external_player_id: 'ext-7',
+    });
+
+    const launch = await w.app.inject({
+      method: 'POST',
+      url: '/v1/auth/launch',
+      payload: {
+        token: signLaunchToken({
+          keyId: key.key_id,
+          secret: key.hmac_secret,
+          now: w.k.now(),
+          externalPlayerId: 'ext-8',
+        }),
+      },
+    });
+    expect(launch.statusCode).toBe(200);
+    expect(LaunchResponse.parse(launch.json())).toMatchObject({ tenant_id: w.a.tenant.id });
   });
 });
 
@@ -450,6 +672,102 @@ describe('INV-S2S: service-to-service tokens and internal endpoints (D-4, MIO-04
     expect((await w.get(w, url, await asService(w))).json()).toMatchObject({ status: 'suspended' });
   });
 
+  // N2 / D-14: an operator token must not reach an internal route through an encoded or dressed-up
+  // path. Whatever identity's PermissionGuard recognises as "internal" is decided on the normalised
+  // path, so `/%69nternal/` is the same route as `/internal/`.
+  // Mutation: decide internal-or-not from the raw URL string in the entry point or in PermissionGuard.
+  it('INV-S2S-3 an operator token on an encoded internal URL (/%69nternal/..., status, resolve, webhooks) is never served', async () => {
+    const w = await world();
+    const operator = { authorization: `Bearer ${await w.tokenFor(w.a.tenant.id, 'boss@a.test')}` };
+    for (const [method, url, payload] of [
+      ['GET', `/%69nternal/v1/tenants/${w.b.tenant.id}/status`, undefined],
+      ['GET', `/internal/v1/tenants/${w.b.tenant.id}/status?x=/v1/staff`, undefined],
+      [
+        'POST',
+        `/%69nternal/v1/tenants/${w.b.tenant.id}/players/resolve`,
+        { platform: 'sim-casino', external_player_id: 'ext-1' },
+      ],
+      ['POST', '/%69nternal/v1/webhooks/verify', {}],
+    ] as const) {
+      const res = await w.app.inject({ method, url, headers: operator, payload });
+      expect([url, [401, 404].includes(res.statusCode)]).toEqual([url, true]);
+    }
+    expect(await w.k.players.links(w.b.tenant.id)).toEqual([]);
+    // the same encoded URL with a real service token is the plain route (service mode)
+    const ok = await w.get(w, `/%69nternal/v1/tenants/${w.b.tenant.id}/status`, await asService(w));
+    expect(ok.statusCode).toBe(200);
+  });
+
+  // D-14, issue side: the client registry holds the audiences a client may ask for.
+  // Mutation: issue a token for any audience to any authenticated client.
+  it('INV-S2S-7 a client may only request the audiences of its allow-list: payments cannot get a token for engagement', async () => {
+    const w = await world();
+    const bad = await serviceToken(w, 'payments', 'engagement'); // not in SERVICE_CALL_POLICY.payments
+    expect(bad.statusCode).toBe(401);
+    expect(bad.json()).toMatchObject({ code: 'INVALID_SERVICE_CREDENTIALS' });
+    expect((await serviceToken(w, 'engagement', 'engagement')).statusCode).toBe(401);
+    expect((await serviceToken(w, 'engagement', 'payments')).statusCode).toBe(200);
+    expect((await serviceToken(w, 'payments', 'identity')).statusCode).toBe(200);
+  });
+
+  // D-14, callee side at identity: payments may read the tenant status and nothing else here.
+  // Mutation: skip the per-client route allow-list in the entry point.
+  it('INV-S2S-8 payments (status only) is 403 SERVICE_CALL_FORBIDDEN on resolve and verify; engagement may call all three', async () => {
+    const w = await world();
+    const asPayments = await asService(w, 'payments');
+    const resolve = await w.app.inject({
+      method: 'POST',
+      url: `/internal/v1/tenants/${w.a.tenant.id}/players/resolve`,
+      headers: asPayments,
+      payload: { platform: 'sim-casino', external_player_id: 'ext-1' },
+    });
+    expect(resolve.statusCode).toBe(403);
+    expect(resolve.json()).toMatchObject({ code: 'SERVICE_CALL_FORBIDDEN' });
+    expect(await w.k.players.links(w.a.tenant.id)).toEqual([]);
+    const verify = await w.app.inject({
+      method: 'POST',
+      url: INTERNAL_ROUTES.verifyWebhook,
+      headers: asPayments,
+      payload: {},
+    });
+    expect(verify.statusCode).toBe(403);
+    expect(
+      (await w.get(w, `/internal/v1/tenants/${w.a.tenant.id}/status`, asPayments)).statusCode,
+    ).toBe(200);
+  });
+
+  // D-14 "every such call is audited" at the callee. Mutation: no audit.service_call event, or none when refused.
+  it('INV-S2S-9 every internal call to identity writes one audit.service_call event, refused ones included', async () => {
+    const w = await world();
+    const asPayments = await asService(w, 'payments');
+    const before = w.k.outbox.events().filter((e) => e.type === 'audit.service_call').length;
+    await w.get(w, `/internal/v1/tenants/${w.a.tenant.id}/status`, asPayments);
+    await w.app.inject({
+      method: 'POST',
+      url: `/internal/v1/tenants/${w.a.tenant.id}/players/resolve`,
+      headers: asPayments,
+      payload: { platform: 'sim-casino', external_player_id: 'ext-1' },
+    });
+    const events = w.k.outbox.events().filter((e) => e.type === 'audit.service_call').slice(before);
+    expect(events).toHaveLength(2);
+    expect(events.map((e) => ServiceCallAuditedV1.parse(e.payload))).toMatchObject([
+      {
+        caller_service: 'payments',
+        service: 'identity',
+        route: 'GET /internal/v1/tenants/:tenantId/status',
+        decision: 'allowed',
+        status: 200,
+      },
+      {
+        caller_service: 'payments',
+        route: 'POST /internal/v1/tenants/:tenantId/players/resolve',
+        decision: 'refused',
+        status: 403,
+      },
+    ]);
+    expect(events.map((e) => e.tenant_id)).toEqual([w.a.tenant.id, w.a.tenant.id]);
+  });
+
   // Mutation: take the tenant for resolve from the header or the body; skip resolveOrCreate.
   it('INV-S2S-4 resolve player: tenant from the path only; idempotent; the header is ignored; a body tenant_id is 400', async () => {
     const w = await world();
@@ -529,5 +847,14 @@ describe('INV-S2S: service-to-service tokens and internal endpoints (D-4, MIO-04
       }
     }
     expect(found.sort()).toEqual(Object.values(INTERNAL_ROUTES).sort());
+    // D-14: every internal route is in the allow-list of at least one client, and the allow-list
+    // names no identity route that does not exist. Mutation: add an internal route nobody may call
+    // (dead, or reachable only because the list is skipped), or list a route that is gone.
+    const listed = new Set(
+      Object.values(SERVICE_CALL_POLICY).flatMap((byAudience) =>
+        (byAudience.identity ?? []).map((entry) => entry.split(' ')[1]),
+      ),
+    );
+    expect([...listed].sort()).toEqual(Object.values(INTERNAL_ROUTES).sort());
   });
 });

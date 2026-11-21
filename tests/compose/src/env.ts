@@ -26,6 +26,17 @@ export const serviceSecrets = {
 
 export const PLATFORM_TOKEN = 'dev-platform-token-0000';
 
+/**
+ * The platform admin identity seeds from `PLATFORM_ADMIN_EMAIL` / `PLATFORM_ADMIN_PASSWORD` at boot
+ * (idempotent). These are the dev defaults in `.env.example` and `docker-compose.yml`. The platform
+ * tenant logs in on host `platform.mio.localhost`. Used by INV-STACK-8 (acting through the stack).
+ */
+export const platformAdmin = {
+  email: 'root@mio.test',
+  password: 'platform-dev-password-0000',
+  host: 'platform.mio.localhost',
+};
+
 /** A pg client logged in as one of the per-service roles (or the admin, for catalog queries). */
 export async function pgAs(
   role: 'identity' | 'engagement' | 'payments' | 'postgres',

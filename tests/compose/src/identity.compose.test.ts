@@ -11,10 +11,11 @@ import {
   INTERNAL_ROUTES,
   InternalResolvePlayerResponse,
   JwksResponse,
+  LaunchResponse,
   PLATFORM_TENANT_ID,
   uuidv7,
 } from '@ex-mio/contracts';
-import { eventually, pgAs, serviceSecrets, urls } from './env';
+import { eventually, pgAs, platformAdmin, serviceSecrets, urls } from './env';
 
 /*
  * Database and cross-service twins of the identity invariants (docs/specs/identity.md,
@@ -391,25 +392,77 @@ describe('INV-STACK-2b / 4: engagement and payments take the tenant from the tok
       return r.status === 200 ? ((await r.json()) as { tenant_id: string }) : undefined;
     });
     expect(projection.tenant_id).toBe(a.tenantId);
-    // payments: a credit made as A (header names B) lists for A and never for B
+    // payments, on a route with NO coin effect (D-14 / N4: no operator mints coins): rows seeded
+    // through the payments DB role for A and for B; a token for A with a header naming B lists A's only.
+    const [playerA, playerB] = [uuidv7(), uuidv7()];
+    const seeded: Array<[string, string]> = [
+      [a.tenantId, playerA],
+      [b.tenantId, playerB],
+    ];
+    const seed = async (tenantId: string, player: string) => {
+      const c = await pgAs('payments');
+      try {
+        await c.query('BEGIN');
+        await c.query(`SELECT set_config('app.tenant_id', $1, true)`, [tenantId]);
+        await c.query(
+          `INSERT INTO coin_credits (id, tenant_id, player_id, amount) VALUES ($1, $2, $3, 5)`,
+          [uuidv7(), tenantId, player],
+        );
+        await c.query('COMMIT');
+      } finally {
+        await c.end();
+      }
+    };
+    const unseed = async (tenantId: string, player: string) => {
+      const c = await pgAs('payments');
+      try {
+        await c.query('BEGIN');
+        await c.query(`SELECT set_config('app.tenant_id', $1, true)`, [tenantId]);
+        await c.query(`DELETE FROM coin_credits WHERE player_id = $1`, [player]);
+        await c.query('COMMIT');
+      } finally {
+        await c.end();
+      }
+    };
+    try {
+      for (const [tenantId, player] of seeded) await seed(tenantId, player);
+      const asA = await call('GET', urls.payments, '/v1/credits', {
+        headers: { ...bearer(a.token), 'x-tenant-id': b.tenantId },
+      });
+      expect(asA.status).toBe(200);
+      expect((asA.json as Array<{ player_id: string }>).map((c) => c.player_id)).toEqual([playerA]);
+      const asB = await call('GET', urls.payments, '/v1/credits', {
+        headers: { ...bearer(b.token), 'x-tenant-id': a.tenantId },
+      });
+      expect((asB.json as Array<{ player_id: string }>).map((c) => c.player_id)).toEqual([playerB]);
+    } finally {
+      for (const [tenantId, player] of seeded) await unseed(tenantId, player).catch(() => undefined);
+    }
+  });
+
+  // D-14 / N4, the inverted half: the operator's own token cannot mint through the public route.
+  // Mutation: serve coins.credit to an operator token (any role) at the real payments service.
+  it('INV-STACK-2c an operator_admin token on POST /v1/credits is 403 FORBIDDEN and nothing is stored', async () => {
+    const a = await operator('payments');
     const player = uuidv7();
     const made = await call('POST', urls.payments, '/v1/credits', {
-      headers: {
-        ...bearer(a.token),
-        'x-tenant-id': b.tenantId,
-        'idempotency-key': `key-${uniq()}`,
-      },
+      headers: { ...bearer(a.token), 'idempotency-key': `key-${uniq()}` },
       body: { player_id: player, amount: 5 },
     });
-    expect(made.status).toBe(201);
-    const asA = await call('GET', urls.payments, '/v1/credits', {
-      headers: { ...bearer(a.token), 'x-tenant-id': b.tenantId },
-    });
-    expect((asA.json as Array<{ player_id: string }>).map((c) => c.player_id)).toEqual([player]);
-    const asB = await call('GET', urls.payments, '/v1/credits', {
-      headers: { ...bearer(b.token), 'x-tenant-id': a.tenantId },
-    });
-    expect(asB.json).toEqual([]);
+    expect(made.status).toBe(403);
+    expect(made.json).toMatchObject({ code: 'FORBIDDEN' });
+    const c = await pgAs('payments');
+    try {
+      await c.query('BEGIN');
+      await c.query(`SELECT set_config('app.tenant_id', $1, true)`, [a.tenantId]);
+      const rows = await c.query(`SELECT count(*)::int AS n FROM coin_credits WHERE player_id = $1`, [
+        player,
+      ]);
+      expect(rows.rows[0].n).toBe(0);
+      await c.query('ROLLBACK');
+    } finally {
+      await c.end();
+    }
   });
 
   // Mutation: any service accepts a well-formed token without checking the signature against identity's JWKS.
@@ -495,6 +548,97 @@ describe('INV-STACK-5 service-to-service tokens over the real stack (D-4)', () =
         .status,
     ).toBe(401);
   });
+
+  // D-14 over the real stack. Mutation: issue any audience to any client, or skip the callee allow-list.
+  it('payments cannot get a token for engagement; payments with an identity token is 403 on resolve (status only)', async () => {
+    const a = await operator('identity');
+    const denied = await serviceToken('payments', 'engagement');
+    expect(denied.status).toBe(401);
+    expect(denied.json).toMatchObject({ code: 'INVALID_SERVICE_CREDENTIALS' });
+    const asPayments = await serviceToken('payments', 'identity');
+    expect(asPayments.status).toBe(200);
+    const resolve = await call(
+      'POST',
+      urls.identity,
+      INTERNAL_ROUTES.resolvePlayer.replace(':tenantId', a.tenantId),
+      {
+        headers: bearer(asPayments.json.access_token),
+        body: { platform: 'sim-casino', external_player_id: 'ext-1' },
+      },
+    );
+    expect(resolve.status).toBe(403);
+    expect(resolve.json).toMatchObject({ code: 'SERVICE_CALL_FORBIDDEN' });
+  });
+
+  // N2 over the real stack (Fastify, real routing). Mutation: raw-URL prefix check in any service.
+  it('an operator token on /%69nternal/v1/... is never served by identity', async () => {
+    const a = await operator('identity');
+    const b = await operator('identity');
+    const res = await call(
+      'GET',
+      urls.identity,
+      `/%69nternal/v1/tenants/${b.tenantId}/status`,
+      { headers: bearer(a.token) },
+    );
+    expect([401, 404]).toContain(res.status);
+  });
+});
+
+// D-11 / D-14 over the real stack: the entry points of engagement and payments write the audit
+// events to their outboxes; identity consumes them into the audit log the operator reads.
+describe('INV-STACK-8 acting requests in other services reach the operator audit log (D-11)', () => {
+  // Mutation: the entry point of engagement or payments writes no event, or identity does not consume it.
+  it('an acting token on engagement GET /v1/tenant-projection (allowed) and payments POST /v1/credits (refused) shows both in GET /v1/audit', async () => {
+    const op = await operator('identity');
+    const root = await call('POST', urls.identity, '/v1/auth/login', {
+      host: platformAdmin.host,
+      body: { email: platformAdmin.email, password: platformAdmin.password, audience: 'identity' },
+    });
+    expect(root.status).toBe(200);
+    const acting = (aud: string) =>
+      call('POST', urls.identity, '/v1/auth/acting', {
+        headers: bearer(root.json.access_token),
+        body: { tenant_id: op.tenantId, reason: 'ticket 42', audience: aud },
+      });
+    const forEngagement = await acting('engagement');
+    const forPayments = await acting('payments');
+    expect(forEngagement.status).toBe(200);
+    expect(forPayments.status).toBe(200);
+    await eventually(async () =>
+      (
+        await get(`${urls.engagement}/v1/tenant-projection`, bearer(forEngagement.json.access_token))
+      ).status === 200
+        ? true
+        : undefined,
+    );
+    const refused = await call('POST', urls.payments, '/v1/credits', {
+      headers: { ...bearer(forPayments.json.access_token), 'idempotency-key': `key-${uniq()}` },
+      body: { player_id: uuidv7(), amount: 5 },
+    });
+    expect(refused.status).toBe(403);
+    expect(refused.json).toMatchObject({ code: 'ACTING_FORBIDDEN' });
+    const rows = await eventually(async () => {
+      const r = await call('GET', urls.identity, '/v1/audit', { headers: bearer(op.token) });
+      const list = (r.json as Array<Record<string, unknown>>).filter(
+        (e) => e.action === 'acting.request',
+      );
+      return list.length >= 2 ? list : undefined;
+    });
+    expect(rows).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          service: 'engagement',
+          route: 'GET /v1/tenant-projection',
+          decision: 'allowed',
+        }),
+        expect.objectContaining({
+          service: 'payments',
+          route: 'POST /v1/credits',
+          decision: 'refused',
+        }),
+      ]),
+    );
+  });
 });
 
 describe('INV-STACK-6 launch and player mapping hold under real concurrency (F16, MIO-044)', () => {
@@ -527,6 +671,8 @@ describe('INV-STACK-6 launch and player mapping hold under real concurrency (F16
       ),
     );
     expect(results.filter((r) => r.status === 200)).toHaveLength(1);
+    // F14 / N7: the winning response is the contract shape L5 builds against
+    expect(LaunchResponse.parse(results.find((r) => r.status === 200)?.json).tenant_id).toBeDefined();
     const rest = results.filter((r) => r.status !== 200);
     expect(rest.map((r) => r.status)).toEqual([401, 401, 401, 401]);
     for (const r of rest) expect(r.json).toMatchObject({ code: 'LAUNCH_TOKEN_REPLAYED' });

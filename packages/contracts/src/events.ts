@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { PLATFORM_TENANT_ID, ServiceName } from './identity';
 import { Uuid, Uuidv7, uuidv7 } from './ids';
 
 /**
@@ -50,7 +51,52 @@ export const RedemptionRequestedV1 = z.object({
   coins: z.number().int().positive(),
 });
 
+const HTTP_METHOD = z.enum(['GET', 'POST', 'PUT', 'PATCH', 'DELETE']);
+
+/**
+ * D-11: written by the service-kit entry point of EVERY service for each request that carries an
+ * acting claim, allowed or refused. Envelope `tenant_id` is the acting tenant. `route` is
+ * `METHOD template` (never the raw URL, never the query string).
+ */
+export const ActingRequestAuditedV1 = z
+  .object({
+    actor_user_id: Uuid,
+    actor_tenant_id: z.literal(PLATFORM_TENANT_ID),
+    acting_tenant_id: Uuid,
+    reason: z.string().min(1),
+    service: ServiceName,
+    method: HTTP_METHOD,
+    route: z.string().regex(/^(GET|POST|PUT|PATCH|DELETE) \/[^?#\s]*$/),
+    decision: z.enum(['allowed', 'refused']),
+    status: z.number().int().min(100).max(599),
+    request_id: z.string().min(1),
+    occurred_at: z.string().datetime(),
+  })
+  .strict()
+  .refine((p) => p.route.startsWith(`${p.method} `), { message: 'route must start with method' });
+
+/**
+ * D-14: written by the entry point of the CALLEE for each internal (service-token) request,
+ * allowed or refused. Envelope `tenant_id` is the tenant named in the path or body (or the key's
+ * tenant for the tenant-less webhook route, recorded as the platform tenant).
+ */
+export const ServiceCallAuditedV1 = z
+  .object({
+    caller_service: ServiceName,
+    service: ServiceName,
+    method: HTTP_METHOD,
+    route: z.string().regex(/^(GET|POST|PUT|PATCH|DELETE) \/[^?#\s]*$/),
+    decision: z.enum(['allowed', 'refused']),
+    status: z.number().int().min(100).max(599),
+    request_id: z.string().min(1),
+    occurred_at: z.string().datetime(),
+  })
+  .strict()
+  .refine((p) => p.route.startsWith(`${p.method} `), { message: 'route must start with method' });
+
 export const EVENT_SCHEMAS = {
+  'audit.acting_request': { 1: ActingRequestAuditedV1 },
+  'audit.service_call': { 1: ServiceCallAuditedV1 },
   'identity.tenant.created': { 1: TenantCreatedV1 },
   'identity.player.registered': { 1: PlayerRegisteredV1 },
   'payments.coins.credited': { 1: CoinsCreditedV1 },

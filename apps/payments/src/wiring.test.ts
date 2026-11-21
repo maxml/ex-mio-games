@@ -6,6 +6,7 @@ import { createAppModule } from './app.module';
 import { paymentsControllers } from './controllers'; // RED: module does not exist yet
 import { ActingCoinGuard } from './controllers/coin-action'; // RED: module does not exist yet
 import type { Config } from './config';
+import { coinRuleViolations, collectControllers } from './testing/controller-walk';
 
 /*
  * Choke point (review finding F2): the wiring every service passes through. The unit tests of
@@ -60,6 +61,35 @@ describe('INV-WIRE payments', () => {
     expect(mod.controllers).toEqual(paymentsControllers);
     for (const ctrl of paymentsControllers) {
       expect(Reflect.getMetadata('__guards__', ctrl)).toContain(ActingCoinGuard);
+    }
+  });
+
+  // D-14 / N3: the check above only sees the top-level list. This walks the whole module tree, so a
+  // controller added in an imported child module (the escape found in review) fails here too.
+  // Mutation: add an unguarded controller to a module imported by createAppModule.
+  it('INV-WIRE-3 every controller reachable from the app module tree, child modules included, is guarded and declared', () => {
+    const all = collectControllers(mod);
+    expect(all.length).toBeGreaterThanOrEqual(1);
+    expect(all.map((c) => c.name)).toEqual(
+      expect.arrayContaining(paymentsControllers.map((c) => c.name)),
+    );
+    expect(coinRuleViolations(mod)).toEqual([]);
+  });
+
+  // D-11 item 7. The production wiring passes no audit port of its own: the default is the
+  // service's outbox (INV-STACK-8 proves the events arrive). A no-op port, or a test-only
+  // override of the allow-list or key source, in the production options would silently unaudit
+  // or unprotect the service.
+  // Mutation: pass `auditPort: async () => undefined` or `serviceCalls: {...}` in app.module.ts.
+  it('INV-WIRE-4 the entry point is wired with the default outbox audit and the contract allow-list, no overrides', () => {
+    const opts = authModules[0]?.providers?.find(
+      (p) =>
+        typeof p === 'object' && p !== null && 'provide' in p && p.provide === SERVICE_AUTH_OPTIONS,
+    ) as { useValue: Record<string, unknown> } | undefined;
+    const keys = Object.keys(opts?.useValue ?? {});
+    expect(keys).toEqual(expect.arrayContaining(['audience', 'identityUrl']));
+    for (const forbidden of ['auditPort', 'serviceCalls', 'jwks', 'tenantStatus']) {
+      expect(keys).not.toContain(forbidden);
     }
   });
 });

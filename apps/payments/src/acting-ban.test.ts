@@ -2,12 +2,26 @@ import 'reflect-metadata';
 import { Controller, Get, Module, Post, UseGuards } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import { FastifyAdapter, type NestFastifyApplication } from '@nestjs/platform-fastify';
-import { ACTIONS, PLATFORM_TENANT_ID } from '@ex-mio/contracts';
+import {
+  ACTIONS,
+  ActingRequestAuditedV1,
+  type EventEnvelope,
+  PLATFORM_TENANT_ID,
+  type ServiceCallPolicy,
+} from '@ex-mio/contracts';
 import { ServiceAuthModule } from '@ex-mio/service-kit';
-import { accessClaims, generateRsaKey, signJwt } from '@ex-mio/service-kit/testing';
+import {
+  accessClaims,
+  generateRsaKey,
+  serviceClaims,
+  signJwt,
+} from '@ex-mio/service-kit/testing';
 import { Public } from '@ex-mio/tenancy';
+import { createAppModule } from './app.module';
+import type { Config } from './config';
 import { CreditsService } from './services/credits.service';
 import { paymentsControllers } from './controllers'; // RED: module does not exist yet
+import { coinRuleViolations, collectControllers } from './testing/controller-walk';
 import {
   ActingCoinGuard,
   COIN_ACTION_KEY,
@@ -39,6 +53,45 @@ const key = generateRsaKey('k1');
 const COIN_VALUE = ['coins.credit', 'coins.hold', 'coins.capture', 'coins.release', 'coins.refund'];
 
 const credit = jest.fn();
+const audited: EventEnvelope[] = [];
+const appConfig = {
+  PORT: 4003,
+  AMQP_URL: 'amqp://u:p@bus.test:5672',
+  IDENTITY_URL: 'http://identity.test:4001',
+  NODE_ENV: 'test',
+} as unknown as Config;
+
+// D-14: engagement reaches payments only through these (test) internal routes; the callee checks it.
+const POLICY: ServiceCallPolicy = {
+  identity: {},
+  engagement: {
+    payments: [
+      'POST /internal/v1/tenants/:tenantId/probe/hold',
+      'POST /internal/v1/tenants/:tenantId/probe/capture',
+      'POST /internal/v1/tenants/:tenantId/probe/release',
+      'POST /internal/v1/tenants/:tenantId/probe/refund',
+    ],
+  },
+  payments: {},
+};
+
+/** Value actions a SERVICE (engagement, over an internal route) legitimately runs; none is credit. */
+@UseGuards(ActingCoinGuard)
+@Controller('internal/v1/tenants/:tenantId/probe')
+class InternalProbe {
+  @CoinAction('coins.hold') @Post('hold') hold() {
+    return { ran: 'coins.hold' };
+  }
+  @CoinAction('coins.capture') @Post('capture') capture() {
+    return { ran: 'coins.capture' };
+  }
+  @CoinAction('coins.release') @Post('release') release() {
+    return { ran: 'coins.release' };
+  }
+  @CoinAction('coins.refund') @Post('refund') refund() {
+    return { ran: 'coins.refund' };
+  }
+}
 
 // Controller-level guard: it always runs AFTER the global ServiceAuthModule guard, so the auth
 // context is set when it reads `acting`. Order cannot depend on how modules are registered.
@@ -78,12 +131,16 @@ class Probe {
   imports: [
     ServiceAuthModule.forService({
       audience: 'payments',
+      serviceCalls: POLICY,
+      auditPort: async (event: EventEnvelope) => {
+        audited.push(event);
+      },
       jwks: async () => ({ keys: [key.publicJwk] }),
       tenantStatus: async () => 'active',
       nowSeconds: () => NOW,
     }),
   ],
-  controllers: [Probe, ...paymentsControllers],
+  controllers: [Probe, InternalProbe, ...paymentsControllers],
   providers: [{ provide: CreditsService, useValue: { credit, list: jest.fn(async () => []) } }],
 })
 class TestApp {}
@@ -138,15 +195,71 @@ describe('INV-ACTBAN: payments refuses coin operations to an acting token', () =
     },
   );
 
+  // D-14 / N4 (replaces the old test that pinned an operator minting coins): the legitimate caller of
+  // a value action is a SERVICE (engagement: reserve, capture, release, refund) over an internal
+  // route, which carries no acting claim. The guard must not over-block it.
   // Mutation: the guard denies everything for everyone (over-blocks), or ignores the action list.
-  it.each(COIN_VALUE)(
-    'INV-ACTBAN-2 the same route with an ordinary operator token runs (%s)',
+  it.each(['coins.hold', 'coins.capture', 'coins.release', 'coins.refund'])(
+    'INV-ACTBAN-2 an engagement service token on the internal route of %s runs, with no acting claim',
     async (action) => {
-      const res = await call('POST', `/probe/${action.split('.')[1]}`, token());
+      const svc = signJwt({
+        alg: 'RS256',
+        key: key.privateKey,
+        kid: 'k1',
+        claims: serviceClaims({ now: NOW, service: 'engagement', aud: 'payments' }),
+      });
+      const res = await call('POST', `/internal/v1/tenants/${T_A}/probe/${action.split('.')[1]}`, svc);
       expect(res.statusCode).toBe(201);
       expect(res.json()).toEqual({ ran: action });
     },
   );
+
+  // D-14 / N4 (inverts the old INV-ACTBAN-2 that expected 201 for an operator on /v1/credits).
+  // Operators can never mint coins (RBAC matrix: coins.credit is "no" for every role, D-1: credits
+  // come from the inbox only). Mutation: serve coins.credit to an ordinary operator token again.
+  it('INV-ACTBAN-2 an ordinary operator_admin token on the real POST /v1/credits is 403 FORBIDDEN and nothing is credited', async () => {
+    credit.mockClear();
+    const res = await app
+      .getHttpAdapter()
+      .getInstance()
+      .inject({
+        method: 'POST',
+        url: '/v1/credits',
+        headers: { authorization: `Bearer ${token()}`, 'idempotency-key': 'key-12345678' },
+        payload: { player_id: PLAYER, amount: 5 },
+      });
+    expect(res.statusCode).toBe(403);
+    expect(res.json()).toMatchObject({ code: 'FORBIDDEN' });
+    expect(credit).not.toHaveBeenCalled();
+  });
+
+  // D-11 item 3: refused by a LATER guard (ActingCoinGuard), so an interceptor-only audit misses it.
+  // Mutation: emit the audit event from an interceptor only (interceptors do not run when a guard refuses).
+  it('INV-AUTH-9 an acting POST /v1/credits refused by the guard writes exactly one refused event for service payments', async () => {
+    credit.mockClear();
+    audited.length = 0;
+    const res = await app
+      .getHttpAdapter()
+      .getInstance()
+      .inject({
+        method: 'POST',
+        url: '/v1/credits',
+        headers: { authorization: `Bearer ${acting()}`, 'idempotency-key': 'key-12345678' },
+        payload: { player_id: PLAYER, amount: 5 },
+      });
+    expect(res.statusCode).toBe(403);
+    expect(res.json()).toMatchObject({ code: 'ACTING_FORBIDDEN' });
+    expect(credit).not.toHaveBeenCalled();
+    const events = audited.filter((e) => e.type === 'audit.acting_request');
+    expect(events).toHaveLength(1);
+    expect(ActingRequestAuditedV1.parse(events[0]?.payload)).toMatchObject({
+      service: 'payments',
+      route: 'POST /v1/credits',
+      decision: 'refused',
+      status: 403,
+    });
+    expect(events[0]?.tenant_id).toBe(T_A);
+  });
 
   // Mutation: add coins.adjust to the banned list (the audited exception stops working).
   it('INV-ACTBAN-3 coins.adjust is the one coin action an acting token may call', async () => {
@@ -168,7 +281,15 @@ describe('INV-ACTBAN: payments refuses coin operations to an acting token', () =
 
   // Mutation: read the acting tenant from a header or the body instead of the verified claim.
   it('INV-ACTBAN-6 a header or body that merely says "acting" changes nothing; the claim decides', async () => {
-    const forged = await call('POST', '/probe/credit', token(), { 'x-acting-tenant': T_B });
+    const svc = signJwt({
+      alg: 'RS256',
+      key: key.privateKey,
+      kid: 'k1',
+      claims: serviceClaims({ now: NOW, service: 'engagement', aud: 'payments' }),
+    });
+    const forged = await call('POST', `/internal/v1/tenants/${T_A}/probe/hold`, svc, {
+      'x-acting-tenant': T_B,
+    });
     expect(forged.statusCode).toBe(201);
     const tampered = acting().split('.');
     tampered[1] = Buffer.from(
@@ -198,7 +319,8 @@ describe('INV-ACTBAN-7 every payments handler declares its coin effect', () => {
     const undeclared: string[] = [];
     const unknown: string[] = [];
     let seen = 0;
-    for (const ctrl of paymentsControllers) {
+    // D-14 / N3: every controller of the app module TREE, child modules included.
+    for (const ctrl of collectControllers(createAppModule(appConfig))) {
       for (const { name, handler } of methodsOf(ctrl)) {
         seen++;
         const action = Reflect.getMetadata(COIN_ACTION_KEY, handler);
@@ -221,6 +343,35 @@ describe('INV-ACTBAN-7 every payments handler declares its coin effect', () => {
     }
   });
 
+  // D-14 / N3, the route scan: the booted-app shape, not a list. Walks every module reachable from
+  // createAppModule (imports, dynamic modules) and asserts the guard and a declaration on every
+  // registered coin route. Mutation: register an unguarded controller in an imported child module.
+  it('INV-ACTBAN-8 the route scan of the real app module finds the credits controller and no violation', () => {
+    const controllers = collectControllers(createAppModule(appConfig));
+    expect(controllers.map((c) => c.name)).toContain('CreditsController');
+    expect(coinRuleViolations(createAppModule(appConfig))).toEqual([]);
+  });
+
+  // The scan must be able to see a controller in a child module (the mutation that escaped the list check).
+  it('INV-ACTBAN-8 the scan itself catches an unguarded controller and an undeclared route in an imported child module', () => {
+    @Controller('v1/reserves')
+    class EscapedReserves {
+      @Post('hold') hold() {
+        return { ran: 'LEAK' };
+      }
+    }
+    @Module({ controllers: [EscapedReserves] })
+    class EscapedReservesModule {}
+    @Module({ imports: [EscapedReservesModule] })
+    class Parent {}
+    const root = { module: Parent, imports: [EscapedReservesModule] };
+    expect(collectControllers(root).map((c) => c.name)).toEqual(['EscapedReserves']);
+    expect(coinRuleViolations(root)).toEqual([
+      'EscapedReserves: no ActingCoinGuard',
+      'EscapedReserves.hold: undeclared',
+    ]);
+  });
+
   // Mutation: declare the credit route NoCoinEffect (the ban never fires for it).
   it('the credit route is declared coins.credit and the list route is NoCoinEffect', () => {
     const proto = paymentsControllers[0]?.prototype as Record<string, object>;
@@ -241,5 +392,43 @@ describe('INV-ACTBAN-7 every payments handler declares its coin effect', () => {
     expect(res.statusCode).toBe(403);
     expect(res.json()).toMatchObject({ code: 'ACTING_FORBIDDEN' });
     expect(credit).not.toHaveBeenCalled();
+  });
+});
+
+describe('INV-ACTBAN-9 the guard fails closed when the entry point is missing (N5)', () => {
+  // Mutation: ActingCoinGuard returns true when there is no auth context.
+  it('a controller guarded by ActingCoinGuard in an app WITHOUT ServiceAuthModule answers 401 on a coin route', async () => {
+    const ran = jest.fn();
+    @UseGuards(ActingCoinGuard)
+    @Controller('bare')
+    class Bare {
+      @CoinAction('coins.credit') @Post('credit') credit() {
+        ran();
+        return { ran: 'LEAK' };
+      }
+      @NoCoinEffect() @Get('read') read() {
+        ran();
+        return { ran: 'LEAK' };
+      }
+    }
+    @Module({ controllers: [Bare] })
+    class BareApp {}
+    const bare = await NestFactory.create<NestFastifyApplication>(BareApp, new FastifyAdapter(), {
+      logger: false,
+    });
+    await bare.init();
+    await bare.getHttpAdapter().getInstance().ready();
+    try {
+      for (const [method, url] of [
+        ['POST', '/bare/credit'],
+        ['GET', '/bare/read'],
+      ] as const) {
+        const res = await bare.getHttpAdapter().getInstance().inject({ method, url });
+        expect([url, res.statusCode]).toEqual([url, 401]);
+      }
+      expect(ran).not.toHaveBeenCalled();
+    } finally {
+      await bare.close();
+    }
   });
 });

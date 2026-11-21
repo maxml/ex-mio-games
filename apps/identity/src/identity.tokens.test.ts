@@ -1,4 +1,8 @@
-import { JwksResponse, ACCESS_TTL_MAX_SECONDS } from '@ex-mio/contracts';
+import {
+  JwksResponse,
+  ACCESS_TOKEN_CLOCK_SKEW_SECONDS,
+  ACCESS_TTL_MAX_SECONDS,
+} from '@ex-mio/contracts';
 import { decodeHeader, decodePayload } from '@ex-mio/service-kit/testing';
 import { buildKernel } from './testing/kernel'; // RED: module does not exist yet
 
@@ -90,12 +94,19 @@ describe('INV-JWT: our own RS256 token, verified by every service through JWKS',
     await expect(k.verify(after.access_token, 'identity')).resolves.toBeDefined();
   });
 
-  // Mutation: skip the expiry check in the verifier the kernel uses.
-  it('INV-JWT-4 a token expires: 901 s later it is TOKEN_EXPIRED', async () => {
+  // N1 / D-14: the TTL is 900 s and the verifier allows 30 s of skew (INV-TOK-9), so the window ends
+  // at exp + 30. The kernel's `verify` is the same verifier every service uses (spec section 7).
+  // Probed one second inside (+929) and one second outside (+931), so a 901 s expiry (no leeway) and
+  // a 300 s leeway both turn it red.
+  // Mutation: skip the expiry check; drop the leeway; widen the leeway.
+  it('INV-JWT-4 a 900 s token is still valid at +929 s and TOKEN_EXPIRED at +931 s', async () => {
     const k = await buildKernel();
     const w = await world(k);
     const { access_token } = await w.login(w.a.tenant.id, 'boss@a.test');
-    k.advance(ACCESS_TTL_MAX_SECONDS + 1);
+    expect(ACCESS_TTL_MAX_SECONDS + ACCESS_TOKEN_CLOCK_SKEW_SECONDS).toBe(930);
+    k.advance(929);
+    await expect(k.verify(access_token, 'identity')).resolves.toBeDefined();
+    k.advance(2);
     await expect(k.verify(access_token, 'identity')).rejects.toMatchObject({
       code: 'TOKEN_EXPIRED',
     });
@@ -203,8 +214,8 @@ describe('INV-ACT: platform admin acts on an operator tenant only through an exp
     ).rejects.toMatchObject({ code: 'ACTING_FORBIDDEN' });
   });
 
-  // Mutation: no TTL on the acting token.
-  it('INV-ACT-5 an expired acting session is TOKEN_EXPIRED', async () => {
+  // N1 / D-14: same window as INV-JWT-4. Mutation: no TTL on the acting token, a longer TTL, or no leeway.
+  it('INV-ACT-5 an acting session is valid at +929 s and TOKEN_EXPIRED at +931 s', async () => {
     const k = await buildKernel();
     const w = await world(k);
     const root = k.subjectOf(
@@ -214,7 +225,9 @@ describe('INV-ACT: platform admin acts on an operator tenant only through an exp
       tenant_id: w.a.tenant.id,
       reason: 'ticket 42',
     });
-    k.advance(901);
+    k.advance(929);
+    await expect(k.verify(access_token, 'identity')).resolves.toBeDefined();
+    k.advance(2);
     await expect(k.verify(access_token, 'identity')).rejects.toMatchObject({
       code: 'TOKEN_EXPIRED',
     });

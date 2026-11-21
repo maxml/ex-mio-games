@@ -110,6 +110,10 @@ export const IDENTITY_ERRORS = {
   PROVIDER_UNAVAILABLE: 503,
   INVALID_SERVICE_CREDENTIALS: 401,
   TENANT_STATUS_UNAVAILABLE: 503,
+  /** D-14: a valid service token calling an internal route its client is not allowed to call. */
+  SERVICE_CALL_FORBIDDEN: 403,
+  /** D-11: the audit port failed, so the request is refused (fail closed). */
+  AUDIT_UNAVAILABLE: 503,
 } as const;
 export type IdentityErrorCode = keyof typeof IDENTITY_ERRORS;
 
@@ -205,6 +209,53 @@ export const INTERNAL_ROUTES = {
   verifyWebhook: '/internal/v1/webhooks/verify',
 } as const;
 
+/**
+ * Internal routes that payments serves to engagement (D-1, D-9, D-14). Names are fixed here so the
+ * allow-list below can pin them; L2 builds the handlers. Reserve, capture, release, refund and the
+ * balance read are the whole surface: there is no credit, mint or adjust route for a service.
+ */
+export const PAYMENTS_INTERNAL_ROUTES = {
+  reserve: 'POST /internal/v1/tenants/:tenantId/reserves',
+  capture: 'POST /internal/v1/tenants/:tenantId/reserves/:reserveId/capture',
+  release: 'POST /internal/v1/tenants/:tenantId/reserves/:reserveId/release',
+  refund: 'POST /internal/v1/tenants/:tenantId/reserves/:reserveId/refund',
+  balance: 'GET /internal/v1/tenants/:tenantId/players/:playerId/balance',
+} as const;
+
+const IDENTITY_STATUS_ROUTE = `GET ${INTERNAL_ROUTES.tenantStatus}`;
+
+/** Per calling client, per target audience, the allowed `METHOD route-template` entries. */
+export type ServiceCallPolicy = Record<
+  ServiceName,
+  Partial<Record<ServiceName, readonly string[]>>
+>;
+
+/**
+ * D-14: per calling client, the target audiences it may ask a token for and, per audience, the
+ * internal routes it may call. The identity client registry uses it at issue time (an audience
+ * outside the list is 401 INVALID_SERVICE_CREDENTIALS); the service-kit entry point of the CALLEE
+ * checks it on every internal request (a route outside the list is 403 SERVICE_CALL_FORBIDDEN).
+ * A service token still carries no tenant; `tenant_id` is trusted only on these routes.
+ */
+export const SERVICE_CALL_POLICY: ServiceCallPolicy = {
+  identity: {},
+  engagement: {
+    identity: [
+      IDENTITY_STATUS_ROUTE,
+      `POST ${INTERNAL_ROUTES.resolvePlayer}`,
+      `POST ${INTERNAL_ROUTES.verifyWebhook}`,
+    ],
+    payments: [
+      PAYMENTS_INTERNAL_ROUTES.reserve,
+      PAYMENTS_INTERNAL_ROUTES.capture,
+      PAYMENTS_INTERNAL_ROUTES.release,
+      PAYMENTS_INTERNAL_ROUTES.refund,
+      PAYMENTS_INTERNAL_ROUTES.balance,
+    ],
+  },
+  payments: { identity: [IDENTITY_STATUS_ROUTE] },
+};
+
 export const TenantStatusResponse = z.object({ tenant_id: Uuid, status: TenantStatus });
 export type TenantStatusResponse = z.infer<typeof TenantStatusResponse>;
 
@@ -291,7 +342,12 @@ export const LaunchRequest = z
 export type LaunchRequest = z.infer<typeof LaunchRequest>;
 
 export const StartActingRequest = z
-  .object({ tenant_id: Uuid, reason: z.string().trim().min(1).max(500) })
+  .object({
+    tenant_id: Uuid,
+    reason: z.string().trim().min(1).max(500),
+    /** The service the acting token is for (a token is valid for one audience); identity by default. */
+    audience: Audience.default('identity'),
+  })
   .strict();
 export type StartActingRequest = z.infer<typeof StartActingRequest>;
 
@@ -300,14 +356,25 @@ export const InviteStaffRequest = z
   .strict();
 export type InviteStaffRequest = z.infer<typeof InviteStaffRequest>;
 
+/**
+ * One row of the operator's audit view. Rows written by identity's `authorize` carry an `Action`
+ * and no request fields. Rows written from `audit.acting_request` (action `acting.request`) and
+ * `audit.service_call` (action `service.call`) events carry `service`, `route`, `decision`; a
+ * service-call row has no user actor and no acting tenant (D-11, D-14).
+ */
+export const AUDIT_EVENT_ACTIONS = ['acting.request', 'service.call'] as const;
 export const AuditEntry = z.object({
   id: Uuid,
   occurred_at: z.string().datetime(),
-  actor_user_id: Uuid,
-  actor_tenant_id: Uuid,
-  acting_tenant_id: Uuid,
-  action: Action,
+  actor_user_id: Uuid.nullable(),
+  actor_tenant_id: Uuid.nullable(),
+  acting_tenant_id: Uuid.nullable(),
+  action: z.union([Action, z.enum(AUDIT_EVENT_ACTIONS)]),
   reason: z.string(),
+  service: ServiceName.nullable().optional(),
+  route: z.string().nullable().optional(),
+  decision: z.enum(['allowed', 'refused']).nullable().optional(),
+  caller_service: ServiceName.nullable().optional(),
 });
 export type AuditEntry = z.infer<typeof AuditEntry>;
 

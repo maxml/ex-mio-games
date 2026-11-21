@@ -1,10 +1,30 @@
 import 'reflect-metadata';
-import { Body, Controller, Get, Module, Param, Post, Query } from '@nestjs/common';
+import {
+  type ArgumentsHost,
+  Body,
+  Catch,
+  type CanActivate,
+  Controller,
+  type ExceptionFilter,
+  Get,
+  Module,
+  NotFoundException,
+  Param,
+  Post,
+  Query,
+  UseFilters,
+  UseGuards,
+} from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import { FastifyAdapter, type NestFastifyApplication } from '@nestjs/platform-fastify';
 import {
   ACCESS_TOKEN_CLOCK_SKEW_SECONDS,
+  ACCESS_TTL_MAX_SECONDS,
+  ActingRequestAuditedV1,
+  type EventEnvelope,
   PLATFORM_TENANT_ID,
+  ServiceCallAuditedV1,
+  type ServiceCallPolicy,
   TENANT_STATUS_CACHE_SECONDS,
 } from '@ex-mio/contracts';
 import * as tenancy from '@ex-mio/tenancy';
@@ -30,10 +50,84 @@ const USER = '0190a1b2-c3d4-7e5f-8a6b-7c8d9e0f1a2c';
 const key1 = generateRsaKey('k1');
 const stranger = generateRsaKey('k1');
 
+/** Counts handler runs, so a test can prove a refused request never reached its handler. */
+const ran = { n: 0 };
+
+/** The callee-side allow-list the test app is booted with (D-14). payments may call these only. */
+const POLICY: ServiceCallPolicy = {
+  identity: {},
+  engagement: {},
+  payments: {
+    engagement: [
+      'GET /internal/v1/tenants/:tenantId/ping',
+      'POST /internal/v1/ping',
+      'POST /internal/v1/tenants/:tenantId/both',
+      'POST /internal/v1/webhooks/verify',
+    ],
+  },
+};
+
+class PassOne implements CanActivate {
+  canActivate() {
+    return true;
+  }
+}
+class PassTwo implements CanActivate {
+  canActivate() {
+    return true;
+  }
+}
+@Catch()
+class SwallowFilter implements ExceptionFilter {
+  catch(_e: unknown, host: ArgumentsHost) {
+    host.switchToHttp().getResponse().status(500).send({ code: 'BOOM' });
+  }
+}
+
 @Controller()
 class Probe {
   @Get('v1/whoami')
   whoami(@Query() _q: unknown) {
+    ran.n++;
+    return { auth: currentAuth(), tenant: tenancy.currentTenant() };
+  }
+
+  @Get('v1/missing')
+  missing() {
+    ran.n++;
+    throw new NotFoundException();
+  }
+
+  @UseGuards(PassOne, PassTwo)
+  @Get('v1/guarded')
+  guarded() {
+    ran.n++;
+    return { ok: true };
+  }
+
+  @UseFilters(SwallowFilter)
+  @Get('v1/boom')
+  boom() {
+    ran.n++;
+    throw new Error('boom');
+  }
+
+  /** Not in the allow-list of any client: a service token must never reach it (D-14). */
+  @Post('internal/v1/admin/mint')
+  internalMint() {
+    ran.n++;
+    return { LEAK: true };
+  }
+
+  /** Longer than an allow-listed template: a prefix match would wrongly let it through. */
+  @Get('internal/v1/tenants/:tenantId/ping/admin')
+  internalPingAdmin() {
+    ran.n++;
+    return { LEAK: true };
+  }
+
+  @Post('internal/v1/tenants/:tenantId/both')
+  internalBoth(@Param('tenantId') _id: string, @Body() _body: unknown) {
     return { auth: currentAuth(), tenant: tenancy.currentTenant() };
   }
 
@@ -76,7 +170,13 @@ interface Booted {
   clock: { now: number };
   statusCalls: string[];
   status: { value: 'active' | 'suspended'; fail: boolean };
+  jwksCalls: { n: number };
+  /** Every event the entry point handed to the audit port (D-11, D-14). */
+  audit: { events: EventEnvelope[]; fail: boolean };
 }
+
+const actingEvents = (b: Booted) => b.audit.events.filter((e) => e.type === 'audit.acting_request');
+const callEvents = (b: Booted) => b.audit.events.filter((e) => e.type === 'audit.service_call');
 
 const open: NestFastifyApplication[] = [];
 afterAll(async () => {
@@ -87,11 +187,22 @@ async function boot(audience = 'engagement'): Promise<Booted> {
   const clock = { now: NOW };
   const statusCalls: string[] = [];
   const status = { value: 'active' as 'active' | 'suspended', fail: false };
+  const jwksCalls = { n: 0 };
+  const audit = { events: [] as EventEnvelope[], fail: false };
+  ran.n = 0;
   @Module({
     imports: [
       ServiceAuthModule.forService({
         audience,
-        jwks: async () => ({ keys: [key1.publicJwk] }),
+        serviceCalls: POLICY,
+        auditPort: async (event: EventEnvelope) => {
+          if (audit.fail) throw new Error('audit store unreachable');
+          audit.events.push(event);
+        },
+        jwks: async () => {
+          jwksCalls.n++;
+          return { keys: [key1.publicJwk] };
+        },
         tenantStatus: async (tenantId: string) => {
           statusCalls.push(tenantId);
           if (status.fail) throw new Error('identity unreachable');
@@ -114,6 +225,8 @@ async function boot(audience = 'engagement'): Promise<Booted> {
     clock,
     statusCalls,
     status,
+    jwksCalls,
+    audit,
     inject: (opts) =>
       app
         .getHttpAdapter()
@@ -137,6 +250,13 @@ const svcToken = (over: Partial<Parameters<typeof serviceClaims>[0]> = {}, extra
     claims: serviceClaims({ now: NOW, service: 'payments', aud: 'engagement', ...over, extra }),
   });
 const bearer = (t: string) => ({ authorization: `Bearer ${t}` });
+const actingToken = (over: Partial<Parameters<typeof accessClaims>[0]> = {}) =>
+  userToken({
+    tid: PLATFORM_TENANT_ID,
+    roles: ['platform_admin'],
+    act: { tenant_id: T_B, reason: 'ticket 42' },
+    ...over,
+  });
 
 describe('INV-AUTH: one entry point, tenant only from the verified claim (every service)', () => {
   // Mutation: restore a header fallback anywhere in the entry point.
@@ -225,6 +345,35 @@ describe('INV-AUTH: one entry point, tenant only from the verified claim (every 
     const res = await b.inject({ method: 'GET', url: '/v1/whoami', headers: bearer(userToken()) });
     expect(res.json().auth.acting).toBeUndefined();
   });
+
+  // N1 / D-14. The TTL is 900 s and the leeway 30 s, so the window is exp + 30. The boundaries are
+  // probed one second inside and one second outside, so an off-by-one is not an equivalent mutant.
+  // Mutation: no leeway (expired at +901), or a leeway of 300 (still valid at +931).
+  it('INV-AUTH-3 a 900 s token is still valid at +929 s and TOKEN_EXPIRED at +931 s', async () => {
+    const b = await boot();
+    const token = userToken();
+    b.clock.now = NOW + ACCESS_TTL_MAX_SECONDS + ACCESS_TOKEN_CLOCK_SKEW_SECONDS - 1;
+    expect((await b.inject({ method: 'GET', url: '/v1/whoami', headers: bearer(token) })).statusCode).toBe(
+      200,
+    );
+    expect(NOW + 929).toBe(b.clock.now);
+    b.clock.now = NOW + 931;
+    const res = await b.inject({ method: 'GET', url: '/v1/whoami', headers: bearer(token) });
+    expect(res.statusCode).toBe(401);
+    expect(res.json()).toMatchObject({ code: 'TOKEN_EXPIRED' });
+  });
+
+  // N8. Mutation: build a verifier (and so a JWKS cache) per request.
+  it('INV-AUTH-3 five requests through the booted app fetch the key set once', async () => {
+    const b = await boot();
+    for (let i = 0; i < 5; i++) {
+      expect(
+        (await b.inject({ method: 'GET', url: '/v1/whoami', headers: bearer(userToken()) }))
+          .statusCode,
+      ).toBe(200);
+    }
+    expect(b.jwksCalls.n).toBe(1);
+  });
 });
 
 describe('INV-AUTH-6 the entry point has no resolver option and fails closed when misconfigured', () => {
@@ -232,7 +381,17 @@ describe('INV-AUTH-6 the entry point has no resolver option and fails closed whe
     audience: 'engagement',
     jwks: async () => ({ keys: [] }),
     tenantStatus: async () => 'active',
+    auditPort: async () => undefined,
   };
+
+  // Mutation: default the audit port to a no-op (an acting request would run unaudited, D-11).
+  it('no audit port (and no identity URL whose service outbox is the default) is refused at boot', () => {
+    const { auditPort: _a, ...noAudit } = base;
+    expect(() => ServiceAuthModule.forService(noAudit as never)).toThrow();
+    expect(() =>
+      ServiceAuthModule.forService({ audience: 'engagement', identityUrl: 'http://identity.test' }),
+    ).not.toThrow();
+  });
 
   // Mutation: add a `resolver` option (the foundation's TenancyModule.forRoot({resolver})).
   it('a `resolver` option (or any unknown option) is refused at boot', () => {
@@ -437,5 +596,268 @@ describe('INV-AUTH-8 internal endpoints accept ONLY service tokens, tenant from 
     });
     expect(res.statusCode).toBe(200);
     expect(b.statusCalls).toEqual([]);
+  });
+
+  // N2 / D-14: the mode comes from the NORMALISED, DECODED path, never from the raw URL string.
+  // Fastify decodes `%69` when it matches the route, so a raw prefix check on `req.url` says
+  // "user mode" for a request that reaches an internal handler.
+  // Mutation: decide the mode with `req.url.startsWith('/internal/v1/')`.
+  it('N2 a user token on an encoded internal path (/%69nternal/...) is 401 and never served', async () => {
+    const b = await boot();
+    for (const url of [
+      `/%69nternal/v1/tenants/${T_A}/ping`,
+      `/internal%2Fv1/tenants/${T_A}/ping`,
+      `/internal/v1/tenants/${T_A}/ping?x=/v1/`,
+      `/%69nternal/v1/tenants/${T_A}/ping?x=/v1/whoami`,
+    ]) {
+      const res = await b.inject({ method: 'GET', url, headers: bearer(userToken()) });
+      expect([url, res.statusCode === 200]).toEqual([url, false]);
+      expect([401, 404]).toContain(res.statusCode);
+      expect(res.body).not.toContain('"mode":"user"');
+    }
+  });
+
+  // Mutation: the encoded path falls out of service mode (a service token would then be refused as a user route).
+  it('N2 a service token on the encoded internal path is served in service mode, like the plain one', async () => {
+    const b = await boot();
+    const res = await b.inject({
+      method: 'GET',
+      url: `/%69nternal/v1/tenants/${T_A}/ping`,
+      headers: bearer(svcToken()),
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().auth).toMatchObject({ mode: 'service', tenantId: T_A, service: 'payments' });
+  });
+
+  // Mutation: let a query string that looks like an internal prefix switch a user route to service mode.
+  it('N2 a service token on a user route stays 401 even when the query string names an internal path', async () => {
+    const b = await boot();
+    const res = await b.inject({
+      method: 'GET',
+      url: '/v1/whoami?next=/internal/v1/tenants/x/ping',
+      headers: bearer(svcToken()),
+    });
+    expect(res.statusCode).toBe(401);
+  });
+
+  // N6 (3): the tenant of an internal call is named once. Mutation: prefer the body (or the path) silently.
+  it('a path tenant and a different body tenant_id are 400 VALIDATION_FAILED, not a silent pick', async () => {
+    const b = await boot();
+    const res = await b.inject({
+      method: 'POST',
+      url: `/internal/v1/tenants/${T_A}/both`,
+      headers: bearer(svcToken()),
+      payload: { tenant_id: T_B },
+    });
+    expect(res.statusCode).toBe(400);
+    expect(res.json()).toMatchObject({ code: 'VALIDATION_FAILED' });
+    const same = await b.inject({
+      method: 'POST',
+      url: `/internal/v1/tenants/${T_A}/both`,
+      headers: bearer(svcToken()),
+      payload: { tenant_id: T_A },
+    });
+    expect(same.statusCode).toBe(201);
+    expect(same.json().tenant).toMatchObject({ tenantId: T_A });
+  });
+});
+
+describe('INV-AUTH-10 per-client allow-list of internal routes, checked by the callee (D-14)', () => {
+  // Mutation: skip the allow-list (any valid service token may call any internal route).
+  it('a service token on an internal route outside the allow-list is 403 SERVICE_CALL_FORBIDDEN and the handler does not run', async () => {
+    const b = await boot();
+    const res = await b.inject({
+      method: 'POST',
+      url: '/internal/v1/admin/mint',
+      headers: bearer(svcToken()),
+      payload: { tenant_id: T_A },
+    });
+    expect(res.statusCode).toBe(403);
+    expect(res.json()).toMatchObject({ code: 'SERVICE_CALL_FORBIDDEN' });
+    expect(res.body).not.toContain('LEAK');
+    expect(ran.n).toBe(0);
+  });
+
+  // Mutation: match the allow-list by prefix (`startsWith`) instead of the whole route template.
+  it('an entry matches the whole route template and the method, not a prefix', async () => {
+    const b = await boot();
+    const longer = await b.inject({
+      method: 'GET',
+      url: `/internal/v1/tenants/${T_A}/ping/admin`,
+      headers: bearer(svcToken()),
+    });
+    expect(longer.statusCode).toBe(403);
+    expect(ran.n).toBe(0);
+    const ok = await b.inject({
+      method: 'GET',
+      url: `/internal/v1/tenants/${T_A}/ping`,
+      headers: bearer(svcToken()),
+    });
+    expect(ok.statusCode).toBe(200);
+  });
+
+  // Mutation: check the allow-list against the raw URL (the encoded form is then "not in the list" or "in the list" by luck).
+  it('the allow-list is applied to the normalised path: the encoded form of a forbidden route is forbidden too', async () => {
+    const b = await boot();
+    const res = await b.inject({
+      method: 'POST',
+      url: '/%69nternal/v1/admin/mint',
+      headers: bearer(svcToken()),
+      payload: { tenant_id: T_A },
+    });
+    expect(res.statusCode).toBe(403);
+    expect(ran.n).toBe(0);
+  });
+
+  // Mutation: allow any caller whose token verifies (the allow-list is keyed by audience only, not by client).
+  it('a client with no entry for this audience (identity, engagement) is 403 SERVICE_CALL_FORBIDDEN on an allowed route of another client', async () => {
+    const b = await boot('engagement');
+    for (const service of ['identity', 'engagement'] as const) {
+      const res = await b.inject({
+        method: 'GET',
+        url: `/internal/v1/tenants/${T_A}/ping`,
+        headers: bearer(svcToken({ service })),
+      });
+      expect([service, res.statusCode]).toEqual([service, 403]);
+      expect(res.json()).toMatchObject({ code: 'SERVICE_CALL_FORBIDDEN' });
+    }
+  });
+
+  // D-14: "every such call is audited". Mutation: no audit event, or only for allowed calls.
+  it('every internal call writes exactly one audit.service_call event, allowed or refused, with the route template', async () => {
+    const b = await boot();
+    await b.inject({
+      method: 'GET',
+      url: `/internal/v1/tenants/${T_A}/ping?secret=1`,
+      headers: bearer(svcToken()),
+    });
+    await b.inject({
+      method: 'POST',
+      url: '/internal/v1/admin/mint',
+      headers: bearer(svcToken()),
+      payload: { tenant_id: T_A },
+    });
+    const events = callEvents(b);
+    expect(events).toHaveLength(2);
+    const [allowed, refused] = events.map((e) => ServiceCallAuditedV1.parse(e.payload));
+    expect(allowed).toMatchObject({
+      caller_service: 'payments',
+      service: 'engagement',
+      route: 'GET /internal/v1/tenants/:tenantId/ping',
+      decision: 'allowed',
+      status: 200,
+    });
+    expect(refused).toMatchObject({
+      route: 'POST /internal/v1/admin/mint',
+      decision: 'refused',
+      status: 403,
+    });
+    expect(events[0]?.tenant_id).toBe(T_A);
+    expect(JSON.stringify(events)).not.toContain('secret=1');
+  });
+});
+
+describe('INV-AUTH-9 every acting request is audited by the entry point of every service (D-11)', () => {
+  // Mutation: no emit, or emit the raw URL (the query string would leak).
+  it('an acting request on GET /v1/whoami?q=secret writes exactly one allowed event with the route template', async () => {
+    const b = await boot();
+    const res = await b.inject({
+      method: 'GET',
+      url: '/v1/whoami?q=secret',
+      headers: bearer(actingToken()),
+    });
+    expect(res.statusCode).toBe(200);
+    const events = actingEvents(b);
+    expect(events).toHaveLength(1);
+    const payload = ActingRequestAuditedV1.parse(events[0]?.payload);
+    expect(payload).toMatchObject({
+      actor_user_id: USER,
+      actor_tenant_id: PLATFORM_TENANT_ID,
+      acting_tenant_id: T_B,
+      reason: 'ticket 42',
+      service: 'engagement',
+      method: 'GET',
+      route: 'GET /v1/whoami',
+      decision: 'allowed',
+      status: 200,
+    });
+    expect(events[0]?.tenant_id).toBe(T_B);
+    expect(JSON.stringify(events)).not.toContain('secret');
+    expect(b.audit.events).toHaveLength(1);
+  });
+
+  // Mutation: emit only on success.
+  it('an acting request whose handler throws 404 writes exactly one refused event', async () => {
+    const b = await boot();
+    const res = await b.inject({ method: 'GET', url: '/v1/missing', headers: bearer(actingToken()) });
+    expect(res.statusCode).toBe(404);
+    const events = actingEvents(b);
+    expect(events).toHaveLength(1);
+    expect(ActingRequestAuditedV1.parse(events[0]?.payload)).toMatchObject({
+      decision: 'refused',
+      status: 404,
+      route: 'GET /v1/missing',
+    });
+  });
+
+  // Mutation: audit before verification, or audit every request.
+  it('an ordinary user token, a service token, a forged and an expired acting token write no acting event', async () => {
+    const b = await boot();
+    const forged = signJwt({
+      alg: 'RS256',
+      key: stranger.privateKey,
+      kid: 'k1',
+      claims: accessClaims({
+        now: NOW,
+        sub: USER,
+        tid: PLATFORM_TENANT_ID,
+        roles: ['platform_admin'],
+        act: { tenant_id: T_B, reason: 'x' },
+      }),
+    });
+    const expired = actingToken({ ttl: 60 });
+    b.clock.now = NOW + 60 + ACCESS_TOKEN_CLOCK_SKEW_SECONDS + 1;
+    const plain = userToken({ ttl: 900 });
+    for (const [url, headers] of [
+      ['/v1/whoami', bearer(plain)],
+      ['/v1/whoami', bearer(svcToken())],
+      ['/v1/whoami', bearer(forged)],
+      ['/v1/whoami', bearer(expired)],
+      ['/v1/whoami', {}],
+    ] as const) {
+      await b.inject({ method: 'GET', url, headers: { ...headers } });
+    }
+    expect(actingEvents(b)).toEqual([]);
+  });
+
+  // Mutation: fire and forget (the request proceeds when the audit write fails).
+  it('when the audit port fails the request fails closed: 503 AUDIT_UNAVAILABLE and the handler does not run', async () => {
+    const b = await boot();
+    b.audit.fail = true;
+    const res = await b.inject({ method: 'GET', url: '/v1/whoami', headers: bearer(actingToken()) });
+    expect(res.statusCode).toBe(503);
+    expect(res.json()).toMatchObject({ code: 'AUDIT_UNAVAILABLE' });
+    expect(ran.n).toBe(0);
+  });
+
+  // Mutation: write from both a guard and an interceptor, or once per guard.
+  it('one request writes one event even with several guards and an exception filter in the chain', async () => {
+    const b = await boot();
+    const guarded = await b.inject({
+      method: 'GET',
+      url: '/v1/guarded',
+      headers: bearer(actingToken()),
+    });
+    expect(guarded.statusCode).toBe(200);
+    expect(actingEvents(b)).toHaveLength(1);
+    const boom = await b.inject({ method: 'GET', url: '/v1/boom', headers: bearer(actingToken()) });
+    expect(boom.statusCode).toBe(500);
+    const events = actingEvents(b);
+    expect(events).toHaveLength(2);
+    expect(ActingRequestAuditedV1.parse(events[1]?.payload)).toMatchObject({
+      decision: 'refused',
+      status: 500,
+      route: 'GET /v1/boom',
+    });
   });
 });

@@ -43,6 +43,20 @@ describe('INV-WIRE engagement', () => {
     expect(Object.keys(opts?.useValue ?? {})).not.toEqual(expect.arrayContaining(['resolver']));
   });
 
+  // D-11 item 7 / D-14. Same rule as payments: no audit port, allow-list or key source of its own.
+  // Mutation: pass `auditPort: async () => undefined` or `serviceCalls: {...}` in app.module.ts.
+  it('INV-WIRE-4 the entry point is wired with the default outbox audit and the contract allow-list, no overrides', () => {
+    const opts = authModules[0]?.providers?.find(
+      (p) =>
+        typeof p === 'object' && p !== null && 'provide' in p && p.provide === SERVICE_AUTH_OPTIONS,
+    ) as { useValue: Record<string, unknown> } | undefined;
+    const keys = Object.keys(opts?.useValue ?? {});
+    expect(keys).toEqual(expect.arrayContaining(['audience', 'identityUrl']));
+    for (const forbidden of ['auditPort', 'serviceCalls', 'jwks', 'tenantStatus']) {
+      expect(keys).not.toContain(forbidden);
+    }
+  });
+
   it('INV-WIRE-2 does not import any tenancy module of its own', () => {
     expect('TenancyModule' in tenancy).toBe(false);
     const all = JSON.stringify(

@@ -1,20 +1,29 @@
+import { ActingRequestAuditedV1, ServiceCallAuditedV1, parseEvent } from './events';
+import { uuidv7 } from './ids';
 import {
   ACCESS_TTL_MAX_SECONDS,
   ACTIONS,
   AccessTokenClaims,
+  AuditEntry,
   COIN_VALUE_ACTIONS,
+  CredentialSummary,
   IDENTITY_ERRORS,
   INTERNAL_PATH_PREFIX,
   InternalResolvePlayerRequest,
   LaunchRequest,
+  LaunchResponse,
   LoginRequest,
   OperatorSignupRequest,
   PLATFORM_TENANT_ID,
   Role,
   SERVICE_AUDIENCES,
+  SERVICE_CALL_POLICY,
   ServiceTokenClaims,
+  SignupResponse,
+  StaffMember,
   StartActingRequest,
   TOKEN_ISSUER,
+  TenantView,
   TokenResponse,
 } from './identity';
 
@@ -63,6 +72,19 @@ describe('identity contracts (shape)', () => {
   it('acting needs a non-blank reason', () => {
     expect(StartActingRequest.safeParse({ tenant_id: U1, reason: '   ' }).success).toBe(false);
     expect(StartActingRequest.safeParse({ tenant_id: U1, reason: 'ticket 42' }).success).toBe(true);
+  });
+
+  it('acting names the audience of its token, identity by default, and refuses an unknown one', () => {
+    expect(StartActingRequest.parse({ tenant_id: U1, reason: 'ticket 42' }).audience).toBe(
+      'identity',
+    );
+    expect(
+      StartActingRequest.parse({ tenant_id: U1, reason: 'ticket 42', audience: 'payments' })
+        .audience,
+    ).toBe('payments');
+    expect(
+      StartActingRequest.safeParse({ tenant_id: U1, reason: 'x', audience: 'nobody' }).success,
+    ).toBe(false);
   });
 
   it('signup normalises email and rejects unknown fields', () => {
@@ -189,6 +211,160 @@ describe('identity contracts (token binding, D-4)', () => {
         external_player_id: 'p1',
         tenant_id: T,
       }).success,
+    ).toBe(false);
+  });
+});
+
+// D-14: the per-client allow-list, pinned as LITERALS so widening it is a reviewed test diff.
+describe('identity contracts (service call policy, D-14)', () => {
+  it('engagement may call payments only reserve, capture, release, refund and the balance read', () => {
+    expect([...(SERVICE_CALL_POLICY.engagement.payments ?? [])].sort()).toEqual(
+      [
+        'GET /internal/v1/tenants/:tenantId/players/:playerId/balance',
+        'POST /internal/v1/tenants/:tenantId/reserves',
+        'POST /internal/v1/tenants/:tenantId/reserves/:reserveId/capture',
+        'POST /internal/v1/tenants/:tenantId/reserves/:reserveId/refund',
+        'POST /internal/v1/tenants/:tenantId/reserves/:reserveId/release',
+      ].sort(),
+    );
+  });
+
+  it('no service may call a credit, mint or adjust route, and identity calls nobody', () => {
+    expect(SERVICE_CALL_POLICY.identity).toEqual({});
+    const all = Object.values(SERVICE_CALL_POLICY).flatMap((byAudience) =>
+      Object.values(byAudience).flat(),
+    );
+    expect(all.filter((r) => /credit|mint|adjust|grant/i.test(r))).toEqual([]);
+  });
+
+  it('engagement and payments may call identity for the tenant status; only engagement may resolve players and verify webhooks', () => {
+    expect([...(SERVICE_CALL_POLICY.engagement.identity ?? [])].sort()).toEqual(
+      [
+        'GET /internal/v1/tenants/:tenantId/status',
+        'POST /internal/v1/tenants/:tenantId/players/resolve',
+        'POST /internal/v1/webhooks/verify',
+      ].sort(),
+    );
+    expect(SERVICE_CALL_POLICY.payments).toEqual({
+      identity: ['GET /internal/v1/tenants/:tenantId/status'],
+    });
+  });
+
+  it('every entry is METHOD plus an internal route template, never a prefix or a wildcard', () => {
+    for (const byAudience of Object.values(SERVICE_CALL_POLICY)) {
+      for (const route of Object.values(byAudience).flat()) {
+        expect(route).toMatch(/^(GET|POST) \/internal\/v1\/[A-Za-z0-9/:_-]+$/);
+        expect(route).not.toContain('*');
+      }
+    }
+  });
+
+  it('the two new error codes exist with the pinned statuses', () => {
+    expect(IDENTITY_ERRORS.SERVICE_CALL_FORBIDDEN).toBe(403);
+    expect(IDENTITY_ERRORS.AUDIT_UNAVAILABLE).toBe(503);
+  });
+});
+
+// D-11 / D-14: the audit events every entry point writes.
+describe('identity contracts (audit events, D-11 and D-14)', () => {
+  const acting = {
+    actor_user_id: uuidv7(),
+    actor_tenant_id: PLATFORM_TENANT_ID,
+    acting_tenant_id: uuidv7(),
+    reason: 'ticket 42',
+    service: 'payments',
+    method: 'POST',
+    route: 'POST /v1/credits',
+    decision: 'refused',
+    status: 403,
+    request_id: 'req-12345678',
+    occurred_at: '2026-11-21T10:00:00.000Z',
+  };
+  const call = {
+    caller_service: 'engagement',
+    service: 'payments',
+    method: 'POST',
+    route: 'POST /internal/v1/tenants/:tenantId/reserves',
+    decision: 'allowed',
+    status: 201,
+    request_id: 'req-12345678',
+    occurred_at: '2026-11-21T10:00:00.000Z',
+  };
+
+  it('audit.acting_request v1 is registered and strict; the route is a template, never a URL or a query', () => {
+    expect(ActingRequestAuditedV1.safeParse(acting).success).toBe(true);
+    expect(ActingRequestAuditedV1.safeParse({ ...acting, token: 'x' }).success).toBe(false);
+    expect(ActingRequestAuditedV1.safeParse({ ...acting, route: 'POST /v1/credits?x=1' }).success).toBe(
+      false,
+    );
+    expect(ActingRequestAuditedV1.safeParse({ ...acting, route: 'GET /v1/credits' }).success).toBe(
+      false,
+    );
+    expect(ActingRequestAuditedV1.safeParse({ ...acting, actor_tenant_id: uuidv7() }).success).toBe(
+      false,
+    );
+    expect(ActingRequestAuditedV1.safeParse({ ...acting, decision: 'maybe' }).success).toBe(false);
+    const env = {
+      event_id: uuidv7(),
+      type: 'audit.acting_request',
+      version: 1,
+      tenant_id: acting.acting_tenant_id,
+      occurred_at: acting.occurred_at,
+      correlation_id: uuidv7(),
+      causation_id: null,
+      payload: acting,
+    };
+    expect(parseEvent(env).type).toBe('audit.acting_request');
+  });
+
+  it('audit.service_call v1 is registered and strict', () => {
+    expect(ServiceCallAuditedV1.safeParse(call).success).toBe(true);
+    expect(ServiceCallAuditedV1.safeParse({ ...call, tenant_id: uuidv7() }).success).toBe(false);
+    expect(ServiceCallAuditedV1.safeParse({ ...call, caller_service: 'web' }).success).toBe(false);
+    expect(ServiceCallAuditedV1.safeParse({ ...call, route: '/internal/v1/x' }).success).toBe(
+      false,
+    );
+  });
+
+  it('the audit view row accepts event-derived rows with a null user actor', () => {
+    expect(
+      AuditEntry.safeParse({
+        id: uuidv7(),
+        occurred_at: call.occurred_at,
+        actor_user_id: null,
+        actor_tenant_id: null,
+        acting_tenant_id: null,
+        action: 'service.call',
+        reason: '',
+        service: 'payments',
+        route: call.route,
+        decision: 'allowed',
+        caller_service: 'engagement',
+      }).success,
+    ).toBe(true);
+  });
+});
+
+// F14 (N7): the response schemas are real shapes, so a test that parses a response with them can fail.
+describe('identity contracts (response DTOs, F14)', () => {
+  const T = '0190a1b2-c3d4-7e5f-8a6b-7c8d9e0f1a2c';
+  it('the response schemas refuse extra secrets and missing fields', () => {
+    expect(
+      CredentialSummary.safeParse({
+        key_id: 'k',
+        platform: 'p',
+        status: 'active',
+        created_at: '2026-11-21T10:00:00.000Z',
+        api_key: 'secret',
+      }).success,
+    ).toBe(false);
+    expect(StaffMember.safeParse({ id: T, email: 'a@b.co', roles: [] }).success).toBe(false);
+    expect(TenantView.safeParse({ id: T, type: 'operator', name: 'a', slug: 'a' }).success).toBe(
+      false,
+    );
+    expect(SignupResponse.safeParse({ tenant: { id: T } }).success).toBe(false);
+    expect(
+      LaunchResponse.safeParse({ access_token: 't', token_type: 'Bearer', expires_in: 900 }).success,
     ).toBe(false);
   });
 });

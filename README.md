@@ -84,6 +84,13 @@ Layout and patterns: [`memory/systemPatterns.md`](memory/systemPatterns.md). Con
   (`.deckhand/deploy.yml`) points at it.
 - `PLATFORM_ADMIN_TOKEN` must not start with `dev-` in production.
 
+## Next
+
+- Refresh tokens and family revocation (backlog MIO-042 tail). For now an access token lives 15 minutes
+  and there is no refresh: a player or operator signs in again when it expires. Deferred on purpose for the
+  first submission.
+- Sign-in rate limit and lockout (MIO-043).
+
 ## License
 
 MIT, see [`LICENSE`](LICENSE).
