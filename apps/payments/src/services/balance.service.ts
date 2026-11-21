@@ -30,10 +30,18 @@ export class BalanceService {
     @Optional() @Inject(BALANCE_CACHE) private readonly cache: RedisCache | null,
   ) {}
 
-  async readByPlayer(playerId: string): Promise<WalletBalance> {
+  /**
+   * The player's balance in ONE environment (default production). The environment comes from the
+   * token claim at the controller, never from a request value; a production read cannot see a
+   * sandbox wallet and the other way round (X-2).
+   */
+  async readByPlayer(
+    playerId: string,
+    opts: { sandbox: boolean } = { sandbox: false },
+  ): Promise<WalletBalance> {
     const { tenantId } = currentTenant();
     const walletId = await this.db.tenantTx(async (tx) => {
-      const wallet = await this.repo.walletByPlayer(tx, tenantId, playerId);
+      const wallet = await this.repo.walletByPlayer(tx, tenantId, playerId, opts.sandbox);
       return wallet?.walletId ?? null;
     });
     if (!walletId) throw new LedgerError('wallet_not_found');
@@ -53,7 +61,9 @@ export class BalanceService {
     const payload = event.payload as { wallet_id?: string; player_id?: string };
     const walletId =
       payload.wallet_id ??
-      (payload.player_id ? await this.walletOfPlayer(event.tenant_id, payload.player_id) : null);
+      (payload.player_id
+        ? await this.walletOfPlayer(event.tenant_id, payload.player_id, event.sandbox === true)
+        : null);
     if (!walletId) return;
     try {
       await this.cache.del(tenantCacheKey(event.tenant_id, 'balance', walletId));
@@ -62,10 +72,14 @@ export class BalanceService {
     }
   }
 
-  private walletOfPlayer(tenantId: string, playerId: string): Promise<string | null> {
+  private walletOfPlayer(
+    tenantId: string,
+    playerId: string,
+    sandbox: boolean,
+  ): Promise<string | null> {
     return runWithTenant({ tenantId }, () =>
       this.db.tenantTx(async (tx) => {
-        const wallet = await this.repo.walletByPlayer(tx, tenantId, playerId);
+        const wallet = await this.repo.walletByPlayer(tx, tenantId, playerId, sandbox);
         return wallet?.walletId ?? null;
       }),
     );

@@ -15,6 +15,7 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "start": "node dist/main.js",
     "migrate": "node dist/migrate.js",
+    "ledger:report": "node dist/ledger-report.js",
     "lint": "eslint src --max-warnings=0",
     "test": "jest --passWithNoTests",
     "test:db": "jest --testMatch '**/*.pgtest.ts' --runInBand"

@@ -12,13 +12,32 @@ export interface UsageReportRow {
 /** Data access of usage metering. Tenant rows only; every statement is parameterised. */
 @Injectable()
 export class UsageRepository {
-  /** Count an event once: false when `(tenant_id, event_id)` was already counted. */
-  async markCounted(tx: Tx, tenantId: string, eventId: string): Promise<boolean> {
+  /**
+   * Count a SPIN once: false when `(tenant_id, spin_id)` was already counted, whatever event id or
+   * period the repeat carries (a re-published spin gets a new `event_id`). The first event decides
+   * the period.
+   */
+  async markCounted(
+    tx: Tx,
+    tenantId: string,
+    spinId: string,
+    eventId: string,
+    occurredAt: string,
+  ): Promise<boolean> {
     const rows = (await tx.query(
-      `INSERT INTO usage_events (tenant_id, event_id) VALUES ($1, $2) ON CONFLICT DO NOTHING RETURNING event_id`,
-      [tenantId, eventId],
+      `INSERT INTO usage_events (tenant_id, spin_id, event_id, occurred_at) VALUES ($1, $2, $3, $4)
+       ON CONFLICT DO NOTHING RETURNING spin_id`,
+      [tenantId, spinId, eventId, occurredAt],
     )) as Row[];
     return rows.length > 0;
+  }
+
+  /** The id-only registry the scheduled jobs list tenants from (shared with the ledger's wallets). */
+  async registerTenant(tx: Tx, tenantId: string): Promise<void> {
+    await tx.query(
+      `INSERT INTO reconciliation_tenants (tenant_id) VALUES ($1) ON CONFLICT DO NOTHING`,
+      [tenantId],
+    );
   }
 
   async addSpin(tx: Tx, tenantId: string, period: string): Promise<void> {

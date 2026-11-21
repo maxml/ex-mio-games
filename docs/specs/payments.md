@@ -90,23 +90,23 @@ Balances are `credits - debits` for player accounts and `tenant_redeemed`, `debi
 
 Schemas: `packages/contracts/src/payments.ts`. All routes parse input with them (`parseInput`).
 
-| Route                                  | Who                  | Body                              | Success                   |
-| -------------------------------------- | -------------------- | --------------------------------- | ------------------------- |
-| `POST /internal/v1/tenants/:tenantId/reserves` | service `engagement` | `ReserveCoinsRequest` (with `sandbox`) | 201 `CoinOperationResult` |
-| `POST /internal/v1/tenants/:tenantId/reserves/:reserveId/capture` | service `engagement` | `ReserveRefRequest` (empty) | 200/201 |
-| `POST /internal/v1/tenants/:tenantId/reserves/:reserveId/release` | service `engagement` | `ReserveRefRequest` (empty) | 200/201 |
-| `POST /internal/v1/tenants/:tenantId/reserves/:reserveId/refund` | service `engagement` | `ReserveRefRequest` (empty) | 200/201 |
-| `GET /internal/v1/tenants/:tenantId/players/:playerId/balance` | service `engagement` | none | 200 `WalletBalance` |
-| `GET /v1/me/balance`                   | player               | none; the player is the principal | 200 `WalletBalance`       |
-| `GET /v1/players/:player_id/balance`   | operator             | none                              | 200 `WalletBalance`       |
-| `GET /v1/billing/plans`                | operator             | none                              | 200 `BillingPlan[]`       |
-| `POST /v1/billing/attempts`            | operator             | `CreateAttemptRequest`            | 201 `PaymentAttempt`      |
-| `GET /v1/billing/attempts/:id`         | operator             | none                              | 200 `PaymentAttempt`      |
-| `POST /v1/billing/attempts/:id/cancel` | operator             | none (Idempotency-Key)            | 200 `PaymentAttempt`      |
-| `GET /v1/billing/subscription`         | operator             | none                              | 200 `Subscription` / null |
-| `GET /v1/billing/invoices`             | operator             | none                              | 200 `Invoice[]`           |
-| `GET /v1/billing/usage?period=YYYY-MM` | operator             | none                              | 200 `UsageReport`         |
-| `POST /v1/billing/webhooks`            | the provider         | raw JSON, `x-webhook-signature`   | 200 `WebhookResult`       |
+| Route                                                             | Who                  | Body                                   | Success                   |
+| ----------------------------------------------------------------- | -------------------- | -------------------------------------- | ------------------------- |
+| `POST /internal/v1/tenants/:tenantId/reserves`                    | service `engagement` | `ReserveCoinsRequest` (with `sandbox`) | 201 `CoinOperationResult` |
+| `POST /internal/v1/tenants/:tenantId/reserves/:reserveId/capture` | service `engagement` | `ReserveRefRequest` (empty)            | 200/201                   |
+| `POST /internal/v1/tenants/:tenantId/reserves/:reserveId/release` | service `engagement` | `ReserveRefRequest` (empty)            | 200/201                   |
+| `POST /internal/v1/tenants/:tenantId/reserves/:reserveId/refund`  | service `engagement` | `ReserveRefRequest` (empty)            | 200/201                   |
+| `GET /internal/v1/tenants/:tenantId/players/:playerId/balance`    | service `engagement` | none                                   | 200 `WalletBalance`       |
+| `GET /v1/me/balance`                                              | player               | none; the player is the principal      | 200 `WalletBalance`       |
+| `GET /v1/players/:player_id/balance`                              | operator             | none                                   | 200 `WalletBalance`       |
+| `GET /v1/billing/plans`                                           | operator             | none                                   | 200 `BillingPlan[]`       |
+| `POST /v1/billing/attempts`                                       | operator             | `CreateAttemptRequest`                 | 201 `PaymentAttempt`      |
+| `GET /v1/billing/attempts/:id`                                    | operator             | none                                   | 200 `PaymentAttempt`      |
+| `POST /v1/billing/attempts/:id/cancel`                            | operator             | none (Idempotency-Key)                 | 200 `PaymentAttempt`      |
+| `GET /v1/billing/subscription`                                    | operator             | none                                   | 200 `Subscription` / null |
+| `GET /v1/billing/invoices`                                        | operator             | none                                   | 200 `Invoice[]`           |
+| `GET /v1/billing/usage?period=YYYY-MM`                            | operator             | none                                   | 200 `UsageReport`         |
+| `POST /v1/billing/webhooks`                                       | the provider         | raw JSON, `x-webhook-signature`        | 200 `WebhookResult`       |
 
 - **Payment attempt (operator checkout; coordinator addition).** `POST /v1/billing/attempts` creates an
   attempt for a plan from a test card number and starts the provider subscription; `GET` reads its state;
@@ -174,35 +174,43 @@ wallet_id, reserve_id, amount, available_after, held_after }`.
 
 ## 4. Data model and database invariants
 
-Tables, all with `tenant_id` and `ENABLE`+`FORCE` RLS plus one policy via `enableTenantRls`: `wallets`,
-`wallet_owner_links(tenant_id, wallet_id, user_id)`, `accounts(tenant_id, id, kind, wallet_id, currency)`,
+Tables, all with `tenant_id` and `ENABLE`+`FORCE` RLS plus one policy via `enableTenantRls`: `wallets(tenant_id, id, sandbox)`,
+`wallet_owner_links(tenant_id, wallet_id, user_id, sandbox)`, `accounts(tenant_id, id, kind, wallet_id, currency,
+sandbox)`,
 `balances(tenant_id, account_id, amount BIGINT)`, `journal_transactions(tenant_id, id, operation_type,
 operation_id, currency, created_at, created_by)`, `ledger_entries(tenant_id, id, transaction_id, account_id,
 direction, amount BIGINT, currency)`, `reserves(tenant_id, id, wallet_id, amount BIGINT, state, created_at
-DEFAULT now(), state_changed_at DEFAULT now())`, `reconciliation_runs`, `usage_events(tenant_id, event_id)`,
+DEFAULT now(), state_changed_at DEFAULT now())`, `reconciliation_runs`, `usage_events(tenant_id, spin_id, event_id,
+occurred_at)` (primary key `(tenant_id, spin_id)`: a spin is metered once whatever event carries it, D-20),
 `usage_meters`, `usage_players(tenant_id, period, player_key)`, `usage_reports`, `subscriptions`, `invoices`,
 `payment_attempts(tenant_id, id, plan_id, subscription_id, state, card_last4, card_brand, created_at,
 updated_at)` (no card number column),
 `billing_webhook_events(tenant_id, provider, event_id)`, `idempotency_keys`. Tenant-less on purpose (the
 whole list): `billing_plans`, `outbox`, `inbox`, `migrations`, `reconciliation_tenants(tenant_id)` (an id-only
-registry filled when a tenant's first wallet is created, so the scheduled job can list tenants without
-`BYPASSRLS`). The foundation's `coin_credits` is dropped by the migration.
+registry filled when a tenant's first wallet is created or its first spin is metered, so the scheduled jobs can
+list tenants without `BYPASSRLS`). The foundation's `coin_credits` is dropped by the migration `Ledger`.
 
-**Provisioning (F7).** A wallet, its two accounts and the tenant's two system accounts are created inside the
-first credit's transaction with `INSERT ... ON CONFLICT DO NOTHING` and a re-select, on `UNIQUE (tenant_id,
-user_id)` of the link, `UNIQUE (tenant_id, kind) WHERE wallet_id IS NULL` and `UNIQUE (tenant_id, wallet_id,
-kind)` of accounts. Parallel first credits never create a second wallet or system account.
+**Provisioning (F7).** A wallet, its two accounts and the tenant's two system accounts of the environment are
+created inside the first credit's transaction with `INSERT ... ON CONFLICT DO NOTHING` and a re-select, on
+`UNIQUE (tenant_id, user_id, sandbox)` of the link, `UNIQUE (tenant_id, kind, sandbox) WHERE wallet_id IS NULL`
+and `UNIQUE (tenant_id, wallet_id, kind)` of accounts. Parallel first credits never create a second wallet or
+system account. Sandbox coins have their own `tenant_issuance` and `tenant_redeemed` accounts, so the
+production conservation figures never include them; the reconciliation report shows production figures and its
+`holds` is true only when the identity holds in both environments.
 
-**Roles and grants (D-9).** `docker/postgres/init.sh` creates `payments_app` (`LOGIN NOSUPERUSER NOCREATEDB
-NOCREATEROLE NOREPLICATION NOBYPASSRLS`, not a member of `payments`, `GRANT CONNECT`) and nothing else. The
-migration `Ledger` (run as `payments`) holds ALL table grants, exactly, and `ledger.schema.pgtest.ts` pins
-them: `SELECT, INSERT` on `accounts`, `balances`, `billing_webhook_events`, `idempotency_keys`, `inbox`,
+**Roles and grants (D-9, D-20: the foundation owner/app split).** `docker/postgres/init.sh` (foundation)
+creates the roles `payments_owner` (owns the schema, used by `node dist/migrate.js` through
+`MIGRATION_DATABASE_URL`) and `payments_app` (`LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION
+NOBYPASSRLS`, not a member of the owner, `GRANT CONNECT`, `DATABASE_URL`). Payments has no role scheme of its
+own. ONE map, `PAYMENTS_APP_GRANTS` in the `AppRoleGrants` migration (it runs after `Ledger`, which creates the
+tables), holds ALL table grants, exactly, plus `PAYMENTS_APP_COLUMN_UPDATES` for the column-level `UPDATE`s the
+map cannot express. `ledger.schema.pgtest.ts` and `tests/compose` roles pin them: `SELECT, INSERT` on `accounts`, `balances`, `billing_webhook_events`, `idempotency_keys`, `inbox`,
 `invoices`, `journal_transactions`, `ledger_entries`, `reconciliation_runs`, `reconciliation_tenants`,
 `reserves`, `usage_events`, `usage_players`, `usage_reports`, `wallets`; `SELECT` on `billing_plans`;
 `SELECT, INSERT, UPDATE` on `outbox`, `payment_attempts`, `subscriptions`, `usage_meters`; `SELECT, INSERT, DELETE` on
 `wallet_owner_links`; column-level `UPDATE (amount)` on `balances` and `UPDATE (state, state_changed_at)` on
 `reserves`. Nothing else: no `TRUNCATE`, no `UPDATE`/`DELETE` on the journal, nothing to PUBLIC, no privilege
-on `migrations`, no `CREATE` on the schema. The `payments` role owns the tables; `migrate` connects as it.
+on `migrations`, no `CREATE` on the schema. The `payments_owner` role owns the tables; `migrate` connects as it.
 
 Constraints: `UNIQUE (tenant_id, operation_type, operation_id)` on `journal_transactions`;
 `CHECK (amount > 0 AND amount <= 1000000000000)` on entries and reserves; `CHECK (amount >= 0)` on
@@ -265,12 +273,26 @@ finished more than 2 hours ago. `runAll()` takes no tenant context, reads `recon
 each tenant in its own tenant transaction; one tenant's failure does not stop the others. It never writes to
 `balances`.
 
+**Callers of the jobs (D-20).** `LedgerJobsService.runOnce(now)` is one pass: `runAll()` for every tenant, then the
+usage report of the last complete UTC month (`UsageService.reportDue`, only for a tenant with an active
+subscription, under the stable provider key). It runs under a database advisory lock, so replicas never run it
+twice; a pass that finds a mismatch calls the error reporter (the alert) and returns `attention: true`. Two
+callers: the worker (`worker/ledger-worker.ts`, in the service process, every `LEDGER_JOBS_INTERVAL_SECONDS`,
+default 3600, 0 = off, first pass one interval after start) and the command `node dist/ledger-report.js`
+(`pnpm --filter @ex-mio/payments ledger:report`), which prints the runs and exits 0 (all ok), 1 (a mismatch or a
+failed run) or 3 (the lock is held elsewhere). The run record is read on `GET /v1/platform/ledger/reconciliation`
+(role `platform_admin`, acting inside the tenant because the record is tenant data under row-level security):
+`{ last_run }` with the time, accounts checked, mismatches by kind, the conservation report and `stale`. A
+cross-tenant overview is out of scope. Tests: `worker/ledger-worker.test.ts`, `controllers/ledger-admin.controller.test.ts`,
+`services/ledger-jobs.service.pgtest.ts`.
+
 ## 8. Usage metering (`UsageService`)
 
 `handle(manager, event)`: if `event.sandbox === true` return (a sandbox event is neither counted nor stored;
 the flag comes ONLY from the envelope, never from a payload `test`/`sandbox` marker, and no route accepts
-one). Otherwise insert `(tenant_id, event_id)` into `usage_events` (conflict = already counted), increment the
-`spins` meter and record `(period, player_key)` for MAU, period = UTC `YYYY-MM` of `occurred_at`.
+one). Otherwise insert `(tenant_id, spin_id)` into `usage_events` (conflict = already counted: a spin that engagement
+re-publishes under a NEW `event_id`, or stamps in a later month, is not counted again; the first event decides the
+period), increment the `spins` meter and record `(period, player_key)` for MAU, period = UTC `YYYY-MM` of `occurred_at`.
 `report(period)` returns `UsageReport`. `reportToProvider(period)` requires an active subscription, sends the
 quantity once with the stable key `usage:<tenant>:<period>`, then records it in `usage_reports`; a crash
 between the two is repaired by the retry because the key is stable.
@@ -328,8 +350,8 @@ All pgtests need Postgres (section 12); `*.test.ts` run without it.
 | D1-1..D1-13 spin credit through the real `InboxConsumer`                                       | D-1; MIO-082, MIO-084, MIO-086, MIO-150-20 | inbox handler, journal unique                        | `services/spin-credit.consumer.pgtest.ts`                                                      |
 | INV-B1..B3 fresh read, Redis down, tenant-scoped cache, commands never use it                  | MIO-083; D-9                               | `BalanceService`, `tenantCacheKey`                   | `services/balance.service.pgtest.ts`                                                           |
 | INV-B4 own balance only                                                                        | MIO-083                                    | controller principal                                 | `controllers/coins.controller.test.ts`                                                         |
-| INV-X1 route table exact; only `engagement` moves coins; no public credit                      | MIO-082, MIO-150-02                        | service-kit entry point, real route table                | same                                                                                           |
-| INV-X5 acting tenant refused, action list pinned                                               | D-5                                        | `ActingCoinGuard`; `COIN_VALUE_ACTIONS`            | same; `payments.contracts.test.ts`                                                             |
+| INV-X1 route table exact; only `engagement` moves coins; no public credit                      | MIO-082, MIO-150-02                        | service-kit entry point, real route table            | same                                                                                           |
+| INV-X5 acting tenant refused, action list pinned                                               | D-5                                        | `ActingCoinGuard`; `COIN_VALUE_ACTIONS`              | same; `payments.contracts.test.ts`                                                             |
 | INV-X2 validation before service                                                               | MIO-081, MIO-150-08/13                     | zod `parseInput`                                     | same                                                                                           |
 | INV-X3 defined error codes, every domain code                                                  | MIO-150-19                                 | controller exception mapping                         | same                                                                                           |
 | INV-R1..R5 reconciliation: kinds, orphan hold, unbalanced, `runAll`                            | MIO-084, MIO-150-28                        | `ReconciliationService`                              | `services/reconciliation.service.pgtest.ts`                                                    |
@@ -361,8 +383,8 @@ and transient retry in `packages/bus` (foundation fix, folded in by the coordina
 ## 12. Running the tests and stage B notes
 
 ```sh
-docker compose up -d --wait postgres          # init.sh creates the roles, including payments_app
-DATABASE_URL=postgresql://payments:payments-dev@localhost:54329/payments pnpm --filter @ex-mio/payments migrate
+docker compose up -d --wait postgres          # init.sh creates payments_owner and payments_app
+MIGRATION_DATABASE_URL=postgresql://payments_owner:payments-owner-dev@localhost:54329/payments pnpm --filter @ex-mio/payments migrate
 pnpm --filter @ex-mio/payments test           # unit: controllers (real module), provider, source rules
 pnpm --filter @ex-mio/payments test:db        # pgtests (need the database above)
 ```

@@ -9,6 +9,7 @@ import { BillingService } from '../services/billing.service';
 import { LedgerService } from '../services/ledger.service';
 import { FakePaymentProvider } from '../services/providers/fake.provider';
 import { PAYMENT_PROVIDER } from '../services/providers/payment-provider';
+import { ReconciliationService } from '../services/reconciliation.service';
 import { authFixture, type AuthFixture } from './auth';
 import { FakeCache } from './harness';
 
@@ -23,7 +24,7 @@ export interface BuiltApp {
   dbTouched: jest.Mock;
 }
 
-type Mockable = { ledger?: object; balances?: object; billing?: object };
+type Mockable = { ledger?: object; balances?: object; billing?: object; reconciliation?: object };
 
 /**
  * The REAL application module (`createAppModule`), with only the outside world replaced: the database
@@ -76,6 +77,9 @@ export async function buildApp(
   if (mock.ledger) builder = builder.overrideProvider(LedgerService).useValue(mock.ledger);
   if (mock.balances) builder = builder.overrideProvider(BalanceService).useValue(mock.balances);
   if (mock.billing) builder = builder.overrideProvider(BillingService).useValue(mock.billing);
+  if (mock.reconciliation) {
+    builder = builder.overrideProvider(ReconciliationService).useValue(mock.reconciliation);
+  }
   const mod = await builder.compile();
 
   const adapter = new FastifyAdapter();

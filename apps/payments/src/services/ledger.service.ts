@@ -6,7 +6,6 @@ import {
   uuidv7,
   type CoinOperationResult,
   type ReserveCoinsRequest,
-  type ReserveRefRequest,
   type ReserveState,
 } from '@ex-mio/contracts';
 import type { IdempotentOutcome } from '@ex-mio/idempotency';
@@ -77,11 +76,18 @@ const PHASES: Record<
   },
 };
 
+/** Capture, release and refund name the reserve; the controller takes the id from the path (X-4). */
+export interface ReserveRef {
+  reserve_id: string;
+}
+
 export interface SpinCredit {
   tenantId: string;
   spinId: string;
   playerId: string;
   amount: number;
+  /** The producer's environment flag from the envelope (X-2/X-3): sandbox coins go to the sandbox wallet. */
+  sandbox: boolean;
 }
 
 /**
@@ -116,15 +122,15 @@ export class LedgerService {
     });
   }
 
-  capture(input: ReserveRefRequest, key: string): Promise<CoinOutcome> {
+  capture(input: ReserveRef, key: string): Promise<CoinOutcome> {
     return this.command('capture', input, key);
   }
 
-  release(input: ReserveRefRequest, key: string): Promise<CoinOutcome> {
+  release(input: ReserveRef, key: string): Promise<CoinOutcome> {
     return this.command('release', input, key);
   }
 
-  refund(input: ReserveRefRequest, key: string): Promise<CoinOutcome> {
+  refund(input: ReserveRef, key: string): Promise<CoinOutcome> {
     return this.command('refund', input, key);
   }
 
@@ -143,13 +149,19 @@ export class LedgerService {
     tx: Tx,
     input: SpinCredit,
   ): Promise<{ transactionId: string; created: boolean }> {
-    const { tenantId, spinId, playerId, amount } = input;
+    const { tenantId, spinId, playerId, amount, sandbox } = input;
     const sameSpin = async () => {
       const existing = await this.repo.journalByOperation(tx, tenantId, 'spin_award', spinId);
       if (!existing) return null;
       const award = await this.repo.awardOf(tx, tenantId, existing.id);
       // The player is compared while the identity link exists; once erased only the amount can be.
-      if (!award || award.amount !== amount || (award.playerId && award.playerId !== playerId)) {
+      // The environment is part of the spin: the same spin id never moves between wallets.
+      if (
+        !award ||
+        award.amount !== amount ||
+        award.sandbox !== sandbox ||
+        (award.playerId && award.playerId !== playerId)
+      ) {
         throw new LedgerError('operation_conflict');
       }
       return { transactionId: existing.id, created: false };
@@ -158,8 +170,8 @@ export class LedgerService {
     const replay = await sameSpin();
     if (replay) return replay;
 
-    const system = await this.repo.ensureSystemAccounts(tx, tenantId);
-    const wallet = await this.repo.ensureWallet(tx, tenantId, playerId);
+    const system = await this.repo.ensureSystemAccounts(tx, tenantId, sandbox);
+    const wallet = await this.repo.ensureWallet(tx, tenantId, playerId, sandbox);
     const transactionId = uuidv7();
     const inserted = await this.repo.insertJournal(tx, {
       tenantId,
@@ -188,6 +200,7 @@ export class LedgerService {
       createEvent({
         type: 'payments.coins.credited',
         tenantId,
+        sandbox,
         payload: { credit_id: transactionId, player_id: playerId, amount },
       }),
     );
@@ -206,8 +219,15 @@ export class LedgerService {
     const again = await this.reserveReplay(tx, tenantId, input);
     if (again) return { status: 200, body: again };
 
-    const wallet = await this.repo.walletByPlayer(tx, tenantId, input.player_id);
-    // A player who never won anything has no wallet and no coins.
+    // The HTTP boundary requires the flag (a missing one is a 400); only an explicit `true` selects the
+    // sandbox wallet, so a caller that bypassed the boundary never reaches sandbox coins by accident.
+    const wallet = await this.repo.walletByPlayer(
+      tx,
+      tenantId,
+      input.player_id,
+      input.sandbox === true,
+    );
+    // A player who never won anything in this environment has no wallet and no coins.
     if (!wallet) throw new LedgerError('insufficient_funds');
 
     const transactionId = uuidv7();
@@ -257,7 +277,14 @@ export class LedgerService {
       amount: input.amount,
       walletId: wallet.walletId,
     });
-    await this.publishMovement(tx, tenantId, 'payments.coins.reserved', body, input.player_id);
+    await this.publishMovement(
+      tx,
+      tenantId,
+      'payments.coins.reserved',
+      body,
+      input.player_id,
+      wallet.sandbox,
+    );
     await this.faults.hit('after_outbox', tx);
     return { status: 201, body };
   }
@@ -271,7 +298,11 @@ export class LedgerService {
     const reserve = await this.repo.reserveById(tx, tenantId, input.reserve_id);
     if (!reserve) return null;
     const owner = await this.repo.playerOfWallet(tx, tenantId, reserve.walletId);
-    if (reserve.amount !== input.amount || (owner !== null && owner !== input.player_id)) {
+    if (
+      reserve.amount !== input.amount ||
+      reserve.sandbox !== (input.sandbox === true) ||
+      (owner !== null && owner !== input.player_id)
+    ) {
       throw new LedgerError('operation_conflict');
     }
     return this.storedResult(
@@ -286,7 +317,7 @@ export class LedgerService {
 
   // ---- capture, release, refund ---------------------------------------------------------------
 
-  private command(command: Command, input: ReserveRefRequest, key: string): Promise<CoinOutcome> {
+  private command(command: Command, input: ReserveRef, key: string): Promise<CoinOutcome> {
     const { tenantId, principalId } = this.actor();
     return this.db.idempotent<CoinOperationResult>({
       principalId,
@@ -326,8 +357,10 @@ export class LedgerService {
       throw new LedgerError(outcome as 'reserve_already_captured');
     }
 
+    // The reserve's own wallet decides the environment: capture, release and refund never read the
+    // request or the player to choose one, so sandbox coins cannot settle against production accounts.
     const wallet = await this.mustWallet(tx, tenantId, moved.walletId);
-    const system = await this.repo.systemAccounts(tx, tenantId);
+    const system = await this.repo.systemAccounts(tx, tenantId, wallet.sandbox);
     const accounts: Record<AccountKind, string | undefined> = {
       player_available: wallet.available,
       player_held: wallet.held,
@@ -367,7 +400,14 @@ export class LedgerService {
     });
     const owner = await this.repo.playerOfWallet(tx, tenantId, moved.walletId);
     // After an erasure the person is unknown; the wallet id is the stable pseudonym that is left.
-    await this.publishMovement(tx, tenantId, phase.event, body, owner ?? moved.walletId);
+    await this.publishMovement(
+      tx,
+      tenantId,
+      phase.event,
+      body,
+      owner ?? moved.walletId,
+      wallet.sandbox,
+    );
     await this.faults.hit('after_outbox', tx);
     return { status: 201, body };
   }
@@ -461,12 +501,14 @@ export class LedgerService {
       | 'payments.coins.refunded',
     body: CoinOperationResult,
     playerId: string,
+    sandbox: boolean,
   ): Promise<void> {
     await this.db.publish(
       tx,
       createEvent({
         type,
         tenantId,
+        sandbox,
         payload: {
           transaction_id: body.transaction_id,
           player_id: playerId,

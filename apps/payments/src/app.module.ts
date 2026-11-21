@@ -1,15 +1,18 @@
 import { Module, type DynamicModule } from '@nestjs/common';
-import { BusModule, BusRuntime, Db, HealthModule, probe } from '@ex-mio/service-kit';
-import { TenancyModule } from '@ex-mio/tenancy';
+import {
+  BusModule,
+  BusRuntime,
+  Db,
+  HealthModule,
+  ServiceAuthModule,
+  probe,
+} from '@ex-mio/service-kit';
 import type { Config } from './config';
-import { BalanceController } from './controllers/balance.controller';
-import { BillingController } from './controllers/billing.controller';
-import { CoinsController } from './controllers/coins.controller';
-import { ActingTenantGuard, PrincipalGuard } from './controllers/principal.guard';
-import { SERVICE_TOKENS, ServiceTokenGuard } from './controllers/service-token.guard';
+import { paymentsControllers } from './controllers';
 import { LedgerModule } from './ledger.module';
 import { ModelModule } from './model/model.module';
 import { PAYMENTS_BINDINGS, PaymentsInboxHandler } from './services/inbox.handler';
+import { LEDGER_JOBS_INTERVAL_MS, LedgerWorker } from './worker/ledger-worker';
 
 @Module({})
 class PaymentsModule {}
@@ -30,7 +33,9 @@ export function createAppModule(config: Config): DynamicModule {
   return {
     module: PaymentsModule,
     imports: [
-      TenancyModule.forRoot(),
+      // The ONE auth entry point (D-4): tenant and principal come from a verified token (user mode)
+      // or from the path of an allow-listed internal route (service mode). No resolver, no header.
+      ServiceAuthModule.forService({ audience: 'payments', identityUrl: config.IDENTITY_URL }),
       ModelModule,
       LedgerModule,
       bus,
@@ -43,12 +48,11 @@ export function createAppModule(config: Config): DynamicModule {
         }),
       }),
     ],
-    controllers: [CoinsController, BalanceController, BillingController],
+    controllers: paymentsControllers,
     providers: [
-      { provide: SERVICE_TOKENS, useValue: config.SERVICE_TOKENS },
-      ServiceTokenGuard,
-      ActingTenantGuard,
-      PrincipalGuard,
+      // The worker (D-20): reconciliation and usage report on an interval, next to the outbox relay.
+      { provide: LEDGER_JOBS_INTERVAL_MS, useValue: config.LEDGER_JOBS_INTERVAL_SECONDS * 1000 },
+      LedgerWorker,
     ],
   };
 }

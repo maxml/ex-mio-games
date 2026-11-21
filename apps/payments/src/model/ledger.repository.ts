@@ -14,6 +14,8 @@ export interface WalletAccounts {
   walletId: string;
   available: string;
   held: string;
+  /** The environment of the wallet (X-2). Production and sandbox coins never mix. */
+  sandbox: boolean;
 }
 
 export interface SystemAccounts {
@@ -31,6 +33,8 @@ export interface ReserveRow {
   walletId: string;
   amount: number;
   state: ReserveState;
+  /** The environment of the reserve's wallet. */
+  sandbox: boolean;
 }
 
 export interface JournalRow {
@@ -58,13 +62,20 @@ function rowsOf(raw: unknown, isModifying = false): Row[] {
 export class LedgerRepository {
   // ---- wallets and accounts -------------------------------------------------------------------
 
-  async walletByPlayer(tx: Tx, tenantId: string, playerId: string): Promise<WalletAccounts | null> {
+  /** The player's wallet of ONE environment: a production lookup never returns a sandbox wallet. */
+  async walletByPlayer(
+    tx: Tx,
+    tenantId: string,
+    playerId: string,
+    sandbox: boolean,
+  ): Promise<WalletAccounts | null> {
     const rows = rowsOf(
       await tx.query(
-        `SELECT a.wallet_id, a.id, a.kind FROM wallet_owner_links l
+        `SELECT a.wallet_id, a.id, a.kind, w.sandbox FROM wallet_owner_links l
+           JOIN wallets w ON w.tenant_id = l.tenant_id AND w.id = l.wallet_id
            JOIN accounts a ON a.tenant_id = l.tenant_id AND a.wallet_id = l.wallet_id
-          WHERE l.tenant_id = $1 AND l.user_id = $2`,
-        [tenantId, playerId],
+          WHERE l.tenant_id = $1 AND l.user_id = $2 AND l.sandbox = $3 AND w.sandbox = $3`,
+        [tenantId, playerId, sandbox],
       ),
     );
     return toWallet(rows);
@@ -73,7 +84,9 @@ export class LedgerRepository {
   async walletById(tx: Tx, tenantId: string, walletId: string): Promise<WalletAccounts | null> {
     const rows = rowsOf(
       await tx.query(
-        `SELECT a.wallet_id, a.id, a.kind FROM accounts a WHERE a.tenant_id = $1 AND a.wallet_id = $2`,
+        `SELECT a.wallet_id, a.id, a.kind, w.sandbox FROM accounts a
+           JOIN wallets w ON w.tenant_id = a.tenant_id AND w.id = a.wallet_id
+          WHERE a.tenant_id = $1 AND a.wallet_id = $2`,
         [tenantId, walletId],
       ),
     );
@@ -91,11 +104,17 @@ export class LedgerRepository {
     return (rows[0]?.user_id as string | undefined) ?? null;
   }
 
-  async systemAccounts(tx: Tx, tenantId: string): Promise<Partial<SystemAccounts>> {
+  /** The tenant's system accounts of one environment (sandbox coins have their own, X-2). */
+  async systemAccounts(
+    tx: Tx,
+    tenantId: string,
+    sandbox: boolean,
+  ): Promise<Partial<SystemAccounts>> {
     const rows = rowsOf(
-      await tx.query(`SELECT id, kind FROM accounts WHERE tenant_id = $1 AND wallet_id IS NULL`, [
-        tenantId,
-      ]),
+      await tx.query(
+        `SELECT id, kind FROM accounts WHERE tenant_id = $1 AND wallet_id IS NULL AND sandbox = $2`,
+        [tenantId, sandbox],
+      ),
     );
     const out: Partial<SystemAccounts> = {};
     for (const r of rows) {
@@ -109,54 +128,64 @@ export class LedgerRepository {
    * The tenant's two system accounts, created on first use with `INSERT ... ON CONFLICT DO NOTHING`
    * and a re-select, so parallel first credits end up with one account of each kind (F7).
    */
-  async ensureSystemAccounts(tx: Tx, tenantId: string): Promise<SystemAccounts> {
-    const have = await this.systemAccounts(tx, tenantId);
+  async ensureSystemAccounts(tx: Tx, tenantId: string, sandbox: boolean): Promise<SystemAccounts> {
+    const have = await this.systemAccounts(tx, tenantId, sandbox);
     if (have.issuance && have.redeemed) return have as SystemAccounts;
     for (const kind of ['tenant_issuance', 'tenant_redeemed'] as const) {
       const id = uuidv7();
       const inserted = rowsOf(
         await tx.query(
-          `INSERT INTO accounts (tenant_id, id, kind, wallet_id, currency)
-           VALUES ($1, $2, $3, NULL, $4) ON CONFLICT DO NOTHING RETURNING id`,
-          [tenantId, id, kind, COIN_CURRENCY],
+          `INSERT INTO accounts (tenant_id, id, kind, wallet_id, currency, sandbox)
+           VALUES ($1, $2, $3, NULL, $4, $5) ON CONFLICT DO NOTHING RETURNING id`,
+          [tenantId, id, kind, COIN_CURRENCY, sandbox],
         ),
       );
       if (inserted.length > 0) await this.insertBalance(tx, tenantId, id);
     }
-    const now = await this.systemAccounts(tx, tenantId);
+    const now = await this.systemAccounts(tx, tenantId, sandbox);
     if (!now.issuance || !now.redeemed) throw new Error('tenant system accounts are missing');
     return now as SystemAccounts;
   }
 
   /**
-   * The wallet of a player, created with its two accounts on first use. The link row is the gate:
-   * `ON CONFLICT (tenant_id, user_id) DO NOTHING` lets exactly one parallel caller create it.
+   * The wallet of a player in one environment, created with its two accounts on first use. The link
+   * row is the gate: `ON CONFLICT (tenant_id, user_id, sandbox) DO NOTHING` lets exactly one parallel
+   * caller create it.
    */
-  async ensureWallet(tx: Tx, tenantId: string, playerId: string): Promise<WalletAccounts> {
-    const found = await this.walletByPlayer(tx, tenantId, playerId);
+  async ensureWallet(
+    tx: Tx,
+    tenantId: string,
+    playerId: string,
+    sandbox: boolean,
+  ): Promise<WalletAccounts> {
+    const found = await this.walletByPlayer(tx, tenantId, playerId, sandbox);
     if (found) return found;
     const walletId = uuidv7();
     const claimed = rowsOf(
       await tx.query(
-        `INSERT INTO wallet_owner_links (tenant_id, wallet_id, user_id) VALUES ($1, $2, $3)
-         ON CONFLICT (tenant_id, user_id) DO NOTHING RETURNING wallet_id`,
-        [tenantId, walletId, playerId],
+        `INSERT INTO wallet_owner_links (tenant_id, wallet_id, user_id, sandbox) VALUES ($1, $2, $3, $4)
+         ON CONFLICT (tenant_id, user_id, sandbox) DO NOTHING RETURNING wallet_id`,
+        [tenantId, walletId, playerId, sandbox],
       ),
     );
     if (claimed.length === 0) {
-      const winner = await this.walletByPlayer(tx, tenantId, playerId);
+      const winner = await this.walletByPlayer(tx, tenantId, playerId, sandbox);
       if (!winner) throw new Error('wallet link vanished after a conflict');
       return winner;
     }
-    await tx.query(`INSERT INTO wallets (tenant_id, id) VALUES ($1, $2)`, [tenantId, walletId]);
-    const accounts: WalletAccounts = { walletId, available: uuidv7(), held: uuidv7() };
+    await tx.query(`INSERT INTO wallets (tenant_id, id, sandbox) VALUES ($1, $2, $3)`, [
+      tenantId,
+      walletId,
+      sandbox,
+    ]);
+    const accounts: WalletAccounts = { walletId, available: uuidv7(), held: uuidv7(), sandbox };
     for (const [id, kind] of [
       [accounts.available, 'player_available'],
       [accounts.held, 'player_held'],
     ] as const) {
       await tx.query(
-        `INSERT INTO accounts (tenant_id, id, kind, wallet_id, currency) VALUES ($1, $2, $3, $4, $5)`,
-        [tenantId, id, kind, walletId, COIN_CURRENCY],
+        `INSERT INTO accounts (tenant_id, id, kind, wallet_id, currency, sandbox) VALUES ($1, $2, $3, $4, $5, $6)`,
+        [tenantId, id, kind, walletId, COIN_CURRENCY, sandbox],
       );
       await this.insertBalance(tx, tenantId, id);
     }
@@ -298,10 +327,15 @@ export class LedgerRepository {
     tx: Tx,
     tenantId: string,
     transactionId: string,
-  ): Promise<{ amount: number; walletId: string | null; playerId: string | null } | null> {
+  ): Promise<{
+    amount: number;
+    walletId: string | null;
+    playerId: string | null;
+    sandbox: boolean;
+  } | null> {
     const rows = rowsOf(
       await tx.query(
-        `SELECT e.amount, a.wallet_id, l.user_id FROM ledger_entries e
+        `SELECT e.amount, a.wallet_id, a.sandbox, l.user_id FROM ledger_entries e
            JOIN accounts a ON a.tenant_id = e.tenant_id AND a.id = e.account_id
            LEFT JOIN wallet_owner_links l ON l.tenant_id = a.tenant_id AND l.wallet_id = a.wallet_id
           WHERE e.tenant_id = $1 AND e.transaction_id = $2 AND e.direction = 'credit'`,
@@ -314,6 +348,7 @@ export class LedgerRepository {
       amount: Number(r.amount),
       walletId: (r.wallet_id as string | null) ?? null,
       playerId: (r.user_id as string | null) ?? null,
+      sandbox: r.sandbox === true,
     };
   }
 
@@ -322,7 +357,9 @@ export class LedgerRepository {
   async reserveById(tx: Tx, tenantId: string, reserveId: string): Promise<ReserveRow | null> {
     const rows = rowsOf(
       await tx.query(
-        `SELECT wallet_id, amount, state FROM reserves WHERE tenant_id = $1 AND id = $2`,
+        `SELECT r.wallet_id, r.amount, r.state, w.sandbox FROM reserves r
+           JOIN wallets w ON w.tenant_id = r.tenant_id AND w.id = r.wallet_id
+          WHERE r.tenant_id = $1 AND r.id = $2`,
         [tenantId, reserveId],
       ),
     );
@@ -370,7 +407,7 @@ function toWallet(rows: Row[]): WalletAccounts | null {
   const available = rows.find((r) => r.kind === 'player_available')?.id as string | undefined;
   const held = rows.find((r) => r.kind === 'player_held')?.id as string | undefined;
   if (!available || !held) throw new Error('wallet accounts are incomplete');
-  return { walletId, available, held };
+  return { walletId, available, held, sandbox: rows[0]!.sandbox === true };
 }
 
 function toReserve(r: Row): ReserveRow {
@@ -378,5 +415,6 @@ function toReserve(r: Row): ReserveRow {
     walletId: r.wallet_id as string,
     amount: Number(r.amount),
     state: r.state as ReserveState,
+    sandbox: r.sandbox === true,
   };
 }

@@ -26,7 +26,7 @@ export class ReconciliationService {
     try {
       scan = await this.db.tenantTx(async (tx) => {
         // One snapshot for all the checks, so activity during the run cannot look like drift.
-        await tx.query('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ');
+        await this.repo.useSnapshot(tx);
         await this.faults.hit('reconciliation_scan', tx);
         return this.repo.scan(tx, tenantId);
       });
@@ -36,7 +36,13 @@ export class ReconciliationService {
       scan = null;
     }
     const finishedAt = scan ? new Date() : null;
-    const status = scan === null ? 'failed' : scan.mismatches.length === 0 ? 'ok' : 'mismatch';
+    // A broken conservation identity is a mismatch even when no single row is flagged (R-7).
+    const status =
+      scan === null
+        ? 'failed'
+        : scan.mismatches.length === 0 && scan.report.holds
+          ? 'ok'
+          : 'mismatch';
     const run = {
       id: this.repo.newRunId(),
       status,

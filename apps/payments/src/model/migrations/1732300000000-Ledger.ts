@@ -2,9 +2,10 @@ import type { MigrationInterface, QueryRunner } from 'typeorm';
 import { disableTenantRls, enableTenantRls } from '@ex-mio/tenancy';
 
 /**
- * The payments ledger, usage metering and billing schema, and ALL grants of the runtime role
- * `payments_app` (decision D-9). `docker/postgres/init.sh` only creates the role and its CONNECT.
- * This migration runs as the owner role `payments`; the runtime role owns nothing.
+ * The payments ledger, usage metering and billing schema. The grants of the runtime role
+ * `payments_app` are NOT here: they are one map (`PAYMENTS_APP_GRANTS`) applied by the
+ * `AppRoleGrants` migration that runs after this one (foundation owner/app split).
+ * This migration runs as the owner role `payments_owner`; the runtime role owns nothing.
  *
  * Every tenant table is ENABLE + FORCE row level security with one policy (enableTenantRls). The
  * tenant-less tables are: billing_plans, outbox, inbox, migrations, reconciliation_tenants.
@@ -93,18 +94,21 @@ export class Ledger1732300000000 implements MigrationInterface {
       CREATE TABLE "wallets" (
         "tenant_id" uuid NOT NULL,
         "id" uuid NOT NULL,
+        "sandbox" boolean NOT NULL DEFAULT false,
         "created_at" timestamptz NOT NULL DEFAULT now(),
         PRIMARY KEY ("tenant_id", "id")
       )`);
     // The only table that ties a wallet to a person. Deleting a row is the erasure (MIO-107).
+    // A player has one wallet per environment (X-2): the link carries the wallet's `sandbox` flag.
     await q.query(`
       CREATE TABLE "wallet_owner_links" (
         "tenant_id" uuid NOT NULL,
         "wallet_id" uuid NOT NULL,
         "user_id" uuid NOT NULL,
+        "sandbox" boolean NOT NULL DEFAULT false,
         "created_at" timestamptz NOT NULL DEFAULT now(),
         PRIMARY KEY ("tenant_id", "wallet_id"),
-        UNIQUE ("tenant_id", "user_id"),
+        UNIQUE ("tenant_id", "user_id", "sandbox"),
         FOREIGN KEY ("tenant_id", "wallet_id") REFERENCES "wallets" ("tenant_id", "id")
           DEFERRABLE INITIALLY DEFERRED
       )`);
@@ -116,14 +120,17 @@ export class Ledger1732300000000 implements MigrationInterface {
           CHECK ("kind" IN ('player_available', 'player_held', 'tenant_issuance', 'tenant_redeemed')),
         "wallet_id" uuid,
         "currency" text NOT NULL,
+        "sandbox" boolean NOT NULL DEFAULT false,
         "created_at" timestamptz NOT NULL DEFAULT now(),
         PRIMARY KEY ("tenant_id", "id"),
         CHECK (("kind" IN ('player_available', 'player_held')) = ("wallet_id" IS NOT NULL)),
         FOREIGN KEY ("tenant_id", "wallet_id") REFERENCES "wallets" ("tenant_id", "id")
           DEFERRABLE INITIALLY DEFERRED
       )`);
+    // One issuance and one redeemed account per tenant AND environment: sandbox coins are issued
+    // from, and counted against, their own system accounts (X-2).
     await q.query(
-      `CREATE UNIQUE INDEX "accounts_tenant_kind" ON "accounts" ("tenant_id", "kind") WHERE "wallet_id" IS NULL`,
+      `CREATE UNIQUE INDEX "accounts_tenant_kind" ON "accounts" ("tenant_id", "kind", "sandbox") WHERE "wallet_id" IS NULL`,
     );
     await q.query(
       `CREATE UNIQUE INDEX "accounts_wallet_kind" ON "accounts" ("tenant_id", "wallet_id", "kind") WHERE "wallet_id" IS NOT NULL`,
@@ -213,9 +220,11 @@ export class Ledger1732300000000 implements MigrationInterface {
     await q.query(`
       CREATE TABLE "usage_events" (
         "tenant_id" uuid NOT NULL,
+        "spin_id" uuid NOT NULL,
         "event_id" uuid NOT NULL,
+        "occurred_at" timestamptz NOT NULL,
         "counted_at" timestamptz NOT NULL DEFAULT now(),
-        PRIMARY KEY ("tenant_id", "event_id")
+        PRIMARY KEY ("tenant_id", "spin_id")
       )`);
     await q.query(`
       CREATE TABLE "usage_meters" (
@@ -323,20 +332,7 @@ export class Ledger1732300000000 implements MigrationInterface {
       )`);
 
     for (const table of TENANT_TABLES) await enableTenantRls(q, table);
-
-    // ---- grants of the runtime role (D-9): the exact list, pinned by ledger.schema.pgtest.ts -----
-    await q.query(
-      `GRANT SELECT, INSERT ON accounts, balances, billing_webhook_events, idempotency_keys, inbox,
-         invoices, journal_transactions, ledger_entries, reconciliation_runs, reconciliation_tenants,
-         reserves, usage_events, usage_players, usage_reports, wallets TO payments_app`,
-    );
-    await q.query(`GRANT SELECT ON billing_plans TO payments_app`);
-    await q.query(
-      `GRANT SELECT, INSERT, UPDATE ON outbox, payment_attempts, subscriptions, usage_meters TO payments_app`,
-    );
-    await q.query(`GRANT SELECT, INSERT, DELETE ON wallet_owner_links TO payments_app`);
-    await q.query(`GRANT UPDATE (amount) ON balances TO payments_app`);
-    await q.query(`GRANT UPDATE (state, state_changed_at) ON reserves TO payments_app`);
+    // Grants of the runtime role: see the AppRoleGrants migration (PAYMENTS_APP_GRANTS).
   }
 
   async down(q: QueryRunner): Promise<void> {

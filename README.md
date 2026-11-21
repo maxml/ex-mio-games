@@ -51,18 +51,18 @@ curl -s -X POST localhost:4001/v1/tenants \
 
 # engagement received the event over RabbitMQ and built its own copy (use the id from above)
 curl -s localhost:4002/v1/tenant-projection -H 'x-tenant-id: <tenant id>'
-
-# credit coins, safely retried with the same key
-curl -s -X POST localhost:4003/v1/credits \
-  -H 'content-type: application/json' -H 'x-tenant-id: <tenant id>' -H 'x-principal-id: operator-1' \
-  -H 'idempotency-key: first-credit-0001' \
-  -d '{"player_id":"<a uuid>","amount":10}'
 ```
 
 The `x-tenant-id` header is a placeholder: the identity service will issue tokens, and the tenant will then
 come from a verified claim. Until then a service refuses to boot with `NODE_ENV=production` (set
-`ALLOW_INSECURE_HEADER_TENANT=true` only for a throwaway environment), and the demo `/v1/credits` route is
-not mounted there: coins are credited only by the payments consumer.
+`ALLOW_INSECURE_HEADER_TENANT=true` only for a throwaway environment).
+
+Payments has no credit route at all: coins arrive only as `engagement.spin.completed` events that its consumer
+turns into ledger entries. Payments authenticates through the identity service (`IDENTITY_URL`), not through
+headers. Its worker reconciles every tenant's ledger and reports the last month's usage on an interval
+(`LEDGER_JOBS_INTERVAL_SECONDS`); `node dist/ledger-report.js` (`pnpm --filter @ex-mio/payments ledger:report`)
+runs one pass by hand and exits 1 on a mismatch. In production the process refuses to start without
+`FAKE_PROVIDER_WEBHOOK_SECRET` (32+ characters) unless a Stripe key is set.
 
 Each service has two database roles: `<service>_owner` (owns the schema, used by `migrate.js` only) and
 `<service>_app` (runtime: not the owner, no DDL, exact grants listed in the `AppRoleGrants` migration).

@@ -5,6 +5,7 @@ import { ModelModule } from './model/model.module';
 import { BALANCE_CACHE, BalanceService } from './services/balance.service';
 import { BillingService } from './services/billing.service';
 import { PaymentsInboxHandler } from './services/inbox.handler';
+import { LedgerJobsService } from './services/ledger-jobs.service';
 import { LedgerService } from './services/ledger.service';
 import { PAYMENT_PROVIDER } from './services/providers/payment-provider';
 import { selectPaymentProvider } from './services/providers/select-provider';
@@ -26,6 +27,7 @@ import { USAGE_KEY_SALT, UsageService } from './services/usage.service';
     ReconciliationService,
     UsageService,
     BillingService,
+    LedgerJobsService,
     PaymentsInboxHandler,
   ],
   exports: [
@@ -34,6 +36,7 @@ import { USAGE_KEY_SALT, UsageService } from './services/usage.service';
     ReconciliationService,
     UsageService,
     BillingService,
+    LedgerJobsService,
     PaymentsInboxHandler,
   ],
 })

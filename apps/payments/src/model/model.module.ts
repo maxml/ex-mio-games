@@ -3,6 +3,7 @@ import type { DataSource } from 'typeorm';
 import { DATA_SOURCE, Db } from '@ex-mio/service-kit';
 import { BillingRepository } from './billing.repository';
 import { makeDataSource } from './data-source';
+import { LedgerJobsRepository } from './ledger-jobs.repository';
 import { LedgerRepository } from './ledger.repository';
 import { LEDGER_FAULTS, NO_FAULTS } from './ledger.faults';
 import { ReconciliationRepository } from './reconciliation.repository';
@@ -18,6 +19,7 @@ import { UsageRepository } from './usage.repository';
     Db,
     { provide: LEDGER_FAULTS, useValue: NO_FAULTS },
     LedgerRepository,
+    LedgerJobsRepository,
     UsageRepository,
     BillingRepository,
     ReconciliationRepository,
@@ -27,6 +29,7 @@ import { UsageRepository } from './usage.repository';
     Db,
     LEDGER_FAULTS,
     LedgerRepository,
+    LedgerJobsRepository,
     UsageRepository,
     BillingRepository,
     ReconciliationRepository,

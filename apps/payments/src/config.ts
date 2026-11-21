@@ -2,43 +2,20 @@ import 'dotenv/config';
 import { z } from 'zod';
 import { BaseEnv, loadEnv } from '@ex-mio/service-kit';
 
-/** Placeholder service tokens for local development only. Production gets none by default. */
-const DEV_SERVICE_TOKENS = { engagement: 'engagement-dev-secret' };
-
-const ServiceTokens = z
-  .string()
-  .optional()
-  .transform((raw, ctx): Record<string, string> => {
-    if (raw === undefined || raw === '') return {};
-    try {
-      return z.record(z.string().min(16)).parse(JSON.parse(raw));
-    } catch {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: 'SERVICE_TOKENS must be a JSON object of service name to a secret (16+ chars)',
-      });
-      return z.NEVER;
-    }
-  });
-
+// The webhook secret (`FAKE_PROVIDER_WEBHOOK_SECRET`) is read by `selectPaymentProvider`, which refuses
+// to start a production process without one (D-20); there is no value in the source to fall back to.
 const Env = BaseEnv.extend({
   PORT: z.coerce.number().int().positive().default(4003),
   AMQP_URL: z.string().min(1),
-  /** `{ "engagement": "<secret>" }`: who may call the internal coin commands (placeholder identity). */
-  SERVICE_TOKENS: ServiceTokens,
+  /** Identity: the source of the JWKS and the tenant status, for the one service-kit auth entry point (D-4). */
+  IDENTITY_URL: z.string().url(),
+  /** Seconds between two runs of the ledger jobs in the worker (reconciliation, usage report). 0 turns them off. */
+  LEDGER_JOBS_INTERVAL_SECONDS: z.coerce.number().int().min(0).default(3600),
 });
 
 export type Config = z.infer<typeof Env>;
 
-export const loadConfig = (env: NodeJS.ProcessEnv = process.env): Config => {
-  const config = loadEnv(Env, env);
-  // A production process with no tokens refuses every coin command (fails closed); development
-  // and tests get the placeholder so the stack works out of the box.
-  if (config.NODE_ENV !== 'production' && Object.keys(config.SERVICE_TOKENS).length === 0) {
-    return { ...config, SERVICE_TOKENS: { ...DEV_SERVICE_TOKENS } };
-  }
-  return config;
-};
+export const loadConfig = (env: NodeJS.ProcessEnv = process.env): Config => loadEnv(Env, env);
 
 /** Max connections of the runtime pool (`PG_POOL_MAX`, default 10). */
 export function defaultPoolMax(env: NodeJS.ProcessEnv = process.env): number {

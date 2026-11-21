@@ -16,6 +16,11 @@ const none = { account_id: null, reserve_id: null, transaction_id: null } as con
 /** Read-only scan of one tenant's ledger, and the durable record of each run. */
 @Injectable()
 export class ReconciliationRepository {
+  /** Make the current transaction a repeatable-read snapshot (first statement of the transaction). */
+  async useSnapshot(tx: Tx): Promise<void> {
+    await tx.query('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ');
+  }
+
   /** Run inside ONE repeatable-read transaction, so the checks agree with each other under load. */
   async scan(tx: Tx, tenantId: string): Promise<ScanResult> {
     const mismatches: Mismatch[] = [];
@@ -115,22 +120,34 @@ export class ReconciliationRepository {
     };
   }
 
-  /** issued = available + held + redeemed, and redeemed = captured - refunded. */
+  /**
+   * The report shows the PRODUCTION figures; its `holds` is true only when the conservation identity
+   * holds in BOTH environments, so a sandbox ledger that drifts is not hidden, and sandbox coins are
+   * not mixed into the production numbers (X-2).
+   */
   private async report(tx: Tx, tenantId: string): Promise<ConservationReport> {
+    const production = await this.figures(tx, tenantId, false);
+    const sandbox = await this.figures(tx, tenantId, true);
+    return { ...production, holds: production.holds && sandbox.holds };
+  }
+
+  /** issued = available + held + redeemed, and redeemed = captured - refunded, for one environment. */
+  private async figures(tx: Tx, tenantId: string, sandbox: boolean): Promise<ConservationReport> {
     const kinds = (await tx.query(
       `SELECT a.kind, coalesce(sum(b.amount), 0)::text AS total
          FROM accounts a JOIN balances b ON b.tenant_id = a.tenant_id AND b.account_id = a.id
-        WHERE a.tenant_id = $1 GROUP BY a.kind`,
-      [tenantId],
+        WHERE a.tenant_id = $1 AND a.sandbox = $2 GROUP BY a.kind`,
+      [tenantId, sandbox],
     )) as Row[];
     const balance = (kind: string) => Number(kinds.find((r) => r.kind === kind)?.total ?? 0);
     const ops = (await tx.query(
       `SELECT j.operation_type AS type, coalesce(sum(e.amount), 0)::text AS total
          FROM journal_transactions j
          JOIN ledger_entries e ON e.tenant_id = j.tenant_id AND e.transaction_id = j.id AND e.direction = 'debit'
-        WHERE j.tenant_id = $1 AND j.operation_type IN ('capture', 'release', 'refund')
+         JOIN accounts a ON a.tenant_id = e.tenant_id AND a.id = e.account_id
+        WHERE j.tenant_id = $1 AND a.sandbox = $2 AND j.operation_type IN ('capture', 'release', 'refund')
         GROUP BY j.operation_type`,
-      [tenantId],
+      [tenantId, sandbox],
     )) as Row[];
     const total = (type: string) => Number(ops.find((r) => r.type === type)?.total ?? 0);
 

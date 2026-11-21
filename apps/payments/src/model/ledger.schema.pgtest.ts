@@ -365,7 +365,7 @@ describe('INV-L2b the runtime role has exactly the grants the spec lists', () =>
 
   it('is not a member of the owner role, can connect, and cannot create objects', async () => {
     const { rows } = await admin.query(
-      `SELECT pg_has_role('payments_app', 'payments', 'MEMBER') AS member,
+      `SELECT pg_has_role('payments_app', 'payments_owner', 'MEMBER') AS member,
               has_database_privilege('payments_app', 'payments', 'CONNECT') AS connect,
               has_schema_privilege('payments_app', 'public', 'CREATE') AS can_create,
               (SELECT rolcreaterole OR rolcreatedb OR rolreplication FROM pg_roles WHERE rolname = 'payments_app') AS privileged`,

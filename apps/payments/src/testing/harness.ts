@@ -5,10 +5,11 @@ import type { Client } from 'pg';
 import { InboxConsumer, type InboxOptions, type ProcessOutcome } from '@ex-mio/bus';
 import { createEvent, uuidv7, type EventEnvelope } from '@ex-mio/contracts';
 import { DATA_SOURCE, type RedisCache } from '@ex-mio/service-kit';
-import { runWithTenant, TenancyModule, withTenantTransaction } from '@ex-mio/tenancy';
+import { runWithTenant, withTenantTransaction } from '@ex-mio/tenancy';
 import { BalanceService, BALANCE_CACHE } from '../services/balance.service';
 import { BillingService } from '../services/billing.service';
 import { PaymentsInboxHandler } from '../services/inbox.handler';
+import { LedgerJobsService } from '../services/ledger-jobs.service';
 import { LedgerService } from '../services/ledger.service';
 import { FakePaymentProvider } from '../services/providers/fake.provider';
 import { PAYMENT_PROVIDER } from '../services/providers/payment-provider';
@@ -77,6 +78,8 @@ export interface Harness {
   ledger: LedgerService;
   balances: BalanceService;
   recon: ReconciliationService;
+  /** The scheduled ledger jobs (D-20): what the worker and `ledger-report` run. */
+  jobs: LedgerJobsService;
   usage: UsageService;
   billing: BillingService;
   inbox: PaymentsInboxHandler;
@@ -139,7 +142,7 @@ const SNAPSHOT_SQL = `
  */
 export async function openHarness(opts: OpenOptions = {}): Promise<Harness> {
   process.env.DATABASE_URL ??=
-    'postgresql://payments_app:payments_app-dev@localhost:54329/payments';
+    'postgresql://payments_app:payments-app-dev@localhost:54329/payments';
   const sql: string[] = [];
   const dataSource = await makeDataSource({
     poolMax: opts.poolMax,
@@ -182,8 +185,10 @@ export async function openHarness(opts: OpenOptions = {}): Promise<Harness> {
       throw misplaced('the write it follows is not visible in the transaction yet');
   };
 
+  // No tenancy module: the tenant comes from `runWithTenant` here, and from the service-kit auth
+  // entry point in the app (the foundation `TenancyModule` is gone, D-4).
   const mod = await Test.createTestingModule({
-    imports: [TenancyModule.forRoot(), LedgerModule],
+    imports: [LedgerModule],
   })
     .overrideProvider(DATA_SOURCE)
     .useValue(dataSource)
@@ -261,6 +266,7 @@ export async function openHarness(opts: OpenOptions = {}): Promise<Harness> {
     ledger: mod.get(LedgerService),
     balances: mod.get(BalanceService),
     recon: mod.get(ReconciliationService),
+    jobs: mod.get(LedgerJobsService),
     usage: mod.get(UsageService),
     billing: mod.get(BillingService),
     inbox,
@@ -290,10 +296,11 @@ export async function openHarness(opts: OpenOptions = {}): Promise<Harness> {
     // X-2/D-13: a player has one wallet per environment (`wallets.sandbox`); the default is production.
     dbWallet: async (tenantId, player, opts = {}) => {
       const join = `JOIN wallet_owner_links l ON l.tenant_id = w.tenant_id AND l.wallet_id = w.id`;
-      const { rows } = await admin.query(
-        walletSql(join, `l.user_id = $2 AND w.sandbox = $3`),
-        [tenantId, player, opts.sandbox ?? false],
-      );
+      const { rows } = await admin.query(walletSql(join, `l.user_id = $2 AND w.sandbox = $3`), [
+        tenantId,
+        player,
+        opts.sandbox ?? false,
+      ]);
       if (!rows[0]) throw new Error('dbWallet: no wallet for that player');
       return rows[0] as DbWallet;
     },

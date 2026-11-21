@@ -16,7 +16,7 @@ const PERIOD = /^\d{4}-(0[1-9]|1[0-2])$/;
 
 /**
  * Usage metering from `engagement.spin.completed` (MIO-095): spins and distinct monthly active players
- * per tenant and calendar month, counted exactly once per event, never for an event the PRODUCER
+ * per tenant and calendar month, counted exactly once per SPIN (`spin_id`), never for an event the PRODUCER
  * marked `sandbox`. The flag is read from the envelope and nowhere else.
  */
 @Injectable()
@@ -34,7 +34,19 @@ export class UsageService {
   async handle(tx: Tx, event: EventEnvelope): Promise<void> {
     if (event.sandbox === true) return;
     const spin = SpinCompletedV1.parse(event.payload);
-    if (!(await this.usage.markCounted(tx, event.tenant_id, event.event_id))) return;
+    // The business key is the spin, not the event: engagement may re-publish a spin under a new
+    // event id, and the tenant must not be billed twice for it (INV-M6).
+    const counted = await this.usage.markCounted(
+      tx,
+      event.tenant_id,
+      spin.spin_id,
+      event.event_id,
+      event.occurred_at,
+    );
+    if (!counted) return;
+    // The scheduled jobs list tenants from this registry: a tenant with spins is reported even if it
+    // never had a coin wallet.
+    await this.usage.registerTenant(tx, event.tenant_id);
     const period = new Date(event.occurred_at).toISOString().slice(0, 7);
     await this.usage.addSpin(tx, event.tenant_id, period);
     await this.usage.addActivePlayer(
@@ -84,6 +96,21 @@ export class UsageService {
       }),
     );
     return { period, quantity: state.totals.spins };
+  }
+
+  /**
+   * The scheduled usage report: reports the period only for a tenant that has an active subscription
+   * (a tenant on no plan has nothing to bill), and is a no-op for one that is already reported.
+   * Returns null when the tenant has no active subscription.
+   */
+  async reportDue(period: string): Promise<{ period: string; quantity: number } | null> {
+    this.assertPeriod(period);
+    const { tenantId } = currentTenant();
+    const active = await this.db.tenantTx((tx) =>
+      this.billing.currentSubscription(tx, tenantId, ['active']),
+    );
+    if (!active) return null;
+    return this.reportToProvider(period);
   }
 
   private assertPeriod(period: string): void {

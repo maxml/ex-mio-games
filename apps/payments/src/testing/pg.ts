@@ -6,12 +6,13 @@ import { Client } from 'pg';
 const port = Number(process.env.POSTGRES_PORT ?? 54329);
 
 /** `payments_app`: the runtime role (not owner, not superuser, NOBYPASSRLS).
- *  `payments`: the owner and migration role. `postgres`: superuser, used only to inspect or tamper. */
-export type PgRole = 'payments_app' | 'payments' | 'postgres';
+ *  `payments_owner`: the owner and migration role. `postgres`: superuser, used only to inspect or tamper.
+ *  Names and passwords are the foundation's (docker/postgres/init.sh). */
+export type PgRole = 'payments_app' | 'payments_owner' | 'postgres';
 
 const passwords: Record<PgRole, string> = {
-  payments_app: 'payments_app-dev',
-  payments: 'payments-dev',
+  payments_app: 'payments-app-dev',
+  payments_owner: 'payments-owner-dev',
   postgres: 'postgres-dev',
 };
 
