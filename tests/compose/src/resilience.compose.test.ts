@@ -11,7 +11,8 @@ import { seedCoins } from './seed-coins';
  * D-24 (int/all review): these tests used the removed `POST /v1/tenants` (platform header) and the
  * removed payments `POST /v1/credits`. They now use today's real routes: operator signup for a tenant
  * (identity -> broker -> engagement), and a player redemption for an event nobody consumes
- * (`engagement.redemption.requested`, written by engagement's outbox in the redemption transaction).
+ * (`engagement.redemption.status_changed` to REQUESTED, written by engagement's outbox in the order
+ * transaction; the real store writes no `redemption.requested`).
  * The properties are the same: the relay and the consumer recover after the broker drops every
  * connection; an unroutable outbox row backs off per row instead of being republished in a loop.
  */
@@ -62,7 +63,7 @@ describe('broker connection loss (F-BUS-2)', () => {
 });
 
 describe('outbox: an event nobody consumes yet (F-BUS-1)', () => {
-  const UNCONSUMED = 'engagement.redemption.requested';
+  const UNCONSUMED = 'engagement.redemption.status_changed';
 
   it('is retried with a growing delay per row, not republished in a loop', async () => {
     // Precondition, checked rather than assumed: no queue is bound to the event (a topic binding
@@ -113,7 +114,8 @@ describe('outbox: an event nobody consumes yet (F-BUS-1)', () => {
       const row = () =>
         db.query(
           `SELECT o.attempts, o.published_at, o.parked_at, o.next_attempt_at > now() AS delayed
-             FROM outbox o WHERE o.type = $1 AND o.envelope->'payload'->>'redemption_id' = $2`,
+             FROM outbox o WHERE o.type = $1 AND o.envelope->'payload'->>'redemption_id' = $2
+              AND o.envelope->'payload'->>'to' = 'REQUESTED'`,
           [UNCONSUMED, redemptionId],
         );
       // nobody is bound to it: the broker returns it, the row backs off.

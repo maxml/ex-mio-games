@@ -40,19 +40,32 @@ import { newTenant, type PlayerSession, type TestTenant } from './player-session
  * choice and no test here pretends to pin it.
  */
 
-const T1 = {
-  slug: 'ingest-t1',
-  id: '0190a1b2-c3d4-4e5f-8a6b-1000000000a1',
-  secret: 'dev-ingest-secret-1',
-  hashKey: 'dev-hash-key-1', // TenantIntegration.player_hash_key, spec section 10
-};
-const T2 = {
-  slug: 'ingest-t2',
-  id: '0190a1b2-c3d4-4e5f-8a6b-1000000000a2',
-  secret: 'dev-ingest-secret-2',
-};
 const hmac = (secret: string, msg: string) =>
   createHmac('sha256', secret).update(msg).digest('hex');
+
+/*
+ * int/all review: T1 and T2 used to be the static `INGEST_STATIC_TENANTS` stand-ins (spec section 10),
+ * which the compose stack does not configure: engagement reads integrations from identity (X-7), so
+ * every webhook to `ingest-t1` was 404. They are now real tenants: operator signup plus a production
+ * credential for the `casino-a` adapter, whose `hmac_secret` is the webhook secret identity serves.
+ * The player hash key is identity's derivation (`credentials.service.ts`: HMAC(KEK, `player-hash-key:<tenant>`))
+ * with the compose KEK. The properties of every test below are unchanged.
+ */
+const COMPOSE_KEK = 'dev-credentials-kek-0000000000'; // docker-compose.yml CREDENTIALS_KEK (dev only)
+type IngestTenant = { slug: string; id: string; secret: string; hashKey: string };
+const T1 = {} as IngestTenant;
+const T2 = {} as IngestTenant;
+beforeAll(async () => {
+  for (const t of [T1, T2]) {
+    const made = await newTenant({ platform: 'casino-a' });
+    Object.assign(t, {
+      slug: made.slug,
+      id: made.tenantId,
+      secret: made.credential.hmac_secret,
+      hashKey: hmac(COMPOSE_KEK, `player-hash-key:${made.tenantId}`),
+    });
+  }
+});
 
 function depositA(secret: string, eventId: string, playerId = 'compose-player') {
   const ts = Math.floor(Date.now() / 1000);
@@ -506,7 +519,7 @@ describe('engagement schema (catalog, as the admin)', () => {
     const admin = await pgAs('postgres', 'engagement');
     try {
       const { rows } = await admin.query<{ tbl: string; cols: string[] }>(`
-        SELECT t.relname AS tbl, array_agg(a.attname ORDER BY k.ord) AS cols
+        SELECT t.relname AS tbl, array_agg(a.attname::text ORDER BY k.ord) AS cols
           FROM pg_index i
           JOIN pg_class t ON t.oid = i.indrelid
           JOIN pg_namespace n ON n.oid = t.relnamespace AND n.nspname = 'public'
@@ -609,6 +622,9 @@ describe('engagement schema (catalog, as the admin)', () => {
              FROM pg_class c
              JOIN pg_namespace n ON n.oid = c.relnamespace AND n.nspname = 'public'
             WHERE c.relkind = 'r'
+              -- int/all review: the bus tables carry tenant_id for diagnosis and are read across
+              -- tenants by design (same exception as roles.compose.test.ts BUS_TABLES)
+              AND c.relname NOT IN ('outbox', 'inbox')
               AND EXISTS (SELECT 1 FROM pg_attribute a
                            WHERE a.attrelid = c.oid AND a.attname = 'tenant_id' AND NOT a.attisdropped)
             ORDER BY c.relname`,
@@ -633,7 +649,8 @@ describe('engagement schema (catalog, as the admin)', () => {
       const before = await snapshot();
       expect(before.triggers.some((t) => t.tbl === 'spin_credits')).toBe(true); // used -> available guard
       expect(before.rls.length).toBeGreaterThan(0);
-      expect(before.rls.every((r) => r.on && r.forced)).toBe(true);
+      // every offender by name (D-24: work queues too), not a bare false
+      expect(before.rls.filter((r) => !(r.on && r.forced)).map((r) => r.tbl)).toEqual([]);
 
       const attempts: string[] = [];
       for (const t of before.triggers) {

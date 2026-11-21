@@ -171,6 +171,7 @@ describe('bonus store (engagement) against real Postgres', () => {
     await seedCoins(tenantA.tenantId, sbxSameUser.userId, 100, {
       sandbox: true,
       operatorToken: operatorPaymentsA,
+      sandboxPlayerHeaders: sbxSameUser.headers, // the operator route reads production only (X-2)
     });
     expect((await redeem(sbxSameUser, item.id, `key-${uuidv7()}`)).status).toBe(202);
   });

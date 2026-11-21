@@ -64,6 +64,10 @@ export interface PlayerSession {
 
 export interface TestTenant {
   tenantId: string;
+  /** The tenant slug (its webhook path is `/v1/integrations/<slug>/events`). */
+  slug: string;
+  /** The production integration credential issued at creation (its `hmac_secret` signs webhooks, X-7). */
+  credential: CredentialIssued;
   /** Launches a player of this tenant (the same external id gives the same user). */
   player(externalPlayerId?: string): Promise<PlayerSession>;
   /** Launches a player through a SANDBOX integration credential of this tenant (token claim `sbx: true`, X-3). */
@@ -75,13 +79,22 @@ export interface TestTenant {
    */
   operatorToken(audience: 'identity' | 'engagement' | 'payments'): Promise<string>;
   /** `authorization: Bearer <operatorToken>` ready to spread into request headers. */
-  operatorHeaders(audience: 'identity' | 'engagement' | 'payments'): Promise<Record<string, string>>;
+  operatorHeaders(
+    audience: 'identity' | 'engagement' | 'payments',
+  ): Promise<Record<string, string>>;
 }
 
 const PW = 'correct horse battery';
 const uniq = () => `t${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
 
-export async function newTenant(): Promise<TestTenant> {
+/**
+ * `platform` is the casino platform of the tenant's first (production) credential. The default
+ * `sim-casino` is what launches use; an ingest test passes an adapter type (`casino-a`) so the
+ * engagement adapter registry can verify that tenant's webhooks (int/all review: the static
+ * `ingest-t1/t2` stand-ins are not configured on the stack; identity is the integration source, X-7).
+ */
+export async function newTenant(opts: { platform?: string } = {}): Promise<TestTenant> {
+  const platform = opts.platform ?? 'sim-casino';
   const slug = uniq();
   const email = `boss@${slug}.test`;
   const signup = await call('POST', urls.identity, '/v1/operators/signup', {
@@ -95,7 +108,7 @@ export async function newTenant(): Promise<TestTenant> {
   });
   const issued = await call('POST', urls.identity, '/v1/credentials', {
     headers: { authorization: `Bearer ${login.json.access_token as string}` },
-    body: { platform: 'sim-casino' },
+    body: { platform },
   });
   if (issued.status !== 201) throw new Error(`credential issue failed: ${issued.status}`);
   const key = CredentialIssued.parse(issued.json);
@@ -139,13 +152,15 @@ export async function newTenant(): Promise<TestTenant> {
     if (sandboxKey) return sandboxKey;
     const sbx = await call('POST', urls.identity, '/v1/credentials', {
       headers: { authorization: `Bearer ${login.json.access_token as string}` },
-      body: { platform: 'sim-casino', environment: 'sandbox' },
+      body: { platform, environment: 'sandbox' }, // same platform: same identity user (X-3)
     });
     if (sbx.status !== 201) throw new Error(`sandbox credential issue failed: ${sbx.status}`);
     return (sandboxKey = CredentialIssued.parse(sbx.json));
   };
   return {
     tenantId,
+    slug,
+    credential: key,
     operatorToken,
     operatorHeaders: async (audience) => ({
       authorization: `Bearer ${await operatorToken(audience)}`,
