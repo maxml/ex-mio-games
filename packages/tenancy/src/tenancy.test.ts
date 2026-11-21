@@ -7,7 +7,7 @@ import {
   currentTenant,
   currentTenantCacheKey,
   enableTenantRlsSql,
-  headerTenantResolver,
+  jwtTenantResolver,
   Public,
   runWithTenant,
   tenantCacheKey,
@@ -55,23 +55,44 @@ describe('ambient context', () => {
 });
 
 describe('TenantGuard', () => {
-  const guard = new TenantGuard(new Reflector(), headerTenantResolver);
+  // A stand-in for the verifier: the guard only needs "token -> verified claims".
+  const verify = async (token: string) => {
+    if (token !== 'good') throw new Error('rejected');
+    return { sub: 'u1', tid: T1 };
+  };
+  const guard = new TenantGuard(new Reflector(), jwtTenantResolver(verify));
+  const bearer = (t: string) => ({ authorization: `Bearer ${t}` });
 
-  it('denies a request without a tenant', () => {
-    expect(() => guard.canActivate(fakeContext({}).ctx)).toThrow(UnauthorizedException);
-  });
-
-  it('denies a malformed tenant header', () => {
-    expect(() => guard.canActivate(fakeContext({ 'x-tenant-id': 'abc' }).ctx)).toThrow(
+  it('denies a request without a token', async () => {
+    await expect(guard.canActivate(fakeContext({}).ctx)).rejects.toBeInstanceOf(
       UnauthorizedException,
     );
   });
 
-  it('admits a valid tenant', () => {
-    expect(guard.canActivate(fakeContext({ 'x-tenant-id': T1 }).ctx)).toBe(true);
+  it('ignores a tenant header: it is never a tenant source', async () => {
+    await expect(guard.canActivate(fakeContext({ 'x-tenant': T1 }).ctx)).rejects.toBeInstanceOf(
+      UnauthorizedException,
+    );
   });
 
-  it('admits a @Public route without a tenant', () => {
+  it('denies a rejected token', async () => {
+    await expect(guard.canActivate(fakeContext(bearer('bad')).ctx)).rejects.toBeInstanceOf(
+      UnauthorizedException,
+    );
+  });
+
+  it('admits a verified token', async () => {
+    await expect(guard.canActivate(fakeContext(bearer('good')).ctx)).resolves.toBe(true);
+  });
+
+  it('a guard without a resolver denies everything but @Public', async () => {
+    const bare = new TenantGuard(new Reflector());
+    await expect(bare.canActivate(fakeContext(bearer('good')).ctx)).rejects.toBeInstanceOf(
+      UnauthorizedException,
+    );
+  });
+
+  it('admits a @Public route without a tenant', async () => {
     class Controller {
       @Public()
       live() {
@@ -79,12 +100,12 @@ describe('TenantGuard', () => {
       }
     }
     const handler = Controller.prototype.live;
-    expect(guard.canActivate(fakeContext({}, handler).ctx)).toBe(true);
+    await expect(guard.canActivate(fakeContext({}, handler).ctx)).resolves.toBe(true);
   });
 
   it('interceptor opens the context for the handler', async () => {
-    const { ctx } = fakeContext({ 'x-tenant-id': T1 });
-    guard.canActivate(ctx);
+    const { ctx } = fakeContext(bearer('good'));
+    await guard.canActivate(ctx);
     const out = await lastValueFrom(
       new TenantInterceptor().intercept(ctx, {
         handle: () => of(currentTenant().tenantId),
