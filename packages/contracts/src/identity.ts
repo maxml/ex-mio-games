@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { CasinoRewardApiConfig } from './casino-adapter';
 import { Uuid } from './ids';
 import { COIN_VALUE_ACTIONS } from './payments';
 
@@ -318,10 +319,8 @@ export const TenantIntegration = z
     webhook_secrets: z.array(z.string().min(1)).min(1).max(2),
     /** Per-tenant HMAC key for hashing the casino's external player id (D-12). */
     player_hash_key: z.string().min(16),
-    reward_api: z
-      .object({ base_url: z.string().url(), api_key: z.string().min(1) })
-      .strict()
-      .optional(),
+    /** The ingest epic's `CasinoRewardApiConfig` (prod and sandbox endpoints, issue deadline); defined once, there. */
+    reward_api: CasinoRewardApiConfig.optional(),
   })
   .strict();
 export type TenantIntegration = z.infer<typeof TenantIntegration>;
