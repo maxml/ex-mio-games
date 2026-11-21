@@ -4,3 +4,4 @@ export * from './http';
 export * from './ids';
 export * from './realtime';
 export * from './telemetry';
+export * from './web-api';
