@@ -45,15 +45,25 @@ async function world() {
   return { k, a, b, keyA, keyB, sign, exchange };
 }
 
+/** Staff-side provider calls the tests make themselves (signup, login); anything else came from a launch. */
+const STAFF_METHODS = ['createTenant', 'createUser', 'verifyCredentials'];
+const launchProviderCalls = (k: K) =>
+  k.provider.calls.filter((c) => !STAFF_METHODS.includes(c.method));
+
 const untouched = async (k: K, tenantId: string) => {
   expect(await k.players.links(tenantId)).toEqual([]);
-  expect(k.provider.calls.filter((c) => c.method === 'exchangeLaunchToken')).toEqual([]);
+  expect(launchProviderCalls(k)).toEqual([]);
 };
 
 describe('INV-LAUNCH: a launch token becomes a player session only when every check passes', () => {
   // Mutation: build the session from the claims without verifying (skip verify, keep the rest).
-  it("INV-LAUNCH-1 a valid token yields a player session pinned to the key's tenant, one link, one provider call", async () => {
+  // Reviewer amendment (identity epic review, D-21 B2): players do not use the identity provider.
+  // The frozen version pinned "one provider call", which passed only because the launch still
+  // called a provider method that had become a no-op; it pinned the opposite of D-21.
+  // Mutation (B2): the launch calls ANY provider method, or stores a provider link for the player.
+  it("INV-LAUNCH-1 a valid token yields a player session pinned to the key's tenant, one link, no provider call and no provider link (D-21)", async () => {
     const { k, a, sign, exchange } = await world();
+    const before = k.provider.calls.length;
     const res = await exchange(sign());
     const claims = await k.verify(res.access_token, 'engagement');
     expect(claims).toMatchObject({ tid: a.tenant.id, roles: ['player'], sub: res.user_id });
@@ -61,7 +71,8 @@ describe('INV-LAUNCH: a launch token becomes a player session only when every ch
     expect(await k.players.links(a.tenant.id)).toEqual([
       { user_id: res.user_id, platform: 'sim-casino', external_player_id: 'ext-1' },
     ]);
-    expect(k.provider.calls.filter((c) => c.method === 'exchangeLaunchToken')).toHaveLength(1);
+    expect(k.provider.calls.slice(before)).toEqual([]);
+    expect(k.store.providerLinks.filter((l) => l.user_id === res.user_id)).toEqual([]);
   });
 
   // Mutation (one per row): remove the corresponding check in LaunchService.verify.
@@ -154,10 +165,24 @@ describe('INV-LAUNCH: a launch token becomes a player session only when every ch
   });
 
   // Mutation: the player's session roles include anything but `player`.
-  it('INV-LAUNCH-8 the session audience is the requested service and the roles are exactly [player]', async () => {
-    const { sign, exchange } = await world();
-    const res = await exchange(sign(), 'web');
-    expect(decodePayload(res.access_token)).toMatchObject({ aud: 'web', roles: ['player'] });
+  // Reviewer amendment (D-22, coordinator): one single-use exchange gives ONE player session valid
+  // for every audience the player needs (closes G-8). Mutation: the session carries only the
+  // requested audience, or the verifiers compare `aud` as a single string.
+  it('INV-LAUNCH-8 D-22 one launch yields one player session whose aud array covers engagement, payments and realtime; roles are exactly [player]', async () => {
+    const { k, sign, exchange } = await world();
+    for (const requested of ['engagement', 'web'] as const) {
+      const res = await exchange(sign(), requested);
+      const payload = decodePayload(res.access_token) as { aud: unknown; roles: unknown };
+      expect(payload.roles).toEqual(['player']);
+      expect(Array.isArray(payload.aud)).toBe(true);
+      expect(payload.aud).toEqual(expect.arrayContaining(['engagement', 'payments', 'realtime']));
+      for (const audience of ['engagement', 'payments', 'realtime']) {
+        await expect(k.verify(res.access_token, audience)).resolves.toMatchObject({
+          sub: res.user_id,
+          roles: ['player'],
+        });
+      }
+    }
   });
 
   // Mutation: verify with HS256 secret derived from the token's own header.

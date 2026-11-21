@@ -151,6 +151,32 @@ describe('INV-TOK: every service trusts only tokens our key signed', () => {
     await expect(verifier('payments')(token)).resolves.toMatchObject({ aud: 'payments' });
   });
 
+  // D-22 (reviewer, identity epic review): one player session from one launch exchange is valid for
+  // every audience the player needs. Mutation: the verifier keeps `claims.aud !== audience` (an array
+  // never equals a string), or accepts any array without checking membership.
+  it('INV-TOK-3b D-22 a player token whose aud ARRAY includes the verifier audience is accepted; one that lacks it is not', async () => {
+    const player = good({ roles: ['player'], aud: ['engagement', 'payments', 'realtime'] });
+    for (const audience of ['engagement', 'payments', 'realtime']) {
+      await expect(verifier(audience)(player)).resolves.toMatchObject({ sub: USER, tid: T_A });
+    }
+    await rejected(verifier('identity')(player), 'TOKEN_INVALID');
+    await rejected(verifier('web')(player), 'TOKEN_INVALID');
+  });
+
+  // D-22 keeps every other token single-audience (D-4: an operator or acting token is valid for one
+  // service). Mutation: allow an aud array on any role, or an empty one.
+  it('INV-TOK-3c D-22 an aud array is refused on a non-player token, and an empty or unknown-member array is refused', async () => {
+    await rejected(
+      verifier('engagement')(good({ roles: ['operator_admin'], aud: ['engagement', 'payments'] })),
+      'TOKEN_INVALID',
+    );
+    await rejected(verifier('engagement')(good({ roles: ['player'], aud: [] })), 'TOKEN_INVALID');
+    await rejected(
+      verifier('engagement')(good({ roles: ['player'], aud: ['engagement', 'nobody'] })),
+      'TOKEN_INVALID',
+    );
+  });
+
   // Mutation: drop the `exp` check (or compare against iat instead of now).
   it('INV-TOK-4 an expired token is rejected with TOKEN_EXPIRED (past the 30 s leeway)', async () => {
     const token = good({ ttl: 60 });

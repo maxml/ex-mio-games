@@ -76,7 +76,8 @@ export function accessClaims(over: {
   sub: string;
   tid: string;
   roles?: string[];
-  aud?: string;
+  /** D-22: a player session carries an array (engagement, payments, realtime). */
+  aud?: string | string[];
   ttl?: number;
   act?: { tenant_id: string; reason: string };
   /** X-3: a player token launched through a sandbox credential. Absent means production. */

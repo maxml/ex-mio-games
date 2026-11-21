@@ -244,7 +244,52 @@ describe('identity contracts (pinned vocabularies)', () => {
     expect([...Role.options].sort()).toEqual(
       ['operator_admin', 'operator_staff', 'platform_admin', 'player'].sort(),
     );
-    expect([...SERVICE_AUDIENCES].sort()).toEqual(['engagement', 'identity', 'payments', 'web']);
+    // D-22: `realtime` is an audience (player session and the one-time socket ticket, D-10).
+    expect([...SERVICE_AUDIENCES].sort()).toEqual([
+      'engagement',
+      'identity',
+      'payments',
+      'realtime',
+      'web',
+    ]);
+  });
+
+  // D-22 (reviewer, identity epic review). Mutation: `aud: Audience` only (no array), or an array
+  // allowed for any role, or an empty array.
+  it('D-22 a player session carries an aud array (engagement, payments, realtime); other tokens keep one audience', () => {
+    const claims = {
+      iss: TOKEN_ISSUER,
+      sub: U1,
+      tid: U2,
+      roles: ['operator_admin'],
+      aud: 'engagement',
+      iat: 1,
+      exp: 2,
+      jti: 'abcdefgh',
+    };
+    const player = { ...claims, roles: ['player'], aud: ['engagement', 'payments', 'realtime'] };
+    expect(AccessTokenClaims.safeParse(player).success).toBe(true);
+    expect(AccessTokenClaims.safeParse({ ...player, aud: [] }).success).toBe(false);
+    expect(AccessTokenClaims.safeParse({ ...player, aud: ['engagement', 'other'] }).success).toBe(
+      false,
+    );
+    expect(
+      AccessTokenClaims.safeParse({ ...claims, aud: ['engagement', 'payments'] }).success,
+    ).toBe(false);
+  });
+
+  // D-10 / D-22: the shape the web BFF already reads (`GET /api/realtime/ticket` proxies it).
+  // Mutation: no contract, or a lifetime above 60 s.
+  it('D-22 RealtimeTicketResponse is { ticket, expires_in <= 60 }', () => {
+    const contracts = identityContracts as Record<string, unknown>;
+    const schema = contracts.RealtimeTicketResponse as
+      | { safeParse: (v: unknown) => { success: boolean } }
+      | undefined;
+    expect(schema).toBeDefined();
+    expect(schema?.safeParse({ ticket: 't'.repeat(40), expires_in: 60 }).success).toBe(true);
+    expect(schema?.safeParse({ ticket: 't'.repeat(40), expires_in: 61 }).success).toBe(false);
+    expect(schema?.safeParse({ ticket: '', expires_in: 30 }).success).toBe(false);
+    expect(contracts.REALTIME_TICKET_TTL_SECONDS).toBe(60);
   });
 
   it('the platform tenant id and the internal prefix are fixed', () => {
