@@ -24,3 +24,14 @@ imports from `packages/ui`.
 - After the move, `design/prototype/` contains only screens and mock data, no component definitions
   (check by script).
 - Visual snapshots of the prototype screens before and after the move match.
+
+## Carried over from the prototype review (round 3, `design-prototype` b0e2878)
+
+These were deferred when the prototype merged; close them during the move:
+
+- The legacy `invoice/pay` action can still mark an invoice paid while a payment attempt is in flight. No
+  screen dispatches it, only tests: remove it or route it through the payment attempt.
+- Native checkboxes: replace them with a shared Checkbox component.
+- `tokens.css` defaults are not validated against the token schema; tenant JSON is.
+- Wheel labels during a spin were checked only in unit tests, not in a browser.
+- No screen-reader pass has been done yet.
