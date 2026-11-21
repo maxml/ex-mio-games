@@ -148,6 +148,37 @@ describe('INV-JOB2 only one process runs a pass at a time', () => {
   });
 });
 
+describe('INV-SBX-4 sandbox settlement stays on the sandbox system accounts (reviewer follow-up: INV-SBX-3 reads only the wallet)', () => {
+  // Mutation: capture/release/refund look the tenant system accounts up for production, whatever the
+  // reserve's wallet says. The wallet balances still look right; only the system accounts show it.
+  it('a sandbox capture moves coins to the sandbox redeemed account and leaves the production one at 0', async () => {
+    const t = newTenant();
+    const p = await activity(t); // production: 9 issued, 4 held
+    await h.consume(spinCompleted(t, p, 10, { sandbox: true }));
+    const id = uuidv7();
+    await h.as(t, () =>
+      h.ledger.reserve(
+        { player_id: p, reserve_id: id, amount: 6, currency: 'COIN', sandbox: true },
+        key('r'),
+      ),
+    );
+    await h.as(t, () => h.ledger.capture({ reserve_id: id }, key('cap')));
+    const redeemed = async (sandbox: boolean): Promise<number> =>
+      Number(
+        (
+          await h.admin.query(
+            `SELECT b.amount::int AS n FROM accounts a JOIN balances b
+               ON b.tenant_id = a.tenant_id AND b.account_id = a.id
+              WHERE a.tenant_id = $1 AND a.kind = 'tenant_redeemed' AND a.sandbox = $2`,
+            [t, sandbox],
+          )
+        ).rows[0]?.n ?? 0,
+      );
+    expect(await redeemed(true)).toBe(6);
+    expect(await redeemed(false)).toBe(0);
+  });
+});
+
 describe('INV-JOB3 the usage report of the last complete month goes out once per tenant with a plan', () => {
   const sent = (t: string) =>
     h.provider.recordedUsage().filter((u) => u.idempotencyKey.includes(t));
