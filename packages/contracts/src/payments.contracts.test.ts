@@ -11,6 +11,7 @@ import {
   RESERVE_COMMAND_OUTCOMES,
   RESERVE_STATES,
   ReserveCoinsRequest,
+  ReserveIdParam,
   ReserveRefRequest,
   SubscribeRequest,
   createEvent,
@@ -136,9 +137,13 @@ describe('payments contracts', () => {
   });
 
   // Mutation: remove .strict() from ReserveRefRequest -> capture could carry an amount.
-  it('capture, release and refund take no amount', () => {
-    expect(ReserveRefRequest.safeParse({ reserve_id: U }).success).toBe(true);
-    expect(ReserveRefRequest.safeParse({ reserve_id: U, amount: 5 }).success).toBe(false);
+  it('capture, release and refund take an empty body: the reserve is in the path, the amount is its own', () => {
+    expect(ReserveRefRequest.safeParse({}).success).toBe(true);
+    expect(ReserveRefRequest.safeParse({ amount: 5 }).success).toBe(false);
+    expect(ReserveRefRequest.safeParse({ reserve_id: U }).success).toBe(false);
+    expect(ReserveRefRequest.safeParse({ tenant_id: U }).success).toBe(false);
+    expect(ReserveIdParam.safeParse({ reserveId: U }).success).toBe(true);
+    expect(ReserveIdParam.safeParse({ reserveId: 'x' }).success).toBe(false);
   });
 
   it('only a reserved reserve can be captured or released; only captured can be refunded', () => {
