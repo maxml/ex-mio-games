@@ -2,7 +2,7 @@
 # account. Every app runs in its own container, starts only after the things it
 # needs report healthy, and has its own database and database role.
 #
-# Host ports (override with env): postgres 55432, rabbitmq 55672 (+ management UI
+# Host ports (override with env): postgres 54329, rabbitmq 55672 (+ management UI
 # 15672), redis 56379, firebase auth emulator 9099, web 3000, identity 4001,
 # engagement 4002, payments 4003, casino-sim 4004. The infrastructure ports are
 # not the defaults on purpose, so a database already running on the host does not
@@ -33,7 +33,7 @@ services:
       - postgres_data:/var/lib/postgresql/data
       - ./docker/postgres/init.sh:/docker-entrypoint-initdb.d/10-init.sh:ro
     ports:
-      - '${POSTGRES_PORT:-55432}:5432'
+      - '${POSTGRES_PORT:-54329}:5432'
     healthcheck:
       test: ['CMD-SHELL', 'pg_isready -U postgres -d postgres']
       interval: 5s

@@ -64,7 +64,7 @@ export interface IdempotentOutcome<T> extends IdempotentResult<T> {
 export async function runIdempotent<T>(call: IdempotentCall<T>): Promise<IdempotentOutcome<T>> {
   const { tenantId } = currentTenant();
   const hash = requestHash(call.request);
-  const scope = [tenantId, call.principalId, call.operation, call.key].join('\u0000');
+  const scope = [tenantId, call.principalId, call.operation, call.key].join('\u001f');
 
   return withTenantTransaction(call.dataSource, async (manager) => {
     const lock: { locked: boolean }[] = await manager.query(

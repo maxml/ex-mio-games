@@ -6,11 +6,13 @@ FROM node:24-alpine AS builder
 RUN corepack enable
 WORKDIR /repo
 COPY . .
-# Install only this service and what it depends on, not the whole workspace.
+# These steps are identical in every service Dockerfile, so BuildKit builds them once and reuses
+# the layers for the other images (one install, one compile of the shared packages).
 RUN --mount=type=cache,id=pnpm-store,target=/root/.local/share/pnpm/store \
-    pnpm install --frozen-lockfile --filter "@ex-mio/identity..."
-# Libraries first (by dependency graph, so a new workspace import cannot go stale), then the service.
-RUN pnpm --filter "@ex-mio/identity^..." build && pnpm --filter @ex-mio/identity build
+    pnpm install --frozen-lockfile --filter "@ex-mio/identity..." --filter "@ex-mio/engagement..." --filter "@ex-mio/payments..." --filter "@ex-mio/casino-sim..."
+RUN pnpm --filter "./packages/*" build
+# Then only this service.
+RUN pnpm --filter @ex-mio/identity build
 # Production-only node_modules with the built workspace packages copied in.
 RUN pnpm --filter @ex-mio/identity deploy --prod /out
 

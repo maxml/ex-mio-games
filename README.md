@@ -27,7 +27,7 @@ docker compose down -v           # stop and delete the data
 | `engagement`    | 4002               | rules, wheel, store (own database `engagement`)         |
 | `payments`      | 4003               | the only place coins change (own database `payments`)   |
 | `casino-sim`    | 4004               | two fake partner casinos with fault injection           |
-| `postgres`      | 55432              | one database and one non-superuser role per service     |
+| `postgres`      | 54329              | one database and one non-superuser role per service     |
 | `rabbitmq`      | 55672, UI on 15672 | event bus (user `mio`)                                  |
 | `redis`         | 56379              | cache, append-only persistence                          |
 | `firebase-auth` | 9099               | Firebase Auth Emulator, project `demo-ex-mio`           |

@@ -21,7 +21,7 @@ export async function pgAs(
   const password = role === 'postgres' ? 'postgres-dev' : `${role}-dev`;
   const client = new Client({
     host: 'localhost',
-    port: Number(port('POSTGRES_PORT', 55432)),
+    port: Number(port('POSTGRES_PORT', 54329)),
     user: role,
     password,
     database: role === 'postgres' ? 'postgres' : role,

@@ -60,7 +60,7 @@ describe('database roles', () => {
         const { Client } = await import('pg');
         const c = new Client({
           host: 'localhost',
-          port: Number(process.env.POSTGRES_PORT ?? 55432),
+          port: Number(process.env.POSTGRES_PORT ?? 54329),
           user: 'identity',
           password: 'identity-dev',
           database: 'payments',
