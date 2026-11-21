@@ -1,5 +1,12 @@
 import { createHmac, randomUUID } from 'node:crypto';
-import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
+import type { IncomingMessage, ServerResponse } from 'node:http';
+import type {
+  FastifyBaseLogger,
+  FastifyInstance,
+  FastifyReply,
+  FastifyRequest,
+  RawServerDefault,
+} from 'fastify';
 import { z } from 'zod';
 
 /**
@@ -110,8 +117,8 @@ const defaultDeliver: DeliverFn = async (url, init) => {
   return { status: res.status };
 };
 
-export function registerCasinos(
-  app: FastifyInstance,
+export function registerCasinos<Logger extends FastifyBaseLogger>(
+  app: FastifyInstance<RawServerDefault, IncomingMessage, ServerResponse, Logger>,
   opts: { deliver?: DeliverFn; faultsEnabled?: boolean },
 ): void {
   const deliver = opts.deliver ?? defaultDeliver;

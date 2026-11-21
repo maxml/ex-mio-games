@@ -1,4 +1,21 @@
 {
   "extends": "./tsconfig.json",
-  "exclude": ["dist", "node_modules", "**/*.test.ts", "src/testing/**"]
+  "exclude": ["dist", "node_modules", "**/*.test.ts", "src/testing/**"],
+  "references": [
+    {
+      "path": "../../packages/tenancy"
+    },
+    {
+      "path": "../../packages/service-kit"
+    },
+    {
+      "path": "../../packages/logger"
+    },
+    {
+      "path": "../../packages/contracts"
+    },
+    {
+      "path": "../../packages/bus"
+    }
+  ]
 }

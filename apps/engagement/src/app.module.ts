@@ -23,7 +23,12 @@ import {
   CASINO_PLAYERS,
   type TenantIntegrationPort,
 } from './integrations/ports';
-import { fetchTransport, staticTenantIntegrations } from './integrations/static-integrations';
+import {
+  fetchTransport,
+  staticTenantIntegrations,
+  staticThenIdentity,
+  staticThenIdentityPlayers,
+} from './integrations/static-integrations';
 import {
   createCasinoPlayerPort,
   createRewardRequestBuilder,
@@ -77,9 +82,13 @@ export function createAppModule(config: Config): DynamicModule {
   const identity = new IdentityHttpClient(config.IDENTITY_URL, tokens);
   const casinoPlayers = createCasinoPlayerPort({ identity });
   // The static `INGEST_STATIC_TENANTS` stand-in is for development only (config refuses it in production).
-  const integrations: TenantIntegrationPort = config.INGEST_STATIC_TENANTS
+  const statics = config.INGEST_STATIC_TENANTS
     ? staticTenantIntegrations(config.INGEST_STATIC_TENANTS)
+    : undefined;
+  const integrations: TenantIntegrationPort = statics
+    ? staticThenIdentity(statics, identity)
     : identity;
+  const players = statics ? staticThenIdentityPlayers(statics, identity) : identity;
   // Dev seed only outside production: config refuses a production start without WHEEL_SEEDS.
   const seeds = createSeedProvider(envSeedStore(config.WHEEL_SEEDS ?? '{"1":"dev-wheel-seed-1"}'));
   const registry = createDefaultRegistry();
@@ -131,7 +140,7 @@ export function createAppModule(config: Config): DynamicModule {
       { provide: ADAPTER_REGISTRY, useValue: registry },
       { provide: CLOCK, useValue: { now: () => new Date() } },
       // X-1: ingest resolves the casino's player id through identity before the outbox write.
-      { provide: PLAYER_DIRECTORY, useValue: identity },
+      { provide: PLAYER_DIRECTORY, useValue: players },
       { provide: TENANT_CASINO_PORTS, useValue: casinoPorts },
       { provide: SEEDS, useValue: seeds },
       // X-8: the reverse mapping (internal player -> the casino's id), read per order.

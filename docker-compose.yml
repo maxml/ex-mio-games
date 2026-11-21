@@ -151,6 +151,9 @@ services:
       SERVICE_CLIENT_SECRET: engagement-dev-secret-0000
       # The redemption saga calls payments (reserve, commit, release) with a service token.
       PAYMENTS_URL: http://payments:4003
+      # Development-only casino integrations for the ingest compose tests (docs/specs/engagement-ingest.md
+      # section 10). They sit in front of identity: any other slug still resolves through identity.
+      INGEST_STATIC_TENANTS: '{"ingest-t1":{"tenant_id":"0190a1b2-c3d4-4e5f-8a6b-1000000000a1","platform":"casino-a","status":"active","environment":"production","webhook_secrets":["dev-ingest-secret-1"],"player_hash_key":"dev-hash-key-1"},"ingest-t2":{"tenant_id":"0190a1b2-c3d4-4e5f-8a6b-1000000000a2","platform":"casino-a","status":"active","environment":"production","webhook_secrets":["dev-ingest-secret-2"],"player_hash_key":"dev-hash-key-2"}}'
     command:
       - sh
       - -c

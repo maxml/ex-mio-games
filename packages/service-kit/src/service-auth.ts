@@ -476,7 +476,7 @@ export class ServiceAuthGuard implements CanActivate {
       done = true;
       const payload = event.payload as { decision: string; status: number };
       payload.status = reply.statusCode;
-      payload.decision = reply.statusCode < 400 ? 'allowed' : 'refused';
+      payload.decision = auditDecision(reply.statusCode);
       void port.finalize?.(event).catch(logAuditFinalizeFailure);
     };
     // 'close' without a finished response means the client went away before the outcome was known
@@ -496,6 +496,15 @@ export class ServiceAuthGuard implements CanActivate {
       else finish();
     });
   }
+}
+
+/**
+ * D-24 / INV-STACK-8: the audit decision is the guards' authorization outcome, not the HTTP outcome.
+ * The entry point let the call in; only a guard refusal (401/403) is `refused`. A handler's 404, 409
+ * or 500 is still an `allowed` call and the event carries the real status.
+ */
+export function auditDecision(status: number): 'allowed' | 'refused' {
+  return status === 401 || status === 403 ? 'refused' : 'allowed';
 }
 
 function auditMethod(method: string): 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE' | undefined {

@@ -171,7 +171,7 @@ export class PgRedemptionStore implements RedemptionStore {
       await tx.query(
         `INSERT INTO "redemption_work_queue" ("redemption_id", "tenant_id", "next_attempt_at")
          VALUES ($1, $2, $3)
-         ON CONFLICT ("redemption_id") DO UPDATE SET "next_attempt_at" = EXCLUDED."next_attempt_at"`,
+         ON CONFLICT ("tenant_id", "redemption_id") DO UPDATE SET "next_attempt_at" = EXCLUDED."next_attempt_at"`,
         [r.id, r.tenantId, r.nextAttemptAt],
       );
     } else {
@@ -480,15 +480,21 @@ export class PgRedemptionStore implements RedemptionStore {
     });
   }
 
-  /** Cross-tenant, over the RLS-free work queue (ids and times only). Never bypasses RLS. */
+  /**
+   * Cross-tenant, over the work queue (ids and times only). The queue has FORCE RLS (D-24); its one
+   * policy lets a transaction that sets `app.platform_scan` READ across tenants. Never BYPASSRLS.
+   */
   async dueForSweep(now: Date): Promise<{ tenantId: string; id: string }[]> {
-    const rows: { tenant_id: string; redemption_id: string }[] = await this.db.platformTx((tx) =>
-      tx.query(
-        `SELECT "tenant_id", "redemption_id" FROM "redemption_work_queue"
-         WHERE "next_attempt_at" IS NULL OR "next_attempt_at" <= $1
-         ORDER BY "next_attempt_at" NULLS FIRST LIMIT ${SWEEP_BATCH}`,
-        [now],
-      ),
+    const rows: { tenant_id: string; redemption_id: string }[] = await this.db.platformTx(
+      async (tx) => {
+        await tx.query(`SET LOCAL app.platform_scan = 'on'`);
+        return tx.query(
+          `SELECT "tenant_id", "redemption_id" FROM "redemption_work_queue"
+           WHERE "next_attempt_at" IS NULL OR "next_attempt_at" <= $1
+           ORDER BY "next_attempt_at" NULLS FIRST LIMIT ${SWEEP_BATCH}`,
+          [now],
+        );
+      },
     );
     return rows.map((r) => ({ tenantId: r.tenant_id, id: r.redemption_id }));
   }
