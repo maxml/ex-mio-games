@@ -54,7 +54,7 @@ USER app:app
 EXPOSE 3000
 # Container-level liveness for autoheal and `docker compose up --wait`. /health
 # is a dependency-free 200 web route (app/health/route.ts); Node 24 ships a
-# global fetch. Deckhand gates blue-green cutover on this same route separately.
+# global fetch. Deckhand checks this same route before blue-green cutover separately.
 HEALTHCHECK --interval=30s --timeout=3s --start-period=40s --retries=3 \
   CMD node -e "fetch('http://127.0.0.1:'+(process.env.PORT||3000)+'/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
 CMD ["node", "server.js"]

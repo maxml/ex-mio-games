@@ -25,7 +25,7 @@ COPY --from=builder /repo/apps/casino-sim/dist ./dist
 USER app:app
 EXPOSE 4004
 # Liveness only: no dependency is consulted, so a database outage does not restart the container.
-# Readiness (/healthz/ready) is what the deploy plane gates traffic on.
+# Readiness (/healthz/ready) is what the deploy plane checks before routing traffic.
 HEALTHCHECK --interval=10s --timeout=3s --start-period=30s --retries=5 \
   CMD node -e "fetch('http://127.0.0.1:'+process.env.PORT+'/healthz/live').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
 CMD ["node", "dist/main.js"]

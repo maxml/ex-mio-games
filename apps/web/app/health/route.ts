@@ -3,7 +3,7 @@
 // The API owns `/healthz/{live,ready}` (a separate Nest app). Under single-host
 // path routing the edge proxy sends `/healthz*` to the API, so the web needs its
 // OWN 200 route on a path the API does not claim — this one. Deckhand's
-// blue-green cutover gates on each public service's readiness, so the web must
+// blue-green cutover checks each public service's readiness, so the web must
 // answer for itself (see `.deckhand/deploy.yml` → services.web.health.ready).
 //
 // Dependency-free, and excluded from the next-intl middleware (see middleware.ts)

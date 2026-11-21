@@ -11,7 +11,7 @@ import { HEADER_PLATFORM_TOKEN } from '@ex-mio/contracts';
 export const PLATFORM_ADMIN_TOKEN = Symbol('PLATFORM_ADMIN_TOKEN');
 
 /**
- * Gate for platform endpoints (the tenant registry). A shared token is a
+ * Guard for platform endpoints (the tenant registry). A shared token is a
  * stand-in until operator login exists; it is compared in constant time.
  */
 @Injectable()

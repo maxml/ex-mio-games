@@ -1,4 +1,3 @@
-import { randomBytes } from 'node:crypto';
 import { z } from 'zod';
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -14,10 +13,12 @@ export type Uuidv7 = z.infer<typeof Uuidv7>;
 
 /**
  * Generate a UUIDv7 (RFC 9562): 48-bit unix-ms timestamp, then version 7, then
- * random bits. No dependency: Node's `crypto` is enough.
+ * random bits. Uses the Web Crypto global (Node 20+ and browsers), so this
+ * module also bundles for the web app, which a `node:crypto` import would break.
  */
 export function uuidv7(now: number = Date.now()): string {
-  const bytes = randomBytes(16);
+  const bytes = new Uint8Array(16);
+  globalThis.crypto.getRandomValues(bytes);
   bytes[0] = (now / 2 ** 40) & 0xff;
   bytes[1] = (now / 2 ** 32) & 0xff;
   bytes[2] = (now / 2 ** 24) & 0xff;
@@ -26,6 +27,6 @@ export function uuidv7(now: number = Date.now()): string {
   bytes[5] = now & 0xff;
   bytes[6] = ((bytes[6] ?? 0) & 0x0f) | 0x70;
   bytes[8] = ((bytes[8] ?? 0) & 0x3f) | 0x80;
-  const hex = bytes.toString('hex');
+  const hex = Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('');
   return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
 }

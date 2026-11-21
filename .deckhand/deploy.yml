@@ -15,7 +15,7 @@ project:
   displayName: 'ex-mio-games'
   repo: maxml/ex-mio-games
 
-# CI gate: root scripts.
+# CI checks: root scripts.
 pipeline:
   install: 'pnpm install --frozen-lockfile'
   build: 'pnpm build'
@@ -48,7 +48,7 @@ services:
     port: 4001 # internal container port (no host port)
     health:
       live: /healthz/live # 200, no dependencies
-      ready: /healthz/ready # 503 when the database or broker is down: gates cutover
+      ready: /healthz/ready # 503 when the database or broker is down: blocks cutover
     public:
       paths: ['/v1/tenants*', '/v1/auth*']
     resources: { cpu: '0.5', memory: '512M' }

@@ -36,7 +36,7 @@ function body(status: HealthStatus, checks: Record<string, DependencyHealth>): H
  * `/healthz/live`: the process is up, no dependencies consulted (a container
  * restart must not be triggered by a database outage).
  * `/healthz/ready`: every registered dependency answers; 503 otherwise (the
- * deploy plane gates traffic on this one).
+ * deploy plane checks this one before routing traffic).
  */
 @Controller()
 class HealthController {

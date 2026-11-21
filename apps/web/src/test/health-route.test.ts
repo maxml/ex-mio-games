@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { GET } from '../../app/health/route';
 
 // The web `/health` route is the readiness probe Deckhand's blue-green cutover
-// gates on for the web service (the API answers `/healthz` for itself). It must
+// checks for the web service (the API answers `/healthz` for itself). It must
 // stay dependency-free and always return a bare 200 JSON body, and reports the
 // running build's `version`, read from `APP_VERSION` at RUNTIME (force-dynamic).
 describe('web /health route', () => {
