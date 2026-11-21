@@ -123,10 +123,18 @@ describe.each(SERVICES)('database roles: %s', (service) => {
       `DROP POLICY "${tenantTable}_tenant_isolation" ON "${tenantTable}"`,
       `CREATE TABLE "sneaky" ("id" int)`,
       `TRUNCATE "outbox"`,
-      `GRANT ALL ON "outbox" TO PUBLIC`,
     ]) {
       await expect(appDb.query(sql)).rejects.toThrow(/must be owner|permission denied/);
     }
+    // A GRANT by a role without the grant option is a WARNING ("no privileges were granted"), not
+    // an error, so assert the effect: nothing reached PUBLIC (or anyone else) from the app role.
+    await appDb.query(`GRANT ALL ON "outbox" TO PUBLIC`).catch(() => undefined);
+    const { rows: leaked } = await admin.query(
+      `SELECT grantee, privilege_type FROM information_schema.table_privileges
+        WHERE table_schema = 'public' AND table_name = 'outbox' AND grantor = $1`,
+      [app],
+    );
+    expect(leaked).toEqual([]);
   });
 
   it('a service role cannot connect to the postgres or template1 maintenance databases', async () => {
