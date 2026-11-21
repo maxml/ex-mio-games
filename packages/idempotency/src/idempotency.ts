@@ -25,6 +25,7 @@ export class IdempotencyMismatchError extends Error {
 
 export interface IdempotentResult<T> {
   status: number;
+  /** For a 204 use `T = undefined`: the stored response then has a JSON null body. */
   body: T;
 }
 
@@ -76,8 +77,8 @@ export async function runIdempotent<T>(call: IdempotentCall<T>): Promise<Idempot
     const existing: { request_hash: string; response_status: number; response_body: unknown }[] =
       await manager.query(
         `SELECT "request_hash", "response_status", "response_body" FROM "idempotency_keys"
-         WHERE "principal_id" = $1 AND "operation" = $2 AND "key" = $3`,
-        [call.principalId, call.operation, call.key],
+         WHERE "tenant_id" = $1 AND "principal_id" = $2 AND "operation" = $3 AND "key" = $4`,
+        [tenantId, call.principalId, call.operation, call.key],
       );
     const row = existing[0];
     if (row) {
@@ -97,7 +98,9 @@ export async function runIdempotent<T>(call: IdempotentCall<T>): Promise<Idempot
         call.key,
         hash,
         result.status,
-        JSON.stringify(result.body),
+        // A body-less effect (204) stores JSON null: `JSON.stringify(undefined)` is
+        // `undefined`, which Postgres reads as SQL NULL and the NOT NULL column rejects.
+        JSON.stringify(result.body ?? null),
       ],
     );
     return { ...result, replayed: false };

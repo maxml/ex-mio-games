@@ -11,9 +11,11 @@ import {
   Public,
   runWithTenant,
   tenantCacheKey,
+  TenancyModule,
   TenantContextMissingError,
   TenantGuard,
   TenantInterceptor,
+  TenantMismatchError,
   tryTenantContext,
   withTenantTransaction,
 } from './index';
@@ -124,6 +126,35 @@ describe('withTenantTransaction', () => {
     await expect(
       withTenantTransaction(fakeDataSource([]), async () => 1, "x'--"),
     ).rejects.toThrow();
+  });
+
+  it('refuses an explicit tenant that differs from the ambient one, and accepts the same one', async () => {
+    const queries: string[] = [];
+    const ds = fakeDataSource(queries);
+    await expect(
+      runWithTenant({ tenantId: T1 }, () => withTenantTransaction(ds, async () => 1, T2)),
+    ).rejects.toThrow(TenantMismatchError);
+    expect((ds.transaction as jest.Mock).mock.calls).toHaveLength(0);
+    await runWithTenant({ tenantId: T1 }, () => withTenantTransaction(ds, async () => 1, T1));
+    expect(queries).toEqual([`SET LOCAL app.tenant_id = '${T1}'`]);
+  });
+});
+
+describe('TenancyModule.forRoot', () => {
+  it('refuses the header resolver in production, unless explicitly allowed', () => {
+    expect(() => TenancyModule.forRoot({ env: { NODE_ENV: 'production' } })).toThrow(/production/);
+    expect(() =>
+      TenancyModule.forRoot({
+        env: { NODE_ENV: 'production', ALLOW_INSECURE_HEADER_TENANT: 'true' },
+      }),
+    ).not.toThrow();
+    expect(() => TenancyModule.forRoot({ env: { NODE_ENV: 'development' } })).not.toThrow();
+  });
+
+  it('accepts a verified-token resolver in production', () => {
+    expect(() =>
+      TenancyModule.forRoot({ resolver: () => undefined, env: { NODE_ENV: 'production' } }),
+    ).not.toThrow();
   });
 });
 

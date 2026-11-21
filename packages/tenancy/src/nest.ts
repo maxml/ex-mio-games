@@ -7,7 +7,6 @@ import {
   Injectable,
   type NestInterceptor,
   Module,
-  Optional,
   SetMetadata,
   UnauthorizedException,
 } from '@nestjs/common';
@@ -56,11 +55,10 @@ export const headerTenantResolver: TenantResolver = (request) => {
  */
 @Injectable()
 export class TenantGuard implements CanActivate {
+  // No fallback resolver: a DI mistake must fail closed, never revert to the header.
   constructor(
     private readonly reflector: Reflector,
-    @Optional()
-    @Inject(TENANT_RESOLVER)
-    private readonly resolver: TenantResolver = headerTenantResolver,
+    @Inject(TENANT_RESOLVER) private readonly resolver: TenantResolver,
   ) {}
 
   canActivate(context: ExecutionContext): boolean {
@@ -73,7 +71,7 @@ export class TenantGuard implements CanActivate {
       return true;
     }
     const request = context.switchToHttp().getRequest<TenantRequestLike>();
-    const tenant = (this.resolver ?? headerTenantResolver)(request);
+    const tenant = this.resolver(request);
     if (!tenant) throw new UnauthorizedException('tenant required');
     (request as unknown as Record<symbol, TenantContext>)[REQUEST_TENANT] = tenant;
     return true;
@@ -93,10 +91,32 @@ export class TenantInterceptor implements NestInterceptor {
   }
 }
 
+/** Set to `true` to boot the header resolver with NODE_ENV=production (never on a real deployment). */
+export const ALLOW_HEADER_TENANT_ENV = 'ALLOW_INSECURE_HEADER_TENANT';
+
+/**
+ * May this process trust the tenant a caller names in a header? Only outside
+ * production, or when the operator says so with an explicit flag.
+ */
+export function headerTenantAllowed(env: NodeJS.ProcessEnv = process.env): boolean {
+  return env.NODE_ENV !== 'production' || env[ALLOW_HEADER_TENANT_ENV] === 'true';
+}
+
 @Module({})
 export class TenancyModule {
-  /** Registers the deny-by-default guard and the context interceptor app-wide. */
-  static forRoot(options: { resolver?: TenantResolver } = {}): DynamicModule {
+  /**
+   * Registers the deny-by-default guard and the context interceptor app-wide.
+   * Without a `resolver` the header placeholder is used, and in production that
+   * is refused at boot: the tenant must come from a verified token claim.
+   */
+  static forRoot(
+    options: { resolver?: TenantResolver; env?: NodeJS.ProcessEnv } = {},
+  ): DynamicModule {
+    if (!options.resolver && !headerTenantAllowed(options.env)) {
+      throw new Error(
+        `refusing to boot: the x-tenant-id header resolver is a placeholder and is not allowed in production (pass a verified-token resolver; ${ALLOW_HEADER_TENANT_ENV}=true overrides, for a throwaway environment only)`,
+      );
+    }
     return {
       module: TenancyModule,
       providers: [
