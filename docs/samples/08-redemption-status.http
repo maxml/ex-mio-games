@@ -1,0 +1,44 @@
+@engagement = http://localhost:4002
+
+### Final status of a redemption (workflow step 8)
+# Public words: pending | issuing | issued | failed_refunded.
+# Internal states COMPLETED and ISSUED both show as "issued"; NEEDS_REVIEW shows as "pending", reason hidden from the player.
+GET {{engagement}}/v1/redemptions/{{redemption_id}}
+Authorization: Bearer {{player_token}}
+
+# Response: expected, to be replaced with captured output
+# HTTP/1.1 200 OK
+# {
+#   "id": "0190...-redemption", "item_id": "0190...-item", "price": 40,
+#   "status": "issued", "state": "COMPLETED", "attempts": 1,
+#   "casino_reference": "bonus-8841", "failure_reason": null,
+#   "history": [ "REQUESTED", "RESERVED", "ISSUING", "ISSUED", "COMPLETED" ],
+#   "created_at": "2026-11-21T10:10:00.000Z", "updated_at": "2026-11-21T10:10:31.000Z"
+# }
+
+### Same redemption after the casino rejected it: coins released, stock returned
+GET {{engagement}}/v1/redemptions/{{rejected_redemption_id}}
+Authorization: Bearer {{player_token}}
+
+# Response: expected, to be replaced with captured output
+# HTTP/1.1 200 OK
+# { "status": "failed_refunded", "state": "RELEASED", "failure_reason": "casino_rejected:limit_exceeded", "...": "..." }
+
+### Operator view, filtered by state
+GET {{engagement}}/v1/operator/redemptions?status=NEEDS_REVIEW
+Authorization: Bearer {{operator_token}}
+
+# Response: expected, to be replaced with captured output
+# HTTP/1.1 200 OK
+# [ { "id": "...", "status": "pending", "state": "NEEDS_REVIEW", "failure_reason": "unknown_too_long", "...": "..." } ]
+
+### Operator resolves a review (owner or admin; reason is audited)
+POST {{engagement}}/v1/operator/redemptions/{{redemption_id}}/resolve
+Authorization: Bearer {{operator_token}}
+Content-Type: application/json
+
+{ "outcome": "not_issued", "reason": "casino confirmed no bonus was created" }
+
+# Response: expected, to be replaced with captured output
+# HTTP/1.1 200 OK  when a fresh status lookup agrees (rejected, or not_found past the issue deadline)
+# HTTP/1.1 409 Conflict { "code": "release_not_allowed" }  otherwise; the operator's word alone never moves coins

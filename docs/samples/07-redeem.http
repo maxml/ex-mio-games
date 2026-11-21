@@ -1,0 +1,40 @@
+@engagement = http://localhost:4002
+
+### Redeem coins for a store item (workflow steps 6-7)
+# Inside the POST: order recorded (stock and limit decremented, price and reward frozen), then a synchronous
+# coin reserve in payments. The casino reward is issued afterwards by the sweeper through the adapter port,
+# with our idempotency key redeem:<id>. The POST never calls the casino.
+# @name redeem
+POST {{engagement}}/v1/redemptions
+Authorization: Bearer {{player_token}}
+Idempotency-Key: redeem-0001-player-77
+Content-Type: application/json
+
+{ "item_id": "0190...-item" }
+
+# Response: expected, to be replaced with captured output
+# HTTP/1.1 201 Created   (202 Accepted if the reserve call timed out; the sweeper repeats it with the same key)
+# {
+#   "id": "0190...-redemption", "item_id": "0190...-item", "price": 40,
+#   "status": "pending", "state": "RESERVED", "attempts": 0,
+#   "casino_reference": null, "failure_reason": null,
+#   "history": [ { "from": null, "to": "REQUESTED", "cause": "order", "at": "2026-11-21T10:10:00.000Z" },
+#                { "from": "REQUESTED", "to": "RESERVED", "cause": "reserve ok", "at": "2026-11-21T10:10:00.100Z" } ],
+#   "created_at": "2026-11-21T10:10:00.000Z", "updated_at": "2026-11-21T10:10:00.100Z"
+# }
+
+### Not enough coins: the player sees it at once (decision D-8)
+POST {{engagement}}/v1/redemptions
+Authorization: Bearer {{poor_player_token}}
+Idempotency-Key: redeem-0002-player-12
+Content-Type: application/json
+
+{ "item_id": "0190...-item" }
+
+# Response: expected, to be replaced with captured output
+# HTTP/1.1 409 Conflict
+# { "code": "insufficient_funds", "message": "..." }
+# Stock and per-player limit are put back; no casino call was made.
+
+### Out of stock
+# HTTP/1.1 409 Conflict  { "code": "out_of_stock", "message": "..." }
