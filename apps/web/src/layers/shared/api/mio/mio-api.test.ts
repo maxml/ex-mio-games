@@ -28,6 +28,8 @@ describe('mock adapter returns contract-valid read models', () => {
     const api = createIsolatedMockApi();
     const before = await api.player.getState();
     const result = await api.player.spin();
+    // D-1: the spin answer is the reward; the credit shows on a later read, not on the first one.
+    expect((await api.player.getState()).coins).toBe(before.coins);
     const after = await api.player.getState();
     expect(after.spins).toBe(before.spins - 1);
     expect(after.coins).toBe(before.coins + result.coins);

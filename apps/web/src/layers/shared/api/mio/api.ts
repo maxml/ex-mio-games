@@ -19,22 +19,36 @@ export type MioApiErrorCode =
   | 'redeem_refused'
   | 'invalid'
   | 'forbidden'
-  | 'network'
+  /** The outcome is unknown: a lost reply, a timeout or a 5xx. The same idempotency key may be retried. */
+  | 'network-or-server'
+  /** 409 in flight: the same key is still being processed. Retry with the same key. */
+  | 'retryable'
   | 'bad_response';
 
 export class MioApiError extends Error {
   constructor(
     readonly code: MioApiErrorCode,
     message: string,
+    /** What the server said, when it said something; lets an adapter refine the code per call. */
+    readonly detail: { status: number; serverCode: string } | null = null,
   ) {
     super(message);
     this.name = 'MioApiError';
   }
 }
 
+/** Codes that leave a write's outcome unknown, so the caller must re-query, never assume. */
+export const isOutcomeUnknown = (e: unknown): boolean =>
+  e instanceof MioApiError &&
+  (e.code === 'network-or-server' || e.code === 'retryable' || e.code === 'bad_response');
+
 export interface PlayerApi {
   getState(): Promise<PlayerState>;
-  /** The server picks the segment; the client only animates to the returned index. */
+  /**
+   * The server picks the segment; the client only animates to the returned index. The response is
+   * the reward, not the balance: the coins land later through payments (D-1). One user action is one
+   * idempotency key; the adapter keeps it across retries until the server gives a definite answer.
+   */
   spin(): Promise<SpinResultView>;
   redeem(itemId: string): Promise<PlayerRedemptionView>;
   /** Sandbox casino only: simulates a confirmed deposit. */

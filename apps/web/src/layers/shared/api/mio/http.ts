@@ -1,7 +1,8 @@
 // Real adapter: the same `MioApi` over HTTP, every response validated against the shared contracts.
-// Paths are provisional; the owning services confirm them when the epics integrate (docs/CONTRACTS.md,
-// "Web read models"). Money-like writes carry an Idempotency-Key so a double click or a retry is one
-// request to the server.
+// Paths are provisional; the owning services confirm them when the services are wired (docs/CONTRACTS.md,
+// "Web read models"). Money-like writes carry an Idempotency-Key. One user action is one key: a spin
+// keeps its key across every retry until the server gives a definite answer, so a retry can never
+// become a second spin.
 import {
   AdminOverview,
   DepositResult,
@@ -11,27 +12,43 @@ import {
   PlayerRedemptionView,
   PlayerState,
   SpinResultView,
+  WIRE,
 } from '../../types';
 import { http as defaultHttp, isHttpError, type HttpClient, type ResponseSchema } from '../http';
 import { MioApiError, type MioApi } from './api';
 
 const idempotencyKey = (): string => globalThis.crypto.randomUUID();
+const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
+/** Backoff for a 409 "same key still in flight": bounded, then the caller sees `retryable`. */
+const IN_FLIGHT_BACKOFF_MS = [150, 300, 600];
 
 async function call<T>(run: () => Promise<T>): Promise<T> {
   try {
     return await run();
   } catch (e) {
     if (!isHttpError(e)) throw e;
-    if (e.status === 403 || e.status === 401) throw new MioApiError('forbidden', e.message);
+    const detail = { status: e.status, serverCode: String(e.code) };
+    if (e.status === 403 || e.status === 401) throw new MioApiError('forbidden', e.message, detail);
     if (e.code === 'validation_error' || e.code === 'parse_error')
-      throw new MioApiError('bad_response', e.message);
-    if (e.status === 0) throw new MioApiError('network', e.message);
-    if (e.status === 409 || e.status === 422) throw new MioApiError('invalid', e.message);
-    throw new MioApiError('invalid', e.message);
+      throw new MioApiError('bad_response', e.message, detail);
+    // A lost reply, a timeout or a 5xx: the write may or may not have happened.
+    if (e.status === 0 || e.status >= 500)
+      throw new MioApiError('network-or-server', e.message, detail);
+    throw new MioApiError('invalid', e.message, detail);
   }
 }
 
+/** A spin's 409 is either "no credit left" (explicit code only) or "same key in flight" (retryable). */
+function spinError(e: unknown): unknown {
+  if (!(e instanceof MioApiError) || e.code !== 'invalid' || e.detail?.status !== 409) return e;
+  return e.detail.serverCode === WIRE.spin.noCreditCode
+    ? new MioApiError('no_spins', e.message, e.detail)
+    : new MioApiError('retryable', e.message, e.detail);
+}
+
 export function createHttpApi(client: HttpClient = defaultHttp): MioApi {
+  /** The key of a spin whose outcome is not known yet; the next spin call re-asks with the same one. */
+  let spinKey: string | null = null;
   const post = <T>(
     path: string,
     body: unknown,
@@ -48,14 +65,30 @@ export function createHttpApi(client: HttpClient = defaultHttp): MioApi {
       getState: () =>
         call(() => client.get<PlayerState>('/api/player/state', { schema: PlayerState })),
       spin: async () => {
-        try {
-          return await post('/api/player/spins', {}, SpinResultView, {
-            [HEADER_IDEMPOTENCY_KEY]: idempotencyKey(),
-          });
-        } catch (e) {
-          if (e instanceof MioApiError && e.code === 'invalid')
-            throw new MioApiError('no_spins', e.message);
-          throw e;
+        // Minted once per action, kept while the outcome is unknown, dropped on a definite answer.
+        const key = (spinKey ??= idempotencyKey());
+        for (let attempt = 0; ; attempt++) {
+          try {
+            const result = await post(WIRE.spinPath, {}, SpinResultView, {
+              [HEADER_IDEMPOTENCY_KEY]: key,
+            });
+            spinKey = null;
+            return result;
+          } catch (raw) {
+            const e = spinError(raw);
+            const code = e instanceof MioApiError ? e.code : null;
+            if (code === 'retryable' && attempt < IN_FLIGHT_BACKOFF_MS.length) {
+              await sleep(IN_FLIGHT_BACKOFF_MS[attempt]!);
+              continue;
+            }
+            const unknown =
+              code === null ||
+              code === 'retryable' ||
+              code === 'network-or-server' ||
+              code === 'bad_response';
+            if (!unknown) spinKey = null;
+            throw e;
+          }
         }
       },
       redeem: (itemId) =>

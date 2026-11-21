@@ -35,10 +35,19 @@ export function createMockApi({ store = appStore }: MockApiOptions = {}): MioApi
   const audit: AdminOverview['audit'] = [];
   let auditSeq = 0;
 
+  // D-1: the spin answer carries the reward, payments credits the coins later. The mock models that
+  // lag: the first read after a spin still shows the old balance, the next one has the credit.
+  let creditLagReads = 0;
+
   const playerState = (): PlayerState => {
     const s = store.get();
+    let coins = s.player.coins;
+    if (creditLagReads > 0 && s.player.lastSpin) {
+      creditLagReads -= 1;
+      coins -= s.player.lastSpin.coins;
+    }
     return {
-      coins: s.player.coins,
+      coins,
       spins: s.player.spins,
       wheel: WHEEL_REWARDS.map((r) => ({ id: r.id, label: r.label })),
       store: s.operator.catalog
@@ -124,6 +133,7 @@ export function createMockApi({ store = appStore }: MockApiOptions = {}): MioApi
       spin: async () => {
         const result = requestSpin(store);
         if (!result) throw new MioApiError('no_spins', 'No spins left');
+        creditLagReads = 1;
         return result;
       },
       redeem: async (itemId) => {

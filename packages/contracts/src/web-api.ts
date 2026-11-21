@@ -227,3 +227,17 @@ export const ActAsTenantRequest = z.object({
   reason: z.string().trim().min(8).max(500),
 });
 export type ActAsTenantRequest = z.infer<typeof ActAsTenantRequest>;
+
+// --- adapter seam -----------------------------------------------------------
+
+/**
+ * The one place that names the wire details of the spin call. The HTTP adapter reads only these, so
+ * aligning with the engagement-ingest contract (`POST /v1/spins` -> `{spin_id, segment_label,
+ * reward_coins}`) changes this block and the response mapping, not the screens.
+ * `noCreditCode` is a placeholder: the ingest spec says "409 no available credit" without naming a
+ * code, and any other 409 on a spin is the retryable in-flight duplicate.
+ */
+export const WIRE = {
+  spinPath: '/api/player/spins',
+  spin: { noCreditCode: 'no_credit' },
+} as const;
