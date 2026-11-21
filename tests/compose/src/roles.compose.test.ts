@@ -10,9 +10,16 @@ import { pgAs, SERVICES, type Service } from './env';
 const EXPECTED_GRANTS: Record<Service, Record<string, string[]>> = {
   identity: { tenants: ['INSERT', 'SELECT'], outbox: ['INSERT', 'SELECT', 'UPDATE'] },
   engagement: {
-    tenant_projections: ['INSERT', 'SELECT', 'UPDATE'],
+    // L3 review F2: the ingest tables. Column grant UPDATE (status, used_at) on spin_credits is not
+    // listed here (table_privileges has no columns); INV-ENGAGEMENT-SCHEMA-DB pins it.
+    inbound_events: ['INSERT', 'SELECT'],
     inbox: ['INSERT', 'SELECT'],
     outbox: ['INSERT', 'SELECT', 'UPDATE'],
+    reward_tables: ['INSERT', 'SELECT'],
+    rules: ['INSERT', 'SELECT'],
+    spin_credits: ['INSERT', 'SELECT'],
+    spins: ['INSERT', 'SELECT'],
+    tenant_projections: ['INSERT', 'SELECT', 'UPDATE'],
   },
   payments: {
     coin_credits: ['INSERT', 'SELECT'],

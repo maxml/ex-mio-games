@@ -75,9 +75,17 @@ function signedA(
 function signedB(secret: string, o: { id?: string } = {}) {
   const data = { txn_id: o.id ?? 'evt-1', customer_ref: 'pl-1', amount_cents: 5000, ccy: 'EUR' };
   const sent_at = NOW.toISOString();
+  // F4: an injective encoding (JSON array), not a dotted string two different bodies can share.
   const signature = hmac(
     secret,
-    `${sent_at}.payment.completed.${data.txn_id}.${data.customer_ref}.${data.amount_cents}.${data.ccy}`,
+    JSON.stringify([
+      sent_at,
+      'payment.completed',
+      data.txn_id,
+      data.customer_ref,
+      data.amount_cents,
+      data.ccy,
+    ]),
   );
   return {
     raw: JSON.stringify({ type: 'payment.completed', data, sent_at, signature }),

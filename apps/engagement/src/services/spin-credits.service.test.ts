@@ -50,10 +50,12 @@ const rule = (spins: number, min = 1000): StoredRule => ({
   } satisfies RuleDefinition,
 });
 
-const depositEvent = (amount = 5000) =>
+// D-12 / F1: the event carries only the internal player id; the raw casino id never reaches here.
+const depositEvent = (amount = 5000, sandbox = false) =>
   createEvent({
     type: 'engagement.deposit.confirmed',
     tenantId: T,
+    ...(sandbox ? { sandbox: true } : {}),
     payload: {
       inbound_event_id: INBOUND,
       source: 'casino-a',
@@ -63,14 +65,17 @@ const depositEvent = (amount = 5000) =>
       currency: 'EUR',
       occurred_at: '2026-11-15T10:00:00.000Z',
     },
-  });
+  } as never);
 
 describe('SpinCreditsService.onDepositConfirmed', () => {
   let service: SpinCreditsService;
   const stored = new Map<string, NewCredit>();
   const grantTx: unknown[] = [];
   const published: Array<{ tx: unknown; event: EventEnvelope }> = [];
-  const resolveOrCreate = jest.fn(async () => USER);
+  // F1: the consumer no longer resolves anything; if it still asks the directory this throws.
+  const resolveOrCreate = jest.fn(async (): Promise<string> => {
+    throw new Error('the consumer must not resolve players: the event carries player_id');
+  });
   let priorCounts: Record<string, number>;
   const priorGrantCounts = jest.fn(async (_tx: unknown, _userId: string) => priorCounts);
   let rules: StoredRule[];
@@ -126,6 +131,20 @@ describe('SpinCreditsService.onDepositConfirmed', () => {
     expect(rows.map((r) => r.seq).sort()).toEqual([0, 1, 2]);
     expect(new Set(rows.map((r) => r.sourceEventId))).toEqual(new Set([INBOUND]));
     expect(rows.every((r) => r.ruleId === 'rule-1' && r.ruleVersion === 4)).toBe(true);
+  });
+
+  it('INV-CRED-SANDBOX: a credit granted from a sandbox deposit is a sandbox credit, and so is its spin.granted (F3, D-13)', async () => {
+    await service.onDepositConfirmed(TX as never, depositEvent(5000, true));
+    const rows = [...stored.values()] as Array<NewCredit & { sandbox?: boolean }>;
+    expect(rows).toHaveLength(3);
+    expect(rows.every((r) => r.sandbox === true)).toBe(true);
+    expect(published.every((p) => (p.event as { sandbox?: boolean }).sandbox === true)).toBe(true);
+    stored.clear();
+    published.length = 0;
+    await service.onDepositConfirmed(TX as never, depositEvent());
+    const prod = [...stored.values()] as Array<NewCredit & { sandbox?: boolean }>;
+    expect(prod.every((r) => r.sandbox !== true)).toBe(true);
+    expect(published.every((p) => (p.event as { sandbox?: boolean }).sandbox !== true)).toBe(true);
   });
 
   // X-1: the player is resolved ONCE, in ingest, before the outbox write. The consumer takes the

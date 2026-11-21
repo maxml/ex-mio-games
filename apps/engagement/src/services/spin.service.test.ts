@@ -336,6 +336,19 @@ describe('SpinService', () => {
     expect(prod!.sandbox).toBeUndefined();
   });
 
+  it('INV-SPIN-SANDBOX: spin.completed is a sandbox event exactly when the credit came from a sandbox credential (F3, D-13)', async () => {
+    const sandboxOf = (e: EventEnvelope) => (e as { sandbox?: boolean }).sandbox;
+    addCredit(credit(1), A);
+    addCredit(credit(2), A);
+    (credits.get(credit(1)) as { sandbox?: boolean }).sandbox = true;
+    (credits.get(credit(2)) as { sandbox?: boolean }).sandbox = false;
+    await asPlayer(A, () => service.spin({ idempotencyKey: 'k1', creditId: credit(1) }));
+    await asPlayer(A, () => service.spin({ idempotencyKey: 'k2', creditId: credit(2) }));
+    expect(published).toHaveLength(2);
+    expect(sandboxOf(published[0]!.event)).toBe(true);
+    expect(sandboxOf(published[1]!.event)).not.toBe(true);
+  });
+
   it('INV-SPIN-NO-CREDIT-CALL: the spin path makes no HTTP call; coins come from payments consuming spin.completed (D-1)', async () => {
     const fetchSpy = jest.spyOn(globalThis, 'fetch').mockImplementation(async () => {
       throw new Error('the spin path must not call payments over HTTP');
