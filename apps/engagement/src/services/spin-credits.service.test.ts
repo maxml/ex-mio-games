@@ -23,7 +23,7 @@ import { SpinCreditsService } from './spin-credits.service'; // RED: module miss
  * Mutations:
  *  - key rows by a random seq / fresh uuid instead of (source_event_id, rule_id, seq) -> INV-CRED-ONCE.
  *  - publish spin.granted for rows the repository did NOT insert -> INV-CRED-ONCE.
- *  - take user_id from the event / external id instead of the directory -> INV-CRED-PLAYER-MAPPED.
+ *  - take user_id from anything but the event's `player_id`, or consult the directory -> INV-CRED-PLAYER-MAPPED.
  *  - publish with a second transaction -> INV-CRED-ATOMIC.
  *  - pass `{}` (or another player's counts) to evaluateRules instead of priorGrantCounts(tx, user)
  *    -> INV-CRED-CAP-WIRED. The cap is best effort under concurrency (two deposits of one player
@@ -58,7 +58,7 @@ const depositEvent = (amount = 5000) =>
       inbound_event_id: INBOUND,
       source: 'casino-a',
       external_event_id: 'evt-1',
-      external_player_id: 'casino-player-77',
+      player_id: USER, // X-1: resolved by ingest through identity; the event never carries the raw casino id
       amount_minor: amount,
       currency: 'EUR',
       occurred_at: '2026-11-15T10:00:00.000Z',
@@ -128,9 +128,12 @@ describe('SpinCreditsService.onDepositConfirmed', () => {
     expect(rows.every((r) => r.ruleId === 'rule-1' && r.ruleVersion === 4)).toBe(true);
   });
 
-  it('INV-CRED-PLAYER-MAPPED: the credit belongs to the identity-resolved player, never the casino id', async () => {
+  // X-1: the player is resolved ONCE, in ingest, before the outbox write. The consumer takes the
+  // internal `player_id` from the event and never consults the directory again.
+  // Mutation: resolve at the consumer (call the directory), or take the user id from anything but the event's player_id.
+  it('INV-CRED-PLAYER-MAPPED: the credit belongs to the event player_id (resolved at ingest); the directory is not consulted', async () => {
     await service.onDepositConfirmed(TX as never, depositEvent());
-    expect(resolveOrCreate).toHaveBeenCalledWith(T, 'casino-a', 'casino-player-77');
+    expect(resolveOrCreate).not.toHaveBeenCalled();
     const rows = [...stored.values()];
     expect(rows.every((r) => r.userId === USER && r.tenantId === T)).toBe(true);
     const granted = parseEvent(published[0]!.event);
