@@ -11,6 +11,7 @@ import { TenancyModule } from '@ex-mio/tenancy';
 import type { Config } from './config';
 import { ProjectionsController } from './controllers/projections.controller';
 import { ModelModule } from './model/model.module';
+import { StoreModule } from './redemptions/store.module';
 import { ProjectionsService } from './services/projections.service';
 
 @Module({
@@ -42,6 +43,11 @@ export function createAppModule(config: Config): DynamicModule {
       TenancyModule.forRoot(),
       ModelModule,
       ProjectionsModule,
+      StoreModule.register({
+        paymentsUrl: config.PAYMENTS_URL,
+        serviceToken: config.PAYMENTS_SERVICE_TOKEN,
+        sweeperIntervalMs: config.SWEEPER_INTERVAL_MS,
+      }),
       bus,
       HealthModule.register({
         imports: [ModelModule, bus],
