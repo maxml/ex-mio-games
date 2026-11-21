@@ -166,7 +166,7 @@ interface Booted {
     url: string;
     headers?: Record<string, string>;
     payload?: unknown;
-  }) => Promise<{ statusCode: number; json: () => any }>; // eslint-disable-line @typescript-eslint/no-explicit-any
+  }) => Promise<{ statusCode: number; body: string; json: () => any }>; // eslint-disable-line @typescript-eslint/no-explicit-any
   clock: { now: number };
   statusCalls: string[];
   status: { value: 'active' | 'suspended'; fail: boolean };
