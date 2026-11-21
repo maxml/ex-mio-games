@@ -1,0 +1,28 @@
+{
+  "name": "@ex-mio-games/design-prototype",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Clickable design prototype of MIO Games: player widget, operator console, platform admin. Mock data only.",
+  "scripts": {
+    "dev": "vite",
+    "check:contrast": "node scripts/check-contrast.mjs",
+    "check:no-raw-colors": "node scripts/check-no-raw-colors.mjs",
+    "typecheck": "tsc -b",
+    "build": "npm run check:contrast && npm run check:no-raw-colors && tsc -b && vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "react": "18.3.1",
+    "react-dom": "18.3.1"
+  },
+  "devDependencies": {
+    "@tailwindcss/vite": "4.1.8",
+    "@types/react": "18.3.23",
+    "@types/react-dom": "18.3.7",
+    "@vitejs/plugin-react": "4.5.1",
+    "tailwindcss": "4.1.8",
+    "typescript": "5.8.3",
+    "vite": "6.3.5"
+  }
+}
