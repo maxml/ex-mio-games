@@ -8,7 +8,7 @@ import '../globals.css';
 
 export const metadata: Metadata = {
   title: 'ex-mio-games',
-  description: 'Type-safe full-stack monorepo template',
+  description: 'Engagement platform for online casinos',
 };
 
 export const viewport: Viewport = {
@@ -16,14 +16,14 @@ export const viewport: Viewport = {
   initialScale: 1,
 };
 
-// Pre-render the known locales (ADR-0005 §6). Requests for any other first segment
+// Pre-render the known locales (ADR-0001 §6). Requests for any other first segment
 // are rejected by `notFound()` below.
 export function generateStaticParams() {
   return routing.locales.map((locale) => ({ locale }));
 }
 
-// Locale-aware root layout (ADR-0005 §3.1 Variant A: `app/**` stays Next-routes-only
-// and thin — it wires the FSD `app`-layer `Providers`, ADR-0005 §7). With the
+// Locale-aware root layout (ADR-0001 §3.1 Variant A: `app/**` stays Next-routes-only
+// and thin — it wires the FSD `app`-layer `Providers`, ADR-0001 §7). With the
 // `[locale]` segment this is the topmost layout, so it owns `<html>`/`<body>`;
 // `global-error.tsx` stays at `app/` to catch errors thrown here.
 export default async function LocaleLayout({

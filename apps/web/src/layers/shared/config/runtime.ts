@@ -90,7 +90,7 @@ function sameOriginWsBase(): string {
  *      build-time `NEXT_PUBLIC_API_URL` (both via `resolveApiBaseUrl`): an
  *      absolute origin is reused with its scheme swapped to `ws`/`wss`. This is
  *      the cross-origin path (dev web :3000 -> api :4000, or a `single_host:false`
- *      deployment): the WS gateway shares the API origin in this starter.
+ *      deployment): the WS gateway shares the API origin.
  *   3. Browser default: SAME ORIGIN, derived from `window.location` — nothing
  *      baked, so realtime is ON (not off) when `NEXT_PUBLIC_API_URL` is unset.
  *   4. Server / no window with no configured base: `''`. The socket is only ever

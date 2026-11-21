@@ -2,7 +2,7 @@ import createMiddleware from 'next-intl/middleware';
 import { routing } from '@/layers/shared/config';
 
 // Next middleware lives at the app root (framework requirement), alongside the
-// `app/**` route tree (ADR-0005 §3.1 Variant A) — thin, deferring to the FSD config.
+// `app/**` route tree (ADR-0001 §3.1 Variant A) — thin, deferring to the FSD config.
 // next-intl handles locale detection (cookie → Accept-Language → default) and
 // rewrites/redirects to the locale-prefixed routes under `app/[locale]/**`.
 export default createMiddleware(routing);

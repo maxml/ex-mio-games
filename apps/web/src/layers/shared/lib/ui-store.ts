@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 
-// Client/UI state lives in Zustand, not in the TanStack Query cache (ADR-0005 §4.2,
+// Client/UI state lives in Zustand, not in the TanStack Query cache (ADR-0001 §4.2,
 // §5.2: ephemeral UI — modals, filters, theme, connection status). This small
 // store is the reference pattern: a typed state shape + actions, consumed from
 // `'use client'` components via narrow selectors.

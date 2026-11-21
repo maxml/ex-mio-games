@@ -1,10 +1,10 @@
-// Reconnect backoff policy for the singleton socket (ADR-0003 §6):
+// Reconnect backoff policy for the singleton socket (ADR-0002 §6):
 // exponential backoff with jitter, a ~30s cap, and a give-up bound. socket.io's
 // Manager implements this math natively, so `reconnectionOptions` configures it
 // directly; `computeBackoffDelay` mirrors the same formula as a pure, testable
 // helper (and documents the schedule the Manager follows). The cap is kept in
 // the same ballpark as the gateway's `pingInterval`/`pingTimeout`
-// (apps/api/src/realtime/io-adapter.ts) so client and server don't fight over
+// (the realtime gateway) so client and server don't fight over
 // dead-connection detection.
 
 /** Initial delay before the first reconnection attempt. */

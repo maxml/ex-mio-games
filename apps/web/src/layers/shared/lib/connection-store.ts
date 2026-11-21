@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 
 // Realtime connection/presence state lives in Zustand, NOT the TanStack Query
-// cache (ADR-0003 §7: connection status is ephemeral UI state, not
+// cache (ADR-0002 §7: connection status is ephemeral UI state, not
 // server state). The app-layer `WSProvider` writes the socket lifecycle into
 // this store; any layer can read `status` for a connection badge via a narrow
 // selector (so it sits in `shared`, reachable by widgets/features below `app`).

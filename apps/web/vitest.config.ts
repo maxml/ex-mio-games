@@ -3,7 +3,7 @@ import { fileURLToPath } from 'node:url';
 import react from '@vitejs/plugin-react';
 import { defineConfig } from 'vitest/config';
 
-// Vitest config for the web app's unit/component suite (ADR-0005 §8). The repo
+// Vitest config for the web app's unit/component suite (ADR-0001 §8). The repo
 // already ships Vite 8 + Vitest 4 (Storybook builds on the same toolchain), so
 // web tests run on Vitest while the other projects (api, generators, auth) keep
 // Jest. jsdom gives Testing Library a DOM; MSW (wired in ./src/test/setup.ts)
@@ -17,8 +17,8 @@ export default defineConfig({
       // Mirror the jest `moduleNameMapper`: resolve the shared schemas from
       // source (not the built `dist`) so tests don't depend on a prior build.
       {
-        find: '@ex-mio/shared-types',
-        replacement: resolvePath('../../packages/shared-types/src/index.ts'),
+        find: '@ex-mio/contracts',
+        replacement: resolvePath('../../packages/contracts/src/index.ts'),
       },
       // App alias (`@/*` -> `src/*`), matching apps/web/tsconfig.json.
       { find: /^@\//, replacement: `${resolvePath('./src')}/` },

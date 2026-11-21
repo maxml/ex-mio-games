@@ -1,5 +1,5 @@
 {
-  "name": "web",
+  "name": "@ex-mio/web",
   "version": "0.0.1",
   "private": true,
   "scripts": {
@@ -10,29 +10,23 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "e2e": "playwright test",
-    "storybook": "storybook dev -p 6006",
-    "build-storybook": "storybook build"
+    "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
-    "@ex-mio/shared-types": "workspace:^1.0.0",
+    "@ex-mio/contracts": "workspace:^1.0.0",
+    "@ex-mio/ui": "workspace:^1.0.0",
     "@hookform/resolvers": "^5.4.0",
     "@tanstack/react-query": "^5.101.2",
-    "class-variance-authority": "^0.7.1",
-    "clsx": "^2.1.1",
     "next": "14.2.35",
     "next-intl": "^4.13.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "react-hook-form": "^7.80.0",
     "socket.io-client": "^4.8.1",
-    "tailwind-merge": "^2.6.1",
     "zustand": "^5.0.14"
   },
   "devDependencies": {
     "@playwright/test": "^1.61.1",
-    "@storybook/addon-a11y": "^10.4.6",
-    "@storybook/react": "^10.4.6",
-    "@storybook/react-vite": "^10.4.6",
     "@tanstack/react-query-devtools": "^5.101.2",
     "@testing-library/dom": "^10.4.1",
     "@testing-library/jest-dom": "^6.9.1",
@@ -48,12 +42,17 @@
     "jsdom": "^29.1.1",
     "msw": "^2.14.6",
     "postcss": "^8.5.13",
-    "storybook": "^10.4.6",
     "tailwindcss": "^3.4.13",
     "typescript": "^5.6.2",
     "vite": "^8.0.0",
     "vitest": "~4.1.0"
   },
   "author": "maxml",
-  "license": "MIT"
+  "license": "MIT",
+  "nx": {
+    "tags": [
+      "type:app",
+      "scope:web"
+    ]
+  }
 }

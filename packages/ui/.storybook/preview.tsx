@@ -1,9 +1,9 @@
 import type { Preview } from '@storybook/react';
-// Tailwind entry so stories render with the design tokens (app/globals.css).
-import '../app/globals.css';
+// Tailwind layers + the token variables, so stories render exactly as the apps do.
+import './storybook.css';
 
-// A lightweight theme toggle (no extra addon): flips the `.dark` token class the
-// seed tokens key off of, so both themes are previewable from the toolbar.
+// Theme toggle: flips the `.dark` class the tokens key off, so both themes are
+// reviewable from the toolbar.
 const preview: Preview = {
   parameters: {
     controls: { matchers: { color: /(background|color)$/i, date: /Date$/i } },
@@ -24,16 +24,13 @@ const preview: Preview = {
     },
   },
   decorators: [
-    (Story, context) => {
-      const dark = context.globals.theme === 'dark';
-      return (
-        <div className={dark ? 'dark' : ''}>
-          <div className="bg-background text-foreground p-6">
-            <Story />
-          </div>
+    (Story, context) => (
+      <div className={context.globals.theme === 'dark' ? 'dark' : ''}>
+        <div className="bg-background text-foreground p-6">
+          <Story />
         </div>
-      );
-    },
+      </div>
+    ),
   ],
 };
 

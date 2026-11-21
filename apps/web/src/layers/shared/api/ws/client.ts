@@ -7,7 +7,7 @@ import {
   REALTIME_NAMESPACE,
   SubscribeAck,
   SubscribeInput,
-} from '@ex-mio/shared-types';
+} from '@ex-mio/contracts';
 // Deep import of the runtime resolver (not the `shared/config` barrel): the
 // barrel also re-exports the i18n navigation primitives, and pulling those into
 // the transport graph is both unnecessary and unresolvable under Vitest.
@@ -23,7 +23,7 @@ import { reconnectionOptions } from './backoff';
 export const WS_ACK_TIMEOUT_MS = 5000;
 
 // Singleton, multiplexed socket.io client for the `notifications` namespace
-// (ADR-0003 §5.2). One long-lived connection is shared across the
+// (ADR-0002 §5.2). One long-lived connection is shared across the
 // app; components never `new` up their own socket. The socket is created lazily
 // the first time `getWsClient` is called — and that call happens only inside the
 // app-layer `WSProvider`'s `useEffect`, never at module scope, because newing a
@@ -49,7 +49,7 @@ export interface WsClientOptions {
 
 /**
  * Placeholder token source. The real session token comes from the app's auth wiring
- * (ADR-0003 §3 handshake auth: the gateway resolves it through the auth facade).
+ * (ADR-0002 §3 handshake auth: the gateway resolves it through the auth facade).
  * Seeded from `NEXT_PUBLIC_WS_TOKEN` so a developer can point at a real token
  * without code changes; defaults to empty, which the gateway rejects.
  */
@@ -93,7 +93,7 @@ export function getWsClient(options: WsClientOptions = {}): Socket {
     transports: ['websocket'],
     autoConnect: false,
     // Function form: re-invoked before each (re)connection, so a token refreshed
-    // after a drop is used on reconnect (ADR-0003 §3 — browsers can't set the WS
+    // after a drop is used on reconnect (ADR-0002 §3 — browsers can't set the WS
     // `Authorization` header, so the token rides socket.io's `auth` handshake).
     auth: (cb) => {
       void Promise.resolve(getToken()).then((token) => cb({ token: token ?? '' }));
@@ -114,7 +114,7 @@ export function disconnectWsClient(): void {
 
 /**
  * Subscribe to inbound `notification` frames, narrowing each against the shared
- * Zod schema (ADR-0003 §4). Malformed frames are dropped, never dispatched.
+ * Zod schema (ADR-0002 §4). Malformed frames are dropped, never dispatched.
  * Returns an unsubscribe function.
  */
 export function onNotification(

@@ -4,7 +4,7 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Input } from './Input';
 
 const meta = {
-  title: 'shared/ui/Card',
+  title: 'Components/Card',
   component: Card,
 } satisfies Meta<typeof Card>;
 

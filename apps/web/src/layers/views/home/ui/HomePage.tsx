@@ -1,7 +1,5 @@
 import { getTranslations } from 'next-intl/server';
 import { ApiHealthStatus } from '@/layers/widgets/api-health';
-import { UsersList } from '@/layers/widgets/users-list';
-import { CreateUserForm } from '@/layers/features/user-create';
 import { resolveApiBaseUrl, joinApiUrl } from '@/layers/shared/config';
 import { HealthCheck } from '@/layers/shared/types';
 
@@ -28,7 +26,7 @@ async function fetchHealth(): Promise<HealthState> {
   // read the body regardless of status to surface "degraded" instead of
   // collapsing it into "unreachable". Validate it with the shared Zod schema.
   try {
-    const res = await fetch(joinApiUrl(base, '/healthz'), { cache: 'no-store' });
+    const res = await fetch(joinApiUrl(base, '/healthz/ready'), { cache: 'no-store' });
     const body = HealthCheck.parse(await res.json());
     return { reachable: true, status: body.status };
   } catch {
@@ -37,7 +35,7 @@ async function fetchHealth(): Promise<HealthState> {
 }
 
 export async function HomePage() {
-  // Server-side i18n (ADR-0005 §6): Server Components read translations directly via
+  // Server-side i18n (ADR-0001 §6): Server Components read translations directly via
   // `getTranslations` (no client provider needed); the active locale comes from
   // the parent `[locale]` layout.
   const t = await getTranslations('home');
@@ -57,27 +55,9 @@ export async function HomePage() {
         </p>
       </section>
 
-      {/* Client island (ADR-0005 §4.1): this Server Component renders the first
+      {/* Client island (ADR-0001 §4.1): this Server Component renders the first
           paint above, then delegates live polling to a `'use client'` widget. */}
       <ApiHealthStatus />
-
-      {/* Reference form flow (ADR-0005 §4.2): react-hook-form + Zod (shared
-          `CreateUserInput`) -> TanStack Query -> shared http client -> the real
-          `POST /api/users`. A successful create invalidates the users key, so
-          the `UsersList` widget below refetches. */}
-      <section className="rounded-lg border border-neutral-800 bg-neutral-900 p-4">
-        <h2 className="mb-1 text-base font-medium">Create user</h2>
-        <p className="mb-4 text-sm text-neutral-400">
-          react-hook-form + Zod <code>CreateUserInput</code> &rarr; TanStack Query useMutation
-          &rarr; shared http client &rarr; <code>POST /api/users</code>.
-        </p>
-        <CreateUserForm />
-      </section>
-
-      <section className="rounded-lg border border-neutral-800 bg-neutral-900 p-4">
-        <h2 className="mb-2 text-base font-medium">Users</h2>
-        <UsersList />
-      </section>
     </main>
   );
 }

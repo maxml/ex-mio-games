@@ -8,7 +8,7 @@ import {
   reconnectionOptions,
 } from './backoff';
 
-// Backoff schedule (ADR-0003 §6). `random: () => 0.5` zeroes the symmetric
+// Backoff schedule (ADR-0002 §6). `random: () => 0.5` zeroes the symmetric
 // jitter (0.5 * 2 - 1 === 0), so the deterministic exponential part is exact.
 const noJitter = { random: () => 0.5 };
 

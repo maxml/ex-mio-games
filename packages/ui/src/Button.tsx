@@ -1,6 +1,6 @@
 import { forwardRef, type ButtonHTMLAttributes } from 'react';
 import { cva, type VariantProps } from 'class-variance-authority';
-import { cn } from '@/layers/shared/lib';
+import { cn } from './cn';
 
 // Variants are token-driven (apps/web/tailwind.config.ts + app/globals.css).
 // SEED only — the variant set is finalized once you supply your design tokens.

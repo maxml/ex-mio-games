@@ -14,11 +14,14 @@ FROM node:24-alpine AS builder
 RUN corepack enable && apk add --no-cache openssl
 WORKDIR /repo
 COPY . .
-RUN pnpm install --frozen-lockfile
-# Build the app's workspace deps by dependency graph: "web^..." is "the deps of
+# Install only the web app and what it depends on, not the whole workspace.
+RUN --mount=type=cache,id=pnpm-store,target=/root/.local/share/pnpm/store \
+    pnpm install --frozen-lockfile --filter "@ex-mio/web..."
+# Build the app's workspace deps by dependency graph: "@ex-mio/web^..." is "the deps of
 # web, not web itself". Naming packages by hand goes stale the moment the app
-# imports a new workspace package; the graph form cannot.
-RUN pnpm --filter "web^..." build
+# imports a new workspace package; the graph form cannot. (The UI package ships
+# source and has no build step; Next compiles it via transpilePackages.)
+RUN pnpm --filter "@ex-mio/web^..." build
 
 # NEXT_PUBLIC_API_URL is an OPTIONAL build-time fallback, not a requirement.
 # Left empty (the default), the client resolver falls back to the
@@ -28,7 +31,7 @@ RUN pnpm --filter "web^..." build
 # build context (see .dockerignore), so this is never picked up implicitly.
 ARG NEXT_PUBLIC_API_URL=""
 ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
-RUN pnpm --filter web build
+RUN pnpm --filter @ex-mio/web build
 
 FROM node:24-alpine AS runner
 WORKDIR /app
