@@ -18,18 +18,28 @@ export const PLATFORM_TOKEN = 'dev-platform-token-0000';
  * A pg client logged in as one of the per-service roles (or the admin, for catalog queries).
  * `database` defaults to the service's own database, or `postgres` for the admin; pass it to look
  * at a service's catalog as the admin.
+ *
+ * `engagement_app` (D-12) is the engagement RUNTIME role: not the owner, no DDL, only the grants of
+ * docs/specs/engagement-ingest.md section 10. `engagement` is the owner that runs the migrations.
+ * Both log in to the `engagement` database.
  */
 export async function pgAs(
-  role: 'identity' | 'engagement' | 'payments' | 'postgres',
+  role: 'identity' | 'engagement' | 'engagement_app' | 'payments' | 'postgres',
   database?: 'identity' | 'engagement' | 'payments' | 'postgres',
 ): Promise<Client> {
-  const password = role === 'postgres' ? 'postgres-dev' : `${role}-dev`;
+  const password =
+    role === 'postgres'
+      ? 'postgres-dev'
+      : role === 'engagement_app'
+        ? 'engagement-app-dev'
+        : `${role}-dev`;
+  const ownDb = role === 'engagement_app' ? 'engagement' : role;
   const client = new Client({
     host: 'localhost',
     port: Number(port('POSTGRES_PORT', 54329)),
     user: role,
     password,
-    database: database ?? (role === 'postgres' ? 'postgres' : role),
+    database: database ?? (role === 'postgres' ? 'postgres' : ownDb),
   });
   await client.connect();
   return client;

@@ -7,7 +7,7 @@ import type {
   Transport,
   TransportRequest,
 } from './adapter';
-import { IssueResult, RewardStatus } from '@ex-mio/contracts'; // the single port (D-2)
+import { IssueDeadlineMs, IssueResult, RewardStatus } from '@ex-mio/contracts'; // the single port (D-2)
 import { createAdapterRegistry, createDefaultRegistry } from './registry'; // RED: module missing
 
 /**
@@ -26,6 +26,10 @@ import { createAdapterRegistry, createDefaultRegistry } from './registry'; // RE
  *    throw -> INV-ADAPTER-STATUS-UNKNOWN (a `not_found` after a lost reply leads to a refund while the
  *    casino issued the bonus).
  *  - casino B: map the ticket state PENDING to `rejected` (or `issued`) -> INV-ADAPTER-PENDING.
+ *  - register(): accept an entry without `issueDeadlineMs`, or one outside the bounds
+ *    -> INV-REGISTRY-ISSUE-DEADLINE.
+ *  - issueReward / getRewardStatus: ignore `request.sandbox` and send the request whatever the
+ *    instance's environment is -> INV-ADAPTER-SANDBOX-MISMATCH (D-12).
  *
  * Result shapes are the single port in packages/contracts/src/casino-adapter.ts (decision D-2):
  * issued{external_ref} | pending{external_ref?} | rejected{reason} | unknown, and for a status lookup
@@ -203,6 +207,7 @@ const PROFILES: Record<string, Profile> = {
 const REQUEST: RewardRequest = {
   external_player_id: 'pl-1',
   reward: { type: 'bonus', amount_minor: 500, currency: 'EUR' },
+  sandbox: false,
 };
 const cfg = (transport: Transport, extra: Partial<AdapterConfig> = {}): AdapterConfig => ({
   baseUrl: 'http://casino.test',
@@ -221,17 +226,44 @@ describe('adapter registry', () => {
       reg.register({ type: 'x', recoveryMode: 'magic', create: noop } as unknown as AdapterEntry),
     ).toThrow();
     expect(reg.list()).toHaveLength(0);
-    reg.register({ type: 'x', recoveryMode: 'native_lookup', create: noop });
+    reg.register({
+      type: 'x',
+      recoveryMode: 'native_lookup',
+      issueDeadlineMs: 900_000,
+      create: noop,
+    });
     expect(reg.get('x')?.recoveryMode).toBe('native_lookup');
     expect(() =>
-      reg.register({ type: 'x', recoveryMode: 'native_lookup', create: noop }),
+      reg.register({
+        type: 'x',
+        recoveryMode: 'native_lookup',
+        issueDeadlineMs: 900_000,
+        create: noop,
+      }),
     ).toThrow(); // duplicate type
   });
 
-  it('INV-REGISTRY-DEFAULTS: casino-a is native lookup, casino-b is idempotent replay', () => {
+  it('INV-REGISTRY-ISSUE-DEADLINE: an adapter type without an issue deadline in bounds is not registrable (D-12)', () => {
+    const reg = createAdapterRegistry();
+    for (const issueDeadlineMs of [undefined, 0, 59_999, 604_800_001, 1.5, '900000']) {
+      expect(() =>
+        reg.register({
+          type: 'y',
+          recoveryMode: 'native_lookup',
+          issueDeadlineMs,
+          create: noop,
+        } as unknown as AdapterEntry),
+      ).toThrow();
+    }
+    expect(reg.list()).toHaveLength(0);
+  });
+
+  it('INV-REGISTRY-DEFAULTS: casino-a is native lookup, casino-b is idempotent replay, both with a deadline in bounds', () => {
     const reg = createDefaultRegistry();
     expect(reg.get('casino-a')?.recoveryMode).toBe('native_lookup');
     expect(reg.get('casino-b')?.recoveryMode).toBe('idempotent_replay');
+    for (const e of reg.list())
+      expect(IssueDeadlineMs.safeParse(e.issueDeadlineMs).success).toBe(true);
   });
 });
 
@@ -416,6 +448,34 @@ describe.each(
     expect(s.kind).toBe('rejected');
     expect((s as { reason: string }).reason).toEqual(expect.any(String));
     expect(RewardStatus.safeParse(s).success).toBe(true);
+  });
+
+  it('INV-ADAPTER-SANDBOX-MISMATCH: a request for the other environment is rejected before any I/O, in both directions (D-12)', async () => {
+    for (const [instanceSandbox, requestSandbox] of [
+      [false, true],
+      [true, false],
+    ] as const) {
+      const casino = profile!.fake();
+      let calls = 0;
+      const counting: Transport = (req) => {
+        calls++;
+        return casino.transport(req);
+      };
+      const a = entry.create(cfg(counting, { sandbox: instanceSandbox }));
+      const request = { ...REQUEST, sandbox: requestSandbox };
+      const issued = await a.issueReward(request, 'redeem:sb1');
+      expect(issued).toMatchObject({ kind: 'rejected', reason: 'sandbox_mismatch' });
+      const status = await a.getRewardStatus('redeem:sb1', request);
+      expect(status).toMatchObject({ kind: 'rejected', reason: 'sandbox_mismatch' });
+      expect([instanceSandbox, calls, casino.issuedCount()]).toEqual([instanceSandbox, 0, 0]);
+    }
+    // the matching environment works
+    const sandboxCasino = profile!.fake();
+    const ok = entry.create(cfg(sandboxCasino.transport, { sandbox: true }));
+    expect((await ok.issueReward({ ...REQUEST, sandbox: true }, 'redeem:sb2')).kind).not.toBe(
+      'rejected',
+    );
+    expect(sandboxCasino.issuedCount()).toBe(1);
   });
 
   it('INV-ADAPTER-STATUS-UNKNOWN-KEY: a native-lookup adapter reports not_found for a key it never sent', async () => {

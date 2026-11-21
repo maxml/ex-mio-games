@@ -1,7 +1,13 @@
 import 'reflect-metadata';
 import { ConflictException, NotFoundException, UnprocessableEntityException } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
-import { PublicWheel, parseEvent, type EventEnvelope } from '@ex-mio/contracts';
+import {
+  PublicWheel,
+  SpinConflictBody,
+  SpinResponse,
+  parseEvent,
+  type EventEnvelope,
+} from '@ex-mio/contracts';
 import { Db } from '@ex-mio/service-kit';
 import { runWithTenant } from '@ex-mio/tenancy';
 import {
@@ -11,11 +17,38 @@ import {
   WheelsRepository,
   type RewardTableVersion,
   type SeedProvider,
+  type SeedStore,
   type SpinCredit,
   type SpinRecord,
 } from '../model/repositories';
+import { createSeedProvider } from '../model/seeds'; // RED: module missing
 import { SpinService } from './spin.service'; // RED: module missing
 import { selectSegment } from './wheel'; // RED: module missing
+
+/** The versioned seed store the REAL provider reads (R2-3). A rotation is `add(tenant, v + 1, ...)`. */
+class MemorySeedStore implements SeedStore {
+  private readonly m = new Map<string, string>();
+  add(tenantId: string, version: number, seed: string) {
+    this.m.set(`${tenantId}|${version}`, seed);
+  }
+  drop(tenantId: string, version: number) {
+    this.m.delete(`${tenantId}|${version}`);
+  }
+  versions(tenantId: string) {
+    return [...this.m.keys()]
+      .filter((k) => k.startsWith(`${tenantId}|`))
+      .map((k) => Number(k.split('|')[1]));
+  }
+  get(tenantId: string, version: number) {
+    return this.m.get(`${tenantId}|${version}`);
+  }
+}
+
+/** The 409 code of a rejected spin (R2-5): the body of the ConflictException, parsed with the contract. */
+const conflictCode = (reason: unknown) => {
+  expect(reason).toBeInstanceOf(ConflictException);
+  return SpinConflictBody.parse((reason as ConflictException).getResponse()).code;
+};
 
 /**
  * Server-authoritative spin (MIO-063, MIO-064). SpinService.spin({ idempotencyKey, creditId? }),
@@ -37,6 +70,14 @@ import { selectSegment } from './wheel'; // RED: module missing
  *  - return the table as stored from SpinService.wheel                   -> INV-WHEEL-PUBLIC-NO-WEIGHTS (service).
  *  - recompute (or store) with the current seed instead of the seed of the stored version
  *                                                                        -> INV-SPIN-RECOMPUTE-AFTER-ROTATION.
+ *    The seed provider here is the real `createSeedProvider` over a versioned store (R2-3); its own
+ *    mutations are in model/seeds.test.ts.
+ *  - omit `segment_index` from the spin result, or return a re-drawn one on replay -> INV-SPIN-SERVER-AUTHORITY.
+ *  - count credits of every player (drop `user_id` from countAvailable), or take the user from input
+ *                                                                        -> INV-ME-SPINS.
+ *  - answer a same-key duplicate with `no_credit` (or any 409 without the contract `code`), or a
+ *    player with nothing to spin with `in_progress`          -> INV-SPIN-REPLAY-PARALLEL,
+ *                                                               INV-SPIN-NO-CREDIT, INV-SPIN-ONE-WINNER (R2-5).
  *
  * The in-memory consume() is atomic by construction (no await between find and set), so this file
  * cannot see a read-then-write race; that race, the one-row limit and ownership with a dropped
@@ -71,8 +112,9 @@ describe('SpinService', () => {
   let published: Array<{ tx: unknown; event: EventEnvelope }>;
   let txs: unknown[];
   let consumeInputs: Array<{ userId: string; creditId?: string }>;
+  let countInputs: Array<{ userId: string }>;
   let table: RewardTableVersion;
-  let currentSeedVersion: number;
+  let seedStore: MemorySeedStore;
   let seedsPort: SeedProvider;
   const SEED_BY_VERSION: Record<number, string> = { 1: 'seed-v1', 2: 'seed-v2' };
 
@@ -82,8 +124,11 @@ describe('SpinService', () => {
     published = [];
     txs = [];
     consumeInputs = [];
+    countInputs = [];
     table = TABLE;
-    currentSeedVersion = 2;
+    seedStore = new MemorySeedStore(); // R2-3: the REAL provider reads this versioned store
+    seedStore.add(T, 1, SEED_BY_VERSION[1]!);
+    seedStore.add(T, 2, SEED_BY_VERSION[2]!); // current = 2 unless a test starts from v1
     const creditsRepo = {
       // the atomic conditional update: first caller flips it, everyone else gets undefined
       async consume(tx: unknown, input: { userId: string; creditId?: string }) {
@@ -98,6 +143,12 @@ describe('SpinService', () => {
         hit.status = 'used';
         (tx as Tx).undo.push(() => void (hit.status = 'available'));
         return { ...hit };
+      },
+      async countAvailable(_tx: unknown, input: { userId: string }) {
+        countInputs.push(input);
+        return [...credits.values()].filter(
+          (c) => c.userId === input.userId && c.status === 'available',
+        ).length;
       },
       async findOwn(_tx: unknown, input: { userId: string; creditId: string }) {
         const c = credits.get(input.creditId);
@@ -145,20 +196,7 @@ describe('SpinService', () => {
         { provide: SpinCreditsRepository, useValue: creditsRepo },
         { provide: SpinsRepository, useValue: spinsRepo },
         { provide: WheelsRepository, useValue: { activeTable: async () => table } },
-        {
-          provide: SEEDS,
-          useValue: {
-            current: () => ({
-              version: currentSeedVersion,
-              seed: SEED_BY_VERSION[currentSeedVersion],
-            }),
-            seed: (_tenantId: string, version: number) => {
-              const s = SEED_BY_VERSION[version];
-              if (!s) throw new Error(`no seed v${version}`);
-              return s;
-            },
-          },
-        },
+        { provide: SEEDS, useValue: createSeedProvider(seedStore) },
       ],
     }).compile();
     service = mod.get(SpinService);
@@ -181,7 +219,8 @@ describe('SpinService', () => {
     const failed = results.filter((r): r is PromiseRejectedResult => r.status === 'rejected');
     expect(ok).toHaveLength(1);
     expect(failed).toHaveLength(49);
-    expect(failed.every((f) => f.reason instanceof ConflictException)).toBe(true);
+    // different keys: the losers have nothing left to spin, `no_credit` (the client stops, R2-5)
+    expect(failed.map((f) => conflictCode(f.reason))).toEqual(Array(49).fill('no_credit'));
     expect(spins.size).toBe(1);
     expect(published.filter((p) => p.event.type === 'engagement.spin.completed')).toHaveLength(1);
   });
@@ -194,6 +233,8 @@ describe('SpinService', () => {
       ),
     );
     expect(results.filter((r) => r.status === 'fulfilled')).toHaveLength(3);
+    const failed = results.filter((r): r is PromiseRejectedResult => r.status === 'rejected');
+    expect(failed.map((f) => conflictCode(f.reason))).toEqual(Array(47).fill('no_credit'));
     expect(spins.size).toBe(3);
   });
 
@@ -210,22 +251,21 @@ describe('SpinService', () => {
 
   it("INV-SPIN-OWNERSHIP: without a credit id the player consumes only their own credit, never another player's", async () => {
     addCredit(credit(9), B);
-    await expect(asPlayer(A, () => service.spin({ idempotencyKey: 'k1' }))).rejects.toBeInstanceOf(
-      ConflictException,
-    );
+    const err = await asPlayer(A, () => service.spin({ idempotencyKey: 'k1' })).catch((e) => e);
+    expect(conflictCode(err)).toBe('no_credit');
     expect(credits.get(credit(9))?.status).toBe('available');
     expect(consumeInputs.length).toBeGreaterThan(0);
     expect(consumeInputs.every((i) => i.userId === A)).toBe(true);
   });
 
-  it('INV-SPIN-NO-CREDIT: no available credit is 409; an own but used credit is 409', async () => {
-    await expect(asPlayer(A, () => service.spin({ idempotencyKey: 'k1' }))).rejects.toBeInstanceOf(
-      ConflictException,
-    );
+  it('INV-SPIN-NO-CREDIT: no available credit is 409 `no_credit`; an own but used credit is 409 `no_credit`', async () => {
+    const first = await asPlayer(A, () => service.spin({ idempotencyKey: 'k1' })).catch((e) => e);
+    expect(conflictCode(first)).toBe('no_credit');
     credits.set(credit(2), { id: credit(2), userId: A, wheelId: WHEEL, status: 'used' });
-    await expect(
-      asPlayer(A, () => service.spin({ idempotencyKey: 'k2', creditId: credit(2) })),
-    ).rejects.toBeInstanceOf(ConflictException);
+    const used = await asPlayer(A, () =>
+      service.spin({ idempotencyKey: 'k2', creditId: credit(2) }),
+    ).catch((e) => e);
+    expect(conflictCode(used)).toBe('no_credit');
   });
 
   it('INV-SPIN-SERVER-AUTHORITY: the stored outcome is the recomputable HMAC outcome of seed v2 and table v6', async () => {
@@ -238,6 +278,25 @@ describe('SpinService', () => {
     expect(row.segmentIndex).toBe(again.segmentIndex);
     expect(row.hmac).toBe(again.hmac);
     expect(res.segment_label).toBe(again.segment.label);
+    // the web wheel animates to the server's result: the response carries the stored index (coordinator)
+    expect(res.segment_index).toBe(row.segmentIndex);
+    expect(SpinResponse.safeParse(res).success).toBe(true);
+    // a replay returns the same index
+    const replay = await asPlayer(A, () => service.spin({ idempotencyKey: 'k1' }));
+    expect(replay.segment_index).toBe(row.segmentIndex);
+  });
+
+  it("INV-ME-SPINS: availableSpins() is the player's own count of available credits: used, other players' and nothing-yet do not count; the user is the principal", async () => {
+    expect(await asPlayer(A, () => service.availableSpins())).toEqual({ available: 0 });
+    [1, 2, 3].forEach((n) => addCredit(credit(n), A));
+    addCredit(credit(8), B);
+    credits.set(credit(9), { id: credit(9), userId: A, wheelId: WHEEL, status: 'used' });
+    expect(await asPlayer(A, () => service.availableSpins())).toEqual({ available: 3 });
+    expect(await asPlayer(B, () => service.availableSpins())).toEqual({ available: 1 });
+    await asPlayer(A, () => service.spin({ idempotencyKey: 'k1' }));
+    expect(await asPlayer(A, () => service.availableSpins())).toEqual({ available: 2 });
+    expect(countInputs).toHaveLength(4);
+    expect(countInputs.map((c) => c.userId)).toEqual([A, A, B, A]);
   });
 
   it('INV-SPIN-ATOMIC: spin row and spin.completed share one transaction', async () => {
@@ -316,7 +375,11 @@ describe('SpinService', () => {
     const failed = results.filter((r): r is PromiseRejectedResult => r.status === 'rejected');
     expect(ok.length).toBeGreaterThan(0);
     expect(new Set(ok.map((r) => r.value.spin_id)).size).toBe(1);
-    expect(failed.every((f) => f.reason instanceof ConflictException)).toBe(true); // in progress: retryable
+    // R2-5: a same-key duplicate is `in_progress` (retry with the key), NOT `no_credit`: a credit
+    // is still available (two were seeded), so "no spins left" would be a lie to the client.
+    expect(failed.map((f) => conflictCode(f.reason))).toEqual(
+      Array(failed.length).fill('in_progress'),
+    );
     expect(spins.size).toBe(1);
     expect([...credits.values()].filter((c) => c.status === 'used')).toHaveLength(1);
     expect(published.filter((p) => p.event.type === 'engagement.spin.completed')).toHaveLength(1);
@@ -354,18 +417,21 @@ describe('SpinService', () => {
   });
 
   it('INV-SPIN-RECOMPUTE-AFTER-ROTATION: a spin stored under seed v1 is recomputed from seed v1 after the current seed moved to v2', async () => {
-    currentSeedVersion = 1;
+    seedStore.drop(T, 2); // the store holds v1 only: current = 1
     addCredit(credit(1), A);
     const old = await asPlayer(A, () => service.spin({ idempotencyKey: 'old' }));
     const stored = spins.get(`${A}|old`)!;
     expect(stored.seedVersion).toBe(1);
-    currentSeedVersion = 2; // rotation
+    seedStore.add(T, 2, SEED_BY_VERSION[2]!); // rotation: a new version in the store
     addCredit(credit(2), A);
     const fresh = await asPlayer(A, () => service.spin({ idempotencyKey: 'new' }));
     expect(spins.get(`${A}|new`)!.seedVersion).toBe(2);
     expect(spins.get(`${A}|old`)).toEqual(stored); // the old record is untouched by the rotation
 
+    // R2-3: `seeds` is the REAL provider (model/seeds.ts) over the versioned store, not test-owned
+    // arithmetic. A provider whose seed(tenant, v) returns the current seed fails the next line.
     const seeds = seedsPort;
+    expect(seeds.seed(T, 1)).toBe(SEED_BY_VERSION[1]);
     const byVersion = selectSegment({
       seed: seeds.seed(T, stored.seedVersion), // by the STORED version, not current()
       seedVersion: stored.seedVersion,

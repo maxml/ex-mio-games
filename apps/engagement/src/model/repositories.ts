@@ -69,14 +69,21 @@ export abstract class SpinCreditsRepository {
    *                 FOR UPDATE SKIP LOCKED LIMIT 1)
    *      AND status='available'
    *    RETURNING *.
-   * `user_id` is in the SELECT on both paths (with and without `credit_id`). `SKIP LOCKED` lets
-   * concurrent requests take different rows, so 3 credits and 50 requests give exactly 3 winners.
-   * `undefined` means zero rows updated.
+   * `user_id` is in the SELECT on both paths (with and without `credit_id`). `SKIP LOCKED` is a
+   * throughput choice (waiters take other rows instead of queueing); it is NOT a pinned invariant:
+   * under READ COMMITTED the totals are the same without it (measured, review R2-4), so no test
+   * claims to catch its removal. `undefined` means zero rows updated.
    */
   abstract consume(
     tx: Tx,
     input: { userId: string; creditId?: string },
   ): Promise<SpinCredit | undefined>;
+  /**
+   * `GET /v1/me/spins`: the number of `available` credits of ONE player in the ambient tenant.
+   *   SELECT count(*) FROM spin_credits WHERE tenant_id=$1 AND user_id=$2 AND status='available'
+   * `user_id` is the principal, never input.
+   */
+  abstract countAvailable(tx: Tx, input: { userId: string }): Promise<number>;
   /** Used only to tell 404 (not this player's) from 409 (theirs, not available). */
   abstract findOwn(
     tx: Tx,
@@ -107,4 +114,14 @@ export const SEEDS = Symbol('SEEDS');
 export interface SeedProvider {
   current(tenantId: string): { version: number; seed: string };
   seed(tenantId: string, version: number): string;
+}
+
+/**
+ * Where seeds are kept, by version (env in dev, a secret store later). The real `SeedProvider` is
+ * `createSeedProvider(store)` in `model/seeds.ts` (R2-3): `current` is the highest version in the
+ * store, `seed` reads by the version asked for. A rotation is a new version added to the store.
+ */
+export interface SeedStore {
+  versions(tenantId: string): number[];
+  get(tenantId: string, version: number): string | undefined;
 }

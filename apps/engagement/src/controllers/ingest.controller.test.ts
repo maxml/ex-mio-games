@@ -4,7 +4,7 @@ import { Test } from '@nestjs/testing';
 import { FastifyAdapter, type NestFastifyApplication } from '@nestjs/platform-fastify';
 import { IngestAck, IngestErrorBody, parseEvent, type EventEnvelope } from '@ex-mio/contracts';
 import { Db } from '@ex-mio/service-kit';
-import { TenancyModule } from '@ex-mio/tenancy';
+import { authModule } from '../testing/auth.fixture'; // RED: depends on ServiceAuthModule (identity epic)
 import { createDefaultRegistry } from '../integrations/registry'; // RED: module missing
 import {
   ADAPTER_REGISTRY,
@@ -30,6 +30,8 @@ import { IngestionService } from '../services/ingestion.service'; // RED: missin
  *  - parse the body before verifying the signature -> INV-ING-SIG-FIRST.
  *  - try only the first secret -> INV-ING-ROTATION.
  *  - check `suspended` before the signature -> INV-ING-SUSPENDED.
+ *  - store the raw external player id in the row, hash without the tenant key, or hash a different
+ *    message than `${source}\n${external_player_id}` -> INV-ING-PLAYER-HMAC (D-12).
  */
 
 const NOW = new Date('2026-11-21T12:00:00.000Z');
@@ -39,6 +41,7 @@ const T3 = '0190a1b2-c3d4-4e5f-8a6b-000000000003';
 const T4 = '0190a1b2-c3d4-4e5f-8a6b-000000000004';
 const hmac = (secret: string, msg: string) =>
   createHmac('sha256', secret).update(msg).digest('hex');
+const HASH_KEYS = { acme: 'hk-acme', globex: 'hk-globex', bravo: 'hk-bravo', frozen: 'hk-frozen' };
 
 // Independent signers (the oracle for each casino's wire protocol, docs/specs section 3).
 function signedA(
@@ -118,28 +121,38 @@ describe('ingestion endpoint', () => {
     txCalls = [];
     publishFails = false;
     integrations = {
-      acme: { tenant_id: T1, casino: 'casino-a', status: 'active', webhook_secrets: ['sec-acme'] },
+      acme: {
+        tenant_id: T1,
+        casino: 'casino-a',
+        status: 'active',
+        webhook_secrets: ['sec-acme'],
+        player_hash_key: HASH_KEYS.acme,
+      },
       globex: {
         tenant_id: T2,
         casino: 'casino-a',
         status: 'active',
         webhook_secrets: ['sec-globex'],
+        player_hash_key: HASH_KEYS.globex,
       },
       bravo: {
         tenant_id: T3,
         casino: 'casino-b',
         status: 'active',
         webhook_secrets: ['sec-bravo'],
+        player_hash_key: HASH_KEYS.bravo,
       },
       frozen: {
         tenant_id: T4,
         casino: 'casino-a',
         status: 'suspended',
         webhook_secrets: ['sec-frozen'],
+        player_hash_key: HASH_KEYS.frozen,
       },
     };
     const mod = await Test.createTestingModule({
-      imports: [TenancyModule.forRoot()],
+      // the real entry point (D-4); the webhook route is @Public, so it needs no token
+      imports: [authModule()],
       controllers: [IngestController],
       providers: [
         IngestionService,
@@ -334,6 +347,27 @@ describe('ingestion endpoint', () => {
     expect(txCalls).toHaveLength(1); // one transaction for insert + outbox
     expect(published[0]!.tx).toBe(txCalls[0]);
     expect(inbound.rows.size).toBe(1);
+  });
+
+  it('INV-ING-PLAYER-HMAC: the inbound row stores an HMAC of the casino player id (tenant key), never the raw id; the outbox event still carries it for the player mapping (D-12)', async () => {
+    const res = await post('acme', signedA('sec-acme'));
+    expect(res.statusCode).toBe(200);
+    const { row } = [...inbound.rows.values()][0]!;
+    // independent oracle: HMAC-SHA256(player_hash_key, `${source}\n${external_player_id}`) in hex
+    const expected = hmac(HASH_KEYS.acme, 'casino-a\npl-1');
+    expect(row.externalPlayerHmac).toBe(expected);
+    expect(JSON.stringify(row)).not.toContain('pl-1'); // no field of the row holds the raw id
+    expect(Object.keys(row)).not.toContain('externalPlayerId');
+    // another tenant's key gives another hash for the same casino player
+    await post('globex', signedA('sec-globex', { id: 'evt-g' }));
+    const other = [...inbound.rows.values()].find((r) => r.row.tenantId === T2)!.row;
+    expect(other.externalPlayerHmac).toBe(hmac(HASH_KEYS.globex, 'casino-a\npl-1'));
+    expect(other.externalPlayerHmac).not.toBe(expected);
+    // the same player at the other casino of the same tenant key space is a different hash too
+    await post('bravo', signedB('sec-bravo'));
+    const b = [...inbound.rows.values()].find((r) => r.row.tenantId === T3)!.row;
+    expect(b.externalPlayerHmac).toBe(hmac(HASH_KEYS.bravo, 'casino-b\npl-1'));
+    expect(published.every((p) => p.event.type === 'engagement.deposit.confirmed')).toBe(true);
   });
 
   it('INV-ING-ROTATION: with two active secrets either verifies; after the old one is revoked it is refused', async () => {

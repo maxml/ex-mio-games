@@ -3,7 +3,8 @@ import type { CanonicalDepositEvent, CasinoRewardPort } from '@ex-mio/contracts'
 // STAGE A STUB: types only, no behaviour. Specified in docs/specs/engagement-ingest.md section 3.
 
 /** How an adapter answers "did you issue this reward?" when the casino's reply was lost. */
-export type RecoveryMode = 'native_lookup' | 'idempotent_replay';
+export type { RecoveryMode } from '@ex-mio/contracts';
+import type { RecoveryMode } from '@ex-mio/contracts';
 
 export type Headers = Record<string, string | undefined>;
 
@@ -48,16 +49,23 @@ export interface AdapterConfig {
   transport: Transport;
   timeoutMs?: number;
   apiKey?: string;
+  /**
+   * D-12: the environment this instance talks to. A request whose `sandbox` differs is answered
+   * `rejected` before any I/O. Defaults to `false` (production).
+   */
+  sandbox?: boolean;
 }
 
 export interface AdapterEntry {
   type: string; // 'casino-a' | 'casino-b' | ...
   recoveryMode: RecoveryMode;
+  /** D-12: default issue deadline of this casino type (IssueDeadlineMs bounds); a tenant may override it. */
+  issueDeadlineMs: number;
   create(config: AdapterConfig): CasinoAdapter;
 }
 
 export interface AdapterRegistry {
-  /** Throws if `recoveryMode` is missing or not one of the two modes, or the type is taken. */
+  /** Throws if `recoveryMode` is missing or not one of the two modes, `issueDeadlineMs` is out of bounds, or the type is taken. */
   register(entry: AdapterEntry): void;
   get(type: string): AdapterEntry | undefined;
   list(): AdapterEntry[];
