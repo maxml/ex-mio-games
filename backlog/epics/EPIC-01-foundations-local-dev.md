@@ -22,9 +22,9 @@ The demo is what we sell. If a prospect or a reviewer cannot run it in minutes, 
 |---|---|---|
 | MIO-001 | Bootstrap the product from the monorepo starter (microservices layout) | P0 |
 | MIO-002 | Docker Compose stack: one container per service plus infrastructure | P0 |
-| MIO-003 | Clean-clone check in CI: clone, compose up, demo scenario passes | P0 |
-| MIO-004 | Seed data: platform tenant, two operator tenants, wheel, store | P0 |
-| MIO-005 | One-command demo scenario script (the 8-step flow for both casinos) | P0 |
+| MIO-003 | Clean-clone check in CI: clone, compose up, demo passes, no accounts | P1 |
+| MIO-004 | Seed data: platform tenant, two operator tenants, wheel, store | P1 |
+| MIO-005 | One-command demo of the first sellable slice (signup to paid plan, with the 8-step player flow) | P0 |
 | MIO-006 | CI pipeline: lint, typecheck, test, build on affected projects | P1 |
 | MIO-007 | Nx module boundaries enforced in lint | P1 |
 | MIO-008 | MVC layering convention and its lint check | P1 |

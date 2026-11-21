@@ -4,9 +4,9 @@ title: Health, readiness, timeouts, graceful shutdown
 epic: EPIC-15
 priority: P1
 money_impact: enabler
-risk_class: none
+risk_class: concurrency
 status: todo
-depends_on: [MIO-001]
+depends_on: [MIO-001, MIO-066]
 size: S
 ---
 
@@ -23,5 +23,9 @@ Services start, stop and fail predictably.
 ## Acceptance criteria
 
 - With Postgres stopped, `/ready` returns 503 and `/health` returns 200.
-- Sending SIGTERM during a redemption leaves it in a consistent state (no half-written saga step).
+- Sending SIGTERM during a redemption, at each durable boundary listed in MIO-066, leaves it in a
+  consistent state (no half-written saga step); after restart it reaches the same final state as without
+  the signal.
+- A message being handled when SIGTERM arrives is either committed and acknowledged, or not acknowledged
+  and redelivered; never acknowledged without its effect.
 - A lint rule fails on an HTTP client created without a timeout.

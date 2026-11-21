@@ -2,11 +2,11 @@
 id: MIO-110
 title: "Websocket server: authenticated, tenant-scoped channels"
 epic: EPIC-11
-priority: P0
+priority: P1
 money_impact: enabler
 risk_class: isolation
 status: todo
-depends_on: [MIO-042, MIO-033]
+depends_on: [MIO-042, MIO-033, MIO-135]
 blocked_by: ["starter: resilient websocket"]
 size: M
 ---

@@ -17,14 +17,14 @@ module inside the engagement service, not a separate service.
 
 | ID | Title | Priority |
 |---|---|---|
-| MIO-050 | Canonical event model and adapter interface | P0 |
+| MIO-050 | Canonical event model and adapter interface, with the recovery contract | P0 |
 | MIO-051 | Casino A: simulator and adapter | P0 |
-| MIO-052 | Casino B: simulator and adapter with a different schema and reward API | P0 |
+| MIO-052 | Casino B: simulator and adapter with a different schema and reward API | P1 |
 | MIO-053 | Simulator fault injection | P1 |
 | MIO-054 | Webhook ingestion: signature, timestamp window, per-tenant secret, schema validation | P0 |
 | MIO-055 | Event deduplication in the same transaction as the effect | P0 |
 | MIO-056 | `DepositConfirmed` published through the outbox to RabbitMQ | P0 |
-| MIO-057 | Shared adapter contract test suite | P1 |
+| MIO-057 | Shared adapter contract test suite (written before the first adapter) | P0 |
 
 ## Covers
 

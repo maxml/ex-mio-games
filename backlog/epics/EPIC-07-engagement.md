@@ -23,11 +23,11 @@ rewards that the casino issues. Reward status is tracked and exposed through an 
 | MIO-063 | Server-authoritative deterministic spin | P0 |
 | MIO-064 | Coin reward from a spin recorded through payments | P0 |
 | MIO-065 | Bonus Store catalog | P0 |
-| MIO-066 | Redemption saga: reserve, issue, settle or compensate | P0 |
+| MIO-066 | Redemption saga: hold, issue, capture or release, with a full state-transition table | P0 |
 | MIO-067 | Reward status tracking and status API | P0 |
 | MIO-068 | Issuance retries, backoff, timeout handling, DLQ and replay | P1 |
 | MIO-069 | Wheel fairness: seed management and the anti-manipulation write-up | P1 |
-| MIO-070 | ADR: new features (Missions, PvP, Kingdom Builder) consume canonical events only | P2 |
+| MIO-070 | ADR: new features (Missions, PvP, Kingdom Builder) consume canonical events only | P1 |
 
 ## Covers
 

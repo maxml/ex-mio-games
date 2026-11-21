@@ -17,12 +17,17 @@ One shared, versioned definition of every message between services and every pub
 
 ## Scope
 
-- `packages/contracts`: zod schemas for HTTP bodies and domain events.
+- `packages/contracts`: zod schemas for HTTP bodies and domain events. One workspace package with one
+  sub-path export per service (`@app/contracts/engagement`, `@app/contracts/payments`, ...), unless the
+  starter's contracts layout decides otherwise; Nx tags restrict which service may import which export.
 - Envelope: `event_id` (UUIDv7), `type`, `version`, `tenant_id`, `occurred_at`, `correlation_id`,
   `causation_id`, `payload`.
-- Events v1: `DepositConfirmed`, `SpinGranted`, `SpinCompleted`, `CoinsCredited`, `CoinsReserved`,
-  `CoinsReleased`, `RedemptionRequested`, `RedemptionStatusChanged`, `RedemptionIssued`, `RedemptionFailed`,
-  `BalanceChanged`.
+- Events v1: `DepositConfirmed`, `SpinGranted`, `SpinCompleted`, `CoinsCredited`, `BalanceChanged`,
+  `RedemptionRequested`, `RedemptionStatusChanged`, `RedemptionIssued`, `RedemptionRejected`,
+  `RedemptionNeedsReview`, and the hold events of the redemption saga (`HoldPlaced`, `HoldRejected`,
+  `HoldCaptured`, `HoldReleased`, `CaptureRefunded`, `HoldCommandRejected`).
+- Commands v1 (engagement to payments, through the outbox): `CreditCoins`, `PlaceHold`, `CaptureHold`,
+  `ReleaseHold`, `RefundCapture`, each carrying the business-operation id from MIO-086.
 - Versioning rule: additive changes keep the version; breaking changes add a new version and both are
   consumed during migration.
 

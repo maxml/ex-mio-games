@@ -20,7 +20,9 @@ the platform plumbing by hand.
 
 - Services: `identity` (with the tenants module), `engagement` (with the integrations module),
   `payments`, `web`, and one worker per service where needed.
-- TypeScript on both frontend and backend; TypeORM for data access.
+- TypeScript on both frontend and backend; TypeORM for data access (the owner's choice for this
+  product; the starter supports Prisma and TypeORM, and the tenancy and ledger guarantees are enforced
+  and tested in Postgres, so they do not depend on the ORM).
 - Keep the starter's generic packages; product names never go back into the starter.
 
 ## Acceptance criteria

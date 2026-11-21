@@ -6,7 +6,7 @@ priority: P0
 money_impact: direct
 risk_class: guard
 status: todo
-depends_on: []
+depends_on: [MIO-032, MIO-045]
 size: S
 ---
 

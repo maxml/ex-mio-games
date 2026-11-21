@@ -19,7 +19,7 @@ composed from Storybook components; no screen uses ad-hoc markup outside the com
 |---|---|---|
 | MIO-120 | Brand and visual style | P1 (blocked) |
 | MIO-121 | Design prototype v1 in `design/prototype/` | P0 |
-| MIO-122 | Design tokens shared by prototype and web | P1 |
-| MIO-123 | Storybook design system; screens built only from its components | P1 |
+| MIO-122 | Design tokens shared by prototype and web | P0 |
+| MIO-123 | Storybook design system; screens built only from its components | P0 |
 | MIO-124 | Move prototype elements into Storybook | P1 |
 | MIO-125 | Visual regression and accessibility checks on stories | P2 |

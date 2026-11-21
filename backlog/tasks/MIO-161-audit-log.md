@@ -7,6 +7,7 @@ money_impact: enabler
 risk_class: ownership
 status: todo
 depends_on: [MIO-032]
+blocked_by: ["starter: audit module (append-only, same-transaction write, reader API)"]
 size: M
 ---
 

@@ -22,7 +22,7 @@ Entity-relationship diagrams for the two data models that are most expensive to 
 ## Acceptance criteria
 
 - Both validate and render.
-- Table and column names match the TypeORM entities (checked by MIO-026).
+- Table and column names match the TypeORM entities (checked in review; the automated drift check is a later task).
 
 ## Notes
 

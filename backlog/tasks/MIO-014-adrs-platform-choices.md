@@ -21,7 +21,9 @@ One ADR each in `docs/adrs/`:
 - Broker: RabbitMQ. The broker only confirms delivery; state lives in Postgres or Redis. Outbox and inbox
   per service.
 - Redis for cache, with persistence so it survives restarts.
-- ORM: TypeORM, with migrations that create RLS policies.
+- ORM: TypeORM, with migrations that create RLS policies. The ADR states that the architecture does not
+  depend on the ORM: isolation, ledger and idempotency rules live in Postgres (policies, constraints,
+  roles) and are tested there.
 - Identity behind an `IdentityProvider` interface; Firebase Auth Emulator locally; final provider open.
 - `PaymentProvider`: `fake` by default, `stripe` behind a key.
 - Mandatory websocket between frontend and backend.

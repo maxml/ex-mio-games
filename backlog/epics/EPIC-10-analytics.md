@@ -18,7 +18,7 @@ structured log lines under Varta's telemetry contract; it has no runtime depende
 | ID | Title | Priority |
 |---|---|---|
 | MIO-100 | Event taxonomy v1 (one-way door) | P0 |
-| MIO-101 | Analytics emitter under the Varta contract | P0 |
+| MIO-101 | Analytics emitter under the Varta contract, with an honest delivery guarantee | P0 |
 | MIO-102 | Operator funnel instrumentation | P0 |
 | MIO-103 | Player funnel instrumentation | P0 |
 | MIO-104 | Billing events: subscription changes and daily MRR snapshot | P1 |

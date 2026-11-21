@@ -2,7 +2,7 @@
 id: MIO-123
 title: Storybook design system; screens built only from its components
 epic: EPIC-12
-priority: P1
+priority: P0
 money_impact: direct
 risk_class: none
 status: todo

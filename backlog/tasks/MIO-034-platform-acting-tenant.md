@@ -23,5 +23,16 @@ MIO staff can support an operator without a hidden "sees everything" mode.
 ## Acceptance criteria
 
 - A platform admin token without `acting_tenant` gets 403 on operator-tenant endpoints.
-- Each request made with `acting_tenant` creates one audit entry naming both identities.
+- Each request made with `acting_tenant` creates one audit entry naming both identities; the reader test
+  shows that entry in the operator's audit view, described correctly.
 - An operator admin cannot obtain `acting_tenant` for any tenant.
+- Negative cases, each its own test:
+  - an acting session for tenant A used on a URL, body or header naming tenant B: 403, the URL value never
+    overrides the session's acting tenant;
+  - an expired acting session: 401, no action;
+  - a request for an acting session without a reason: 400;
+  - an operator token with a forged `acting_tenant` claim (signed by an unknown key or added to a valid
+    token without re-signing): 401;
+  - an acting session cannot call coin commands that move value (`credit`, `hold`, `capture`, `release`,
+    `refund`) except the audited adjustment path; it cannot create another acting session.
+- Mutation: let a path tenant override the acting tenant, then the first negative test goes red.

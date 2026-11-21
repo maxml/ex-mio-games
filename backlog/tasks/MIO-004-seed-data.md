@@ -2,7 +2,7 @@
 id: MIO-004
 title: "Seed data: platform tenant, two operator tenants, wheel, store"
 epic: EPIC-01
-priority: P0
+priority: P1
 money_impact: direct
 risk_class: none
 status: todo
@@ -26,3 +26,10 @@ The demo starts with realistic data, so a prospect sees a working product in the
 - Running the seed twice leaves the same row counts as running it once.
 - After seeding, `GET /v1/store/items` for each operator returns its own catalog and never the other's.
 - The seed contains no real personal data.
+
+## Notes
+
+Not in the first sellable slice: the slice demo (MIO-005) creates its operator through self-serve signup
+and publishes template configuration, which is what a prospect does. This seed is for exploring the
+product with two ready operators. The platform tenant and its first admin come from the identity
+service's own idempotent platform seed.

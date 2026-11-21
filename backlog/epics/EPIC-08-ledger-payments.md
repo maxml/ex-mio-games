@@ -18,11 +18,12 @@ tables in the payments database: append-only, integer amounts, no negative balan
 | ID | Title | Priority |
 |---|---|---|
 | MIO-080 | Payments service skeleton with its own database | P0 |
-| MIO-081 | Ledger tables: append-only entries, integer amounts, no negative balance | P0 |
-| MIO-082 | Coin operations API: credit, reserve, capture, release, all idempotent | P0 |
+| MIO-081 | Ledger tables: balanced journal transactions, integer amounts, no negative balance | P0 |
+| MIO-082 | Coin operations API: credit, hold, capture, release, refund, all idempotent | P0 |
 | MIO-083 | Balance readable everywhere (read API, cache, change event) | P0 |
-| MIO-084 | Reconciliation job: entries sum equals balance | P1 |
+| MIO-084 | Reconciliation job and ledger conservation report | P1 |
 | MIO-085 | Ledger history API for players and operators | P1 |
+| MIO-086 | Idempotency contract for value operations: scoped keys, durable business-operation ids | P0 |
 
 Ledger property tests and the known payment defects suite are in EPIC-14 (MIO-148, MIO-150).
 

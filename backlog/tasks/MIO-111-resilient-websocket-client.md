@@ -6,7 +6,7 @@ priority: P1
 money_impact: enabler
 risk_class: none
 status: todo
-depends_on: [MIO-110]
+depends_on: [MIO-110, MIO-112]
 blocked_by: ["starter: resilient websocket"]
 size: M
 ---
@@ -18,8 +18,9 @@ The socket must not die: when it drops, it comes back on its own and nothing is 
 ## Scope
 
 - Client heartbeat; reconnect with exponential backoff and jitter; resubscribe to channels.
-- Each message carries a per-channel sequence number; after reconnect the client asks REST for anything
-  after its last sequence.
+- Each message carries a per-channel sequence number; after reconnect the client asks the replay endpoint
+  of the server-side journal (MIO-112) for anything after its last sequence, and on `410 resync` reloads
+  its state over REST.
 - UI shows a small "reconnecting" state, never a dead widget.
 
 ## Acceptance criteria

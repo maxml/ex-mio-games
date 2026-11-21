@@ -4,7 +4,7 @@ title: Balance readable everywhere (read API, cache, change event)
 epic: EPIC-08
 priority: P0
 money_impact: direct
-risk_class: none
+risk_class: ownership
 status: todo
 depends_on: [MIO-082]
 size: S
@@ -25,3 +25,6 @@ Any service and the player widget can read a coin balance; only payments can cha
 - After a credit, the read API returns the new balance within one second (integration test).
 - With Redis stopped, balance reads still work (fall back to the DB).
 - A spend decision is never made from the cache (code check: debit paths do not use the cache client).
+- A player asking for another player's balance of the same tenant gets 404; an operator of tenant A asking
+  for a player of tenant B gets 404; the cache key includes tenant and account, and a cache entry written
+  for one player is never served to another (test with two players and a warm cache).

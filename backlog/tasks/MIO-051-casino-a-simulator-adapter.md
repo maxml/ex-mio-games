@@ -6,7 +6,7 @@ priority: P0
 money_impact: direct
 risk_class: guard
 status: todo
-depends_on: [MIO-050]
+depends_on: [MIO-050, MIO-057]
 size: M
 ---
 
@@ -18,7 +18,8 @@ The first simulated casino platform, as its own container, and its adapter.
 
 - `casino-a-sim`: sends signed deposit webhooks in schema A (for example `{eventId, playerId,
   amount: {value, currency}, status: "SUCCESS", ts}` with header `X-A-Signature`), and exposes reward API A
-  (synchronous `POST /bonuses` returning the final state).
+  (synchronous `POST /bonuses` returning the final state). Recovery mode: native lookup by our key
+  (`GET /bonuses?idempotencyKey=`).
 - Simulator UI or CLI to trigger a deposit for a player; it records issued rewards for inspection.
 - Adapter A in the integrations module.
 

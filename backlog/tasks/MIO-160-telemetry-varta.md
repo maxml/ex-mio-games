@@ -27,4 +27,9 @@ Assignment Part A: observability. We can follow one deposit from webhook to issu
 
 - One trace connects the webhook request, the `DepositConfirmed` consumer, the spin, the coin credit and
   the redemption (end-to-end test asserts span parents).
-- A log-redaction test: a request containing an email and a token produces logs without either.
+- A log-redaction test at the logger and telemetry boundary: requests and events containing an email, an
+  access token, a launch token, a webhook signature, an integration secret and a casino external player
+  id are processed with the log level at `debug`; the log sink, the trace exporter and the error reporter
+  are read back and contain none of them (known tenancy defect 10).
+- Redaction is applied by the logger itself (a deny-list of field names plus value patterns), not by
+  callers; a mutation that removes it turns the test red.

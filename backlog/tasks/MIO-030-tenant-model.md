@@ -6,7 +6,7 @@ priority: P0
 money_impact: enabler
 risk_class: isolation
 status: todo
-depends_on: [MIO-040]
+depends_on: [MIO-040, MIO-013]
 blocked_by: ["starter: tenancy package (context, RLS, isolation test kit)"]
 size: M
 ---

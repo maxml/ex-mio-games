@@ -21,5 +21,6 @@ reward.issued`, plus `widget.opened` from the frontend (consented).
 
 ## Acceptance criteria
 
-- The demo scenario (MIO-005) produces each event once per step, per casino.
+- An end-to-end test of the player flow produces each event once per step, per casino, and
+  `pnpm analytics:funnel` counts each step once (business-event delivery, MIO-101).
 - Events carry the pseudonymous `actor_id`, never the casino's external player id.

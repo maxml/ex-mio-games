@@ -2,7 +2,7 @@
 id: MIO-122
 title: Design tokens shared by prototype and web
 epic: EPIC-12
-priority: P1
+priority: P0
 money_impact: enabler
 risk_class: none
 status: todo

@@ -26,3 +26,9 @@ review, fix), the agent instructions used, the commit or pull request, review fi
   real defect, and the fix with its mutation evidence.
 - Every commit or pull request link in the log resolves.
 - A section "Decisions made by people" and a section "How AI output was verified".
+- **One fully traced example, defect to verification:** a real defect found by an AI reviewer, with links
+  in order: the review finding; the regression test the reviewer wrote before the fix, and its red run;
+  the AI-generated change that fixed it (commit); the green run; the reviewer re-applying the defect as a
+  mutation and the test going red again; and the person's acceptance. Each link resolves.
+- All prompts, transcripts and evaluation outputs in the log are sanitized exports, never raw agent
+  output, and pass the pre-publication inspection (MIO-192).

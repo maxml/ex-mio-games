@@ -25,5 +25,10 @@ One source of truth for what operators pay and what they get.
 
 - There is exactly one definition of plans in code; a test fails if a second plan map is introduced
   (search for plan ids outside the plans module).
-- All prices are integers; a float price fails schema validation.
+- **Checkout and fulfilment conformance:** for every plan version, the price sent to the provider at
+  checkout and the plan, limits and features granted when the webhook activates the subscription are read
+  from the same catalog entry; a test buys each plan with the `fake` provider and compares both sides.
+- The browser never supplies a price or a plan's contents, only a plan id; a checkout request with an
+  amount field is rejected.
+- All prices are integers; a float, negative or overflowing price fails schema validation.
 - Changing a plan's price creates a new version and existing subscriptions are unaffected.

@@ -30,4 +30,4 @@ flows before they are expensive to change.
 - Every screen listed above is reachable by clicking from a start page.
 - The operator onboarding path and the player deposit-to-reward path can be walked end to end.
 - The prototype builds in CI and is published as a static artifact for review.
-- Elements are written so they can move into Storybook (MIO-124) without a rewrite.
+- Elements are written so they can move into Storybook later without a rewrite.

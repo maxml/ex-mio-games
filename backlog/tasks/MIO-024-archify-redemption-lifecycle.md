@@ -16,8 +16,10 @@ One picture of every redemption status and every allowed transition.
 
 ## Scope
 
-`docs/architecture/redemption.lifecycle.json`: `REQUESTED → RESERVED → ISSUING → ISSUED`, `ISSUING →
-UNKNOWN → (ISSUED | ISSUING | FAILED)`, `FAILED → REFUNDED`, with the trigger for each transition.
+`docs/architecture/redemption.lifecycle.json`: every state and transition of the redemption table in
+MIO-066 (`REQUESTED → RESERVED → ISSUING → ISSUED → COMPLETED`, `ISSUING → UNKNOWN → (ISSUED | ISSUING |
+REJECTED | NEEDS_REVIEW)`, `REJECTED → RELEASED`, `COMPLETED → REFUNDED`, `REQUESTED → REJECTED_FUNDS`,
+late responses to `NEEDS_REVIEW`), with the trigger for each transition, plus the payments hold lifecycle.
 
 ## Acceptance criteria
 

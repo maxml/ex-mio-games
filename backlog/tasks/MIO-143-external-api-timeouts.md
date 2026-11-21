@@ -16,9 +16,11 @@ Prove that a timeout never causes a double reward or a lost reward.
 
 ## Acceptance criteria
 
-- Simulator `timeout` with the reward actually issued on the casino side: final status `ISSUED`, exactly
-  one reward in the simulator, coins captured once.
+- Simulator `timeout` with the reward actually issued on the casino side (the ambiguous result): final
+  status `COMPLETED`, exactly one reward in the simulator, coins captured once.
 - Simulator `timeout` with nothing issued: after the status query, issuance is retried with the same key
-  and ends `ISSUED` once.
-- During `UNKNOWN`, the coins stay reserved (not refunded, not captured).
-- Mutation: treat timeout as failure, then the first test goes red (reward issued and coins refunded).
+  and ends `COMPLETED` once.
+- During `UNKNOWN`, the coins stay held (not released, not captured).
+- The casino stays unreachable past the maximum age: `NEEDS_REVIEW`, coins still held, alert raised.
+- Mutation: treat timeout as a final rejection, then the first test goes red (reward issued and coins
+  released).

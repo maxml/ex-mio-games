@@ -6,7 +6,7 @@ priority: P0
 money_impact: direct
 risk_class: concurrency
 status: todo
-depends_on: [MIO-061, MIO-062]
+depends_on: [MIO-061, MIO-062, MIO-086]
 size: M
 ---
 
@@ -29,4 +29,7 @@ configured weighted table.
 - Recomputing the outcome from the stored seed version, table version and spin id gives the same segment.
 - Over 1,000,000 simulated spins, each segment's frequency is within 0.5 percentage points of its weight share.
 - The request body cannot change the outcome: any extra field is rejected by validation.
-- The same `Idempotency-Key` returns the same result and consumes one credit.
+- The same `Idempotency-Key` returns the same result and consumes one credit, scoped and stored as in
+  MIO-086; `spins.operation_id` is unique, so a replay after the HTTP record expired returns the same spin.
+- Crash after the spin transaction commits and before the response: the retry returns the recorded spin;
+  the seed version, table version and segment are unchanged and one coin credit command exists.

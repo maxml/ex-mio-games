@@ -1,7 +1,7 @@
 ---
 id: EPIC-11
 title: Realtime websocket between frontend and backend
-priority: P0
+priority: P1
 status: todo
 ---
 
@@ -17,7 +17,7 @@ status without reloading.
 
 | ID | Title | Priority |
 |---|---|---|
-| MIO-110 | Websocket server: authenticated, tenant-scoped channels | P0 |
+| MIO-110 | Websocket server: authenticated, tenant-scoped channels | P1 |
 | MIO-111 | Resilient client: reconnect with backoff, resubscribe, heartbeat, catch-up | P1 |
-| MIO-112 | Push events: spin granted, balance changed, redemption status changed | P0 |
+| MIO-112 | Push events with server-side catch-up: spin granted, balance changed, redemption status changed | P1 |
 | MIO-113 | Fan-out across service instances | P2 |

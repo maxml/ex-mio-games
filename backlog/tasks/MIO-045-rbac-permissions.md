@@ -2,7 +2,7 @@
 id: MIO-045
 title: Roles and permissions (`can(subject, action, object)`) in our database
 epic: EPIC-05
-priority: P1
+priority: P0
 money_impact: enabler
 risk_class: ownership
 status: todo

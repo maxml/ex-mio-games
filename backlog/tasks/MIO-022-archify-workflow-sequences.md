@@ -24,7 +24,7 @@ Show how one deposit becomes an issued reward, and what happens on timeout and f
 ## Acceptance criteria
 
 - Both validate and render.
-- Every message name in the diagrams matches an event or endpoint in `packages/contracts` (checked by MIO-026).
+- Every message name in the diagrams matches an event or endpoint in `packages/contracts` (checked in review; the automated drift check is a later task).
 
 ## Notes
 

@@ -6,7 +6,7 @@ priority: P1
 money_impact: direct
 risk_class: budget
 status: todo
-depends_on: [MIO-082]
+depends_on: [MIO-082, MIO-066]
 size: M
 ---
 

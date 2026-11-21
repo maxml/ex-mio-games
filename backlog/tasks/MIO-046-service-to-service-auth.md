@@ -2,7 +2,7 @@
 id: MIO-046
 title: Service-to-service authentication
 epic: EPIC-05
-priority: P1
+priority: P0
 money_impact: enabler
 risk_class: guard
 status: todo

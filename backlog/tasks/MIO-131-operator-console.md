@@ -2,7 +2,7 @@
 id: MIO-131
 title: "Operator console: onboarding, keys, rules, wheel tables, store, billing"
 epic: EPIC-13
-priority: P0
+priority: P1
 money_impact: direct
 risk_class: ownership
 status: todo

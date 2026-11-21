@@ -6,7 +6,7 @@ priority: P2
 money_impact: none
 risk_class: none
 status: needs-owner-review
-depends_on: [MIO-180]
+depends_on: [MIO-180, MIO-192]
 size: S
 ---
 

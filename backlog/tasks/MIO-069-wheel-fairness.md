@@ -27,4 +27,5 @@ unauthorized spins.
 ## Acceptance criteria
 
 - An audit script recomputes every spin of a retired seed version and finds zero mismatches.
-- Each claim in `docs/fairness.md` links the test that proves it (from MIO-151 and MIO-141).
+- Each claim in `docs/fairness.md` names the test that proves it (existing tests from MIO-063; the Part C
+  manipulation tests add their links when they land).
