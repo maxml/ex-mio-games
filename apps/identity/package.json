@@ -11,7 +11,7 @@
   },
   "scripts": {
     "dev": "tsx watch src/main.ts",
-    "build": "tsc -p tsconfig.json",
+    "build": "tsc -p tsconfig.build.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "start": "node dist/main.js",
     "migrate": "node dist/migrate.js",
@@ -58,6 +58,7 @@
       "^@ex-mio/tenancy$": "<rootDir>/../../packages/tenancy/src",
       "^@ex-mio/bus$": "<rootDir>/../../packages/bus/src",
       "^@ex-mio/idempotency$": "<rootDir>/../../packages/idempotency/src",
+      "^@ex-mio/service-kit/testing$": "<rootDir>/../../packages/service-kit/src/testing",
       "^@ex-mio/service-kit$": "<rootDir>/../../packages/service-kit/src"
     },
     "testTimeout": 30000,

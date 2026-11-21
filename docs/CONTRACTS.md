@@ -31,9 +31,29 @@ version, never an edit. HTTP shapes change additively; a removal waits until no 
 - **provider:** `packages/contracts` (`src/events.ts`) · **consumers:** every service that publishes or
   consumes events
 - **spec:** `{ event_id (uuidv7), type, version, tenant_id, occurred_at, correlation_id, causation_id,
-payload }`; `tenant_id` is mandatory; the payload schema is registered per (type, version); an unknown type
-  or version is rejected.
+sandbox?, payload }`; `tenant_id` is mandatory; the payload schema is registered per (type, version); an
+  unknown type or version is rejected. `sandbox` (D-13) is optional, absent means production, and
+  `createEvent` writes it only when `true`. Only the producing service sets it, from server-side state (the
+  verified integration credential, token claim `sbx`), never from client input or a payload field. Metering
+  and billing read the envelope flag and nothing else. `audit.acting_request` is the one cross-service event
+  name that does not follow `<owning-service>.<aggregate>.<past-tense-verb>`, because every service writes it.
 - **pinned:** `packages/contracts/src/events.contracts.test.ts`
+
+## Error body and code casing
+
+- **provider:** `packages/contracts` (`src/http.ts`, `ErrorBody.code?`) · **consumers:** every client
+- **spec:** `{ message, code?, issues? }`. Errors raised by the service-kit auth entry point use identity's
+  `UPPER_SNAKE` codes (for example `TOKEN_EXPIRED`); route errors use the owning service's own
+  `lower_snake` codes. Clients branch on the HTTP status first, then on the code.
+- **pinned:** `packages/contracts/src/events.contracts.test.ts` (ErrorBody keeps `code`)
+
+## Contract owners (reconciled, D-9 / D-12)
+
+- `events.ts` envelope: foundation. Each epic owns its own registry rows. `identity.ts`,
+  `service-kit/src/testing/*`: identity. `payments.ts` (coin events, reserve API, `COIN_VALUE_ACTIONS`):
+  payments. `ingest.ts`, `casino-adapter.ts`, `spin.completed`: engagement ingest. `store.ts`: engagement
+  store (adopts payments' names and codes). `web-api.ts`: web. Other epics import these and never redefine
+  them. `PAYMENTS_INTERNAL_ROUTES` is declared once, in `identity.ts`, next to the service-call allow-list.
 
 ## Tenant context and isolation
 
@@ -76,6 +96,16 @@ payload }`; `tenant_id` is mandatory; the payload schema is registered per (type
 - **spec:** `node dist/migrate.js` applies pending migrations and exits 0, or exits 1 on failure with the
   reason on stderr. The runtime image has no pnpm and no TypeORM CLI. The app never migrates on boot.
 - **pinned:** `packages/service-kit/src/postgres.test.ts` (options), compose start (`migrate && start`)
+
+## Identity token and tenant claim
+
+- **provider:** `identity` (issues), `packages/service-kit` (`auth.ts`, verifies), `packages/tenancy`
+  (`jwtTenantResolver`) · **consumers:** every service, `web`
+- **spec:** `docs/specs/identity.md`; claims in `packages/contracts/src/identity.ts`. RS256, `aud` is one service,
+  TTL at most 900 s, keys at `/.well-known/jwks.json`. The tenant of a request is the verified `tid` (or
+  `act.tenant_id` on a platform admin acting session) and nothing else.
+- **pinned:** `packages/service-kit/src/auth.test.ts`, `apps/identity/src/identity.*.test.ts`,
+  `tests/compose/src/identity.compose.test.ts`
 
 ## Postgres TLS
 

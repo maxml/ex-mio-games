@@ -6,6 +6,8 @@ import { Uuid } from './ids';
 
 export const ErrorBody = z.object({
   message: z.string(),
+  /** Stable machine-readable code (e.g. `out_of_stock`); absent on generic framework errors. */
+  code: z.string().optional(),
   issues: z.array(z.unknown()).optional(),
 });
 export type ErrorBody = z.infer<typeof ErrorBody>;
@@ -56,7 +58,5 @@ export const TenantProjection = z.object({
 });
 export type TenantProjection = z.infer<typeof TenantProjection>;
 
-/** Request headers shared by every tenant-scoped endpoint. */
-export const HEADER_TENANT_ID = 'x-tenant-id';
+/** Request header shared by the coin-moving endpoints. No header ever names a tenant or a principal. */
 export const HEADER_IDEMPOTENCY_KEY = 'idempotency-key';
-export const HEADER_PLATFORM_TOKEN = 'x-platform-admin-token';

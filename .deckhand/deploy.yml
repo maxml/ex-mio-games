@@ -7,7 +7,8 @@
 #   Postgres without TLS sets `disable` explicitly; a managed one sets `require`
 #   or `verify-full` (+ DATABASE_CA_CERT_PATH). See docs/CONTRACTS.md, "Postgres TLS".
 # - REDIS_URL, when set, must use rediss:// (TLS).
-# - A development-only value (PLATFORM_ADMIN_TOKEN starting with `dev-`) is rejected.
+# - A development-only value (CREDENTIALS_KEK or PLATFORM_ADMIN_PASSWORD containing `dev-`) is rejected.
+# - Identity's signing keys live in its `signing_keys` table (sealed with CREDENTIALS_KEK), not in env.
 apiVersion: deckhand/v1
 
 project:
@@ -132,7 +133,12 @@ env:
       'DATABASE_SSL',
       'AMQP_URL',
       'REDIS_URL',
-      'PLATFORM_ADMIN_TOKEN',
+      'CREDENTIALS_KEK',
+      'PLATFORM_ADMIN_EMAIL',
+      'PLATFORM_ADMIN_PASSWORD',
+      'SERVICE_CLIENT_SECRETS', # identity: JSON service name -> secret
+      'SERVICE_CLIENT_SECRET', # engagement and payments: their own secret
+      'IDENTITY_URL',
     ]
   optional: ['API_URL']
   runtime_public: ['PUBLIC_API_URL']

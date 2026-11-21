@@ -1,25 +1,23 @@
 import {
   type CallHandler,
   type CanActivate,
-  type DynamicModule,
   type ExecutionContext,
   Inject,
   Injectable,
   type NestInterceptor,
-  Module,
+  Optional,
   SetMetadata,
   UnauthorizedException,
 } from '@nestjs/common';
-import { APP_GUARD, APP_INTERCEPTOR, Reflector } from '@nestjs/core';
+import { Reflector } from '@nestjs/core';
 import { Observable } from 'rxjs';
-import { isTenantId, runWithTenant, type TenantContext } from './context';
+import { runWithTenant, type TenantContext } from './context';
 
-export const TENANT_HEADER = 'x-tenant-id';
 export const IS_PUBLIC = 'ex-mio:public';
 export const TENANT_RESOLVER = Symbol('TENANT_RESOLVER');
 const REQUEST_TENANT = Symbol.for('ex-mio:tenant-context');
 
-/** Marks a route that is deliberately tenant-less (health probes, platform endpoints). */
+/** Marks a route that is deliberately tenant-less (health probes, public auth endpoints). */
 export const Public = (): MethodDecorator & ClassDecorator => SetMetadata(IS_PUBLIC, true);
 
 export interface TenantRequestLike {
@@ -27,41 +25,66 @@ export interface TenantRequestLike {
 }
 
 /**
- * Turns a request into a tenant. The default reads the `x-tenant-id` header,
- * which is only a placeholder until the identity service issues JWTs: the
- * resolver that replaces it must take the tenant from a verified token claim,
- * never from a header the caller controls.
+ * Turns a request into a tenant. The only resolver in the code base reads a verified token claim
+ * (`jwtTenantResolver`); there is no header resolver and no default tenant. It is a building block
+ * of the service-kit entry point (`ServiceAuthModule.forService`), not something an app wires.
  */
-export type TenantResolver = (request: TenantRequestLike) => TenantContext | undefined;
+export type TenantResolver = (
+  request: TenantRequestLike,
+) => TenantContext | undefined | Promise<TenantContext | undefined>;
 
-export const PRINCIPAL_HEADER = 'x-principal-id';
+/** The part of a verified access token the resolver needs. */
+export interface VerifiedTenantClaims {
+  sub: string;
+  tid: string;
+  act?: { tenant_id: string } | undefined;
+}
 
-const first = (raw: string | string[] | undefined): string | undefined =>
-  Array.isArray(raw) ? raw[0] : raw;
-
-export const headerTenantResolver: TenantResolver = (request) => {
-  const tenantId = first(request.headers[TENANT_HEADER]);
-  if (!isTenantId(tenantId)) return undefined;
-  const principal = first(request.headers[PRINCIPAL_HEADER]);
-  return {
-    tenantId: tenantId.toLowerCase(),
-    ...(principal && principal.length <= 128 ? { principalId: principal } : {}),
-  };
+const bearerOf = (request: TenantRequestLike): string | undefined => {
+  const raw = request.headers['authorization'];
+  const value = Array.isArray(raw) ? raw[0] : raw;
+  if (typeof value !== 'string') return undefined;
+  return /^Bearer ([^\s]+)$/.exec(value)?.[1];
 };
 
 /**
+ * Resolve the tenant from a verified token: `act.tenant_id` when the token is an acting session,
+ * else `tid`. The principal is always the real actor (`sub`). A missing, malformed or rejected
+ * token resolves to nothing, which `TenantGuard` turns into a 401.
+ */
+export function jwtTenantResolver(
+  verify: (token: string) => Promise<VerifiedTenantClaims>,
+): TenantResolver {
+  return async (request) => {
+    const token = bearerOf(request);
+    if (!token) return undefined;
+    try {
+      const claims = await verify(token);
+      return {
+        tenantId: (claims.act?.tenant_id ?? claims.tid).toLowerCase(),
+        principalId: claims.sub,
+      };
+    } catch {
+      return undefined;
+    }
+  };
+}
+
+/**
  * Deny by default: every route needs a resolvable tenant unless it is `@Public()`.
- * A missing or malformed tenant is a 401, not a fallback to some default tenant.
+ * A missing or malformed tenant is a 401, not a fallback to some default tenant. Built without a
+ * resolver, it denies everything but `@Public()` routes.
  */
 @Injectable()
 export class TenantGuard implements CanActivate {
-  // No fallback resolver: a DI mistake must fail closed, never revert to the header.
   constructor(
     private readonly reflector: Reflector,
-    @Inject(TENANT_RESOLVER) private readonly resolver: TenantResolver,
+    @Optional()
+    @Inject(TENANT_RESOLVER)
+    private readonly resolver?: TenantResolver,
   ) {}
 
-  canActivate(context: ExecutionContext): boolean {
+  async canActivate(context: ExecutionContext): Promise<boolean> {
     if (
       this.reflector.getAllAndOverride<boolean>(IS_PUBLIC, [
         context.getHandler(),
@@ -71,9 +94,9 @@ export class TenantGuard implements CanActivate {
       return true;
     }
     const request = context.switchToHttp().getRequest<TenantRequestLike>();
-    const tenant = this.resolver(request);
+    const tenant = this.resolver ? await this.resolver(request) : undefined;
     if (!tenant) throw new UnauthorizedException('tenant required');
-    (request as unknown as Record<symbol, TenantContext>)[REQUEST_TENANT] = tenant;
+    setRequestTenant(request, tenant);
     return true;
   }
 }
@@ -91,39 +114,7 @@ export class TenantInterceptor implements NestInterceptor {
   }
 }
 
-/** Set to `true` to boot the header resolver with NODE_ENV=production (never on a real deployment). */
-export const ALLOW_HEADER_TENANT_ENV = 'ALLOW_INSECURE_HEADER_TENANT';
-
-/**
- * May this process trust the tenant a caller names in a header? Only outside
- * production, or when the operator says so with an explicit flag.
- */
-export function headerTenantAllowed(env: NodeJS.ProcessEnv = process.env): boolean {
-  return env.NODE_ENV !== 'production' || env[ALLOW_HEADER_TENANT_ENV] === 'true';
-}
-
-@Module({})
-export class TenancyModule {
-  /**
-   * Registers the deny-by-default guard and the context interceptor app-wide.
-   * Without a `resolver` the header placeholder is used, and in production that
-   * is refused at boot: the tenant must come from a verified token claim.
-   */
-  static forRoot(
-    options: { resolver?: TenantResolver; env?: NodeJS.ProcessEnv } = {},
-  ): DynamicModule {
-    if (!options.resolver && !headerTenantAllowed(options.env)) {
-      throw new Error(
-        `refusing to boot: the x-tenant-id header resolver is a placeholder and is not allowed in production (pass a verified-token resolver; ${ALLOW_HEADER_TENANT_ENV}=true overrides, for a throwaway environment only)`,
-      );
-    }
-    return {
-      module: TenancyModule,
-      providers: [
-        { provide: TENANT_RESOLVER, useValue: options.resolver ?? headerTenantResolver },
-        { provide: APP_GUARD, useClass: TenantGuard },
-        { provide: APP_INTERCEPTOR, useClass: TenantInterceptor },
-      ],
-    };
-  }
+/** For the service-kit entry point: store the tenant the interceptor will open. */
+export function setRequestTenant(request: object, tenant: TenantContext | undefined): void {
+  (request as Record<symbol, TenantContext | undefined>)[REQUEST_TENANT] = tenant;
 }

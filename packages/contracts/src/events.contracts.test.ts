@@ -1,4 +1,12 @@
-import { createEvent, InvalidEventError, parseEvent, uuidv7, Uuidv7 } from './index';
+import {
+  createEvent,
+  ErrorBody,
+  EVENT_SCHEMAS,
+  InvalidEventError,
+  parseEvent,
+  uuidv7,
+  Uuidv7,
+} from './index';
 
 const TENANT = '0190a1b2-c3d4-4e5f-8a6b-7c8d9e0f1a2b';
 
@@ -12,6 +20,14 @@ describe('uuidv7', () => {
 
   it('rejects a v4 uuid', () => {
     expect(Uuidv7.safeParse('0190a1b2-c3d4-4e5f-8a6b-7c8d9e0f1a2b').success).toBe(false);
+  });
+});
+
+// FX-2. Mutation: remove `code` from ErrorBody (zod strips it, so a service's code is lost).
+describe('ErrorBody', () => {
+  it('keeps an optional machine-readable code', () => {
+    expect(ErrorBody.parse({ message: 'm', code: 'out_of_stock' }).code).toBe('out_of_stock');
+    expect(ErrorBody.parse({ message: 'm' }).code).toBeUndefined();
   });
 });
 
@@ -36,6 +52,33 @@ describe('event envelope', () => {
     );
     expect(e.tenant_id).toBe(TENANT);
     expect(e.causation_id).toBeNull();
+  });
+
+  // FX-1/D-13. Mutation: drop `sandbox` from EventEnvelope (zod strips it) or write it when false.
+  it('FX-1: createEvent writes sandbox only when true; absent means production; parseEvent keeps it', () => {
+    const base = {
+      type: 'identity.tenant.created',
+      tenantId: TENANT,
+      payload: { name: 'A', slug: 'ab' },
+    } as const;
+    const prod = createEvent(base);
+    expect('sandbox' in prod).toBe(false);
+    expect('sandbox' in createEvent({ ...base, sandbox: false })).toBe(false);
+    const sbx = createEvent({ ...base, sandbox: true });
+    expect(sbx.sandbox).toBe(true);
+    expect(parseEvent(JSON.parse(JSON.stringify(sbx))).sandbox).toBe(true);
+    expect(parseEvent(prod).sandbox).toBeUndefined();
+    expect(() => parseEvent({ ...prod, sandbox: 'yes' })).toThrow(InvalidEventError);
+  });
+
+  // X-13. Mutation: put `sandbox` back into a redemption event payload schema.
+  it('X-13: no event payload schema carries its own sandbox flag (the envelope is the only place)', () => {
+    for (const versions of Object.values(EVENT_SCHEMAS)) {
+      for (const schema of Object.values(versions)) {
+        const shape = (schema as unknown as { shape?: Record<string, unknown> }).shape;
+        if (shape) expect(Object.keys(shape)).not.toContain('sandbox');
+      }
+    }
   });
 
   it('rejects an event without a tenant', () => {

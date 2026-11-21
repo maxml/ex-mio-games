@@ -44,25 +44,22 @@ migrations (`node dist/migrate.js`), then serves. Probes: `GET /healthz/live` (p
 ## Try it
 
 ```sh
-# create a tenant (platform endpoint, guarded by a token)
-curl -s -X POST localhost:4001/v1/tenants \
-  -H 'content-type: application/json' -H 'x-platform-admin-token: dev-platform-token-0000' \
-  -d '{"name":"Acme Casino","slug":"acme"}'
+# sign up an operator (creates the tenant and its first admin)
+curl -s -X POST localhost:4001/v1/operators/signup \
+  -H 'content-type: application/json' \
+  -d '{"tenant_name":"Acme Casino","slug":"acme","email":"boss@acme.test","password":"correct horse battery"}'
 
-# engagement received the event over RabbitMQ and built its own copy (use the id from above)
-curl -s localhost:4002/v1/tenant-projection -H 'x-tenant-id: <tenant id>'
+# sign in: the tenant comes from the Host (<slug>.mio.localhost), never from the body
+curl -s -X POST localhost:4001/v1/auth/login \
+  -H 'content-type: application/json' -H 'host: acme.mio.localhost' \
+  -d '{"email":"boss@acme.test","password":"correct horse battery","audience":"engagement"}'
 
-# credit coins, safely retried with the same key
-curl -s -X POST localhost:4003/v1/credits \
-  -H 'content-type: application/json' -H 'x-tenant-id: <tenant id>' -H 'x-principal-id: operator-1' \
-  -H 'idempotency-key: first-credit-0001' \
-  -d '{"player_id":"<a uuid>","amount":10}'
+# engagement received the event over RabbitMQ and built its own copy
+curl -s localhost:4002/v1/tenant-projection -H 'authorization: Bearer <access_token>'
 ```
 
-The `x-tenant-id` header is a placeholder: the identity service will issue tokens, and the tenant will then
-come from a verified claim. Until then a service refuses to boot with `NODE_ENV=production` (set
-`ALLOW_INSECURE_HEADER_TENANT=true` only for a throwaway environment), and the demo `/v1/credits` route is
-not mounted there: coins are credited only by the payments consumer.
+Every service trusts only tokens identity signed (RS256, keys at `/.well-known/jwks.json`); the tenant comes
+from the verified `tid` claim. There is no header that names a tenant.
 
 Each service has two database roles: `<service>_owner` (owns the schema, used by `migrate.js` only) and
 `<service>_app` (runtime: not the owner, no DDL, exact grants listed in the `AppRoleGrants` migration).
@@ -89,7 +86,15 @@ Layout and patterns: [`memory/systemPatterns.md`](memory/systemPatterns.md). Con
 - Migrations are a separate step: `node dist/migrate.js` in each service image (exit 0 applied, 1 failed).
   The images contain no pnpm. `scripts/migrate-all.sh` runs the three; the deploy manifest
   (`.deckhand/deploy.yml`) points at it.
-- `PLATFORM_ADMIN_TOKEN` must not start with `dev-` in production.
+- Identity refuses to start in production with a development `CREDENTIALS_KEK` or `PLATFORM_ADMIN_PASSWORD`
+  (values containing `dev-`) or with the `fake` identity provider.
+
+## Next
+
+- Refresh tokens and family revocation (backlog MIO-042 tail). For now an access token lives 15 minutes
+  and there is no refresh: a player or operator signs in again when it expires. Deferred on purpose for the
+  first submission.
+- Sign-in rate limit and lockout (MIO-043).
 
 ## License
 

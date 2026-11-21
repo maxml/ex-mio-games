@@ -45,6 +45,7 @@
     ],
     "moduleNameMapper": {
       "^@ex-mio/contracts$": "<rootDir>/../../packages/contracts/src",
+      "^@ex-mio/service-kit/testing$": "<rootDir>/../../packages/service-kit/src/testing",
       "^@ex-mio/(tenancy|bus|idempotency|service-kit|logger)$": "<rootDir>/../../packages/$1/src"
     },
     "transform": {
