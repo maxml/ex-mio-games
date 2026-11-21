@@ -12,6 +12,7 @@ export {
   emitPing,
   emitSubscribe,
   defaultTokenGetter,
+  fetchRealtimeTicket,
   type TokenGetter,
   type WsClientOptions,
 } from './client';

@@ -39,4 +39,23 @@ describe('Button', () => {
 
     expect(onClick).not.toHaveBeenCalled();
   });
+
+  // Mutation: pass `onClick` through while loading and this goes red (a double spin would send two requests).
+  it('a busy button ignores clicks but keeps keyboard focus (single-request guard)', async () => {
+    const user = userEvent.setup();
+    const onClick = vi.fn();
+    render(
+      <Button loading onClick={onClick}>
+        Spin
+      </Button>,
+    );
+    const button = screen.getByRole('button', { name: 'Spin' });
+    button.focus();
+    await user.click(button);
+    await user.keyboard('{Enter}');
+    expect(onClick).not.toHaveBeenCalled();
+    expect(button).toHaveAttribute('aria-busy', 'true');
+    expect(button).toHaveFocus();
+    expect(button).not.toBeDisabled();
+  });
 });

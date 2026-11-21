@@ -48,12 +48,26 @@ export interface WsClientOptions {
 }
 
 /**
- * Placeholder token source. The real session token comes from the app's auth wiring
- * (ADR-0002 §3 handshake auth: the gateway resolves it through the auth facade).
- * Seeded from `NEXT_PUBLIC_WS_TOKEN` so a developer can point at a real token
- * without code changes; defaults to empty, which the gateway rejects.
+ * Handshake token source (D-10): a one-time realtime ticket (`aud=realtime`, <= 60 s) fetched through the
+ * web BFF with the session cookie, on every (re)connection. The browser never holds the long-lived token,
+ * and there is no build-time token. A failed fetch gives no token, which the gateway rejects.
  */
-export const defaultTokenGetter: TokenGetter = () => process.env.NEXT_PUBLIC_WS_TOKEN ?? null;
+export const defaultTokenGetter: TokenGetter = () => fetchRealtimeTicket();
+
+/** `GET /api/realtime/ticket` through the BFF; `null` when there is no session or the BFF refuses. */
+export async function fetchRealtimeTicket(fetchImpl: typeof fetch = fetch): Promise<string | null> {
+  try {
+    const res = await fetchImpl('/api/realtime/ticket', {
+      credentials: 'same-origin',
+      cache: 'no-store',
+    });
+    if (!res.ok) return null;
+    const body = (await res.json()) as { ticket?: unknown };
+    return typeof body.ticket === 'string' ? body.ticket : null;
+  } catch {
+    return null;
+  }
+}
 
 let socket: Socket | null = null;
 

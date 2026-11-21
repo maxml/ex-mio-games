@@ -1,48 +1,57 @@
 /*
- * Design tokens as CSS variables: the single source every frontend surface reads.
- * Components never hard-code a color or radius; they use these through the
- * Tailwind preset (tailwind-preset.cjs). A theme is a different set of values
- * under `:root` or a `.dark` ancestor, not a change to a component.
+ * MIO design tokens: the default (neutral placeholder) theme.
  *
- * Color channels are space-separated HSL so Tailwind can apply opacity
- * (`hsl(var(--primary) / <alpha-value>)`). The values are placeholders until the
- * product's brand exists; change them here and every component follows.
+ * Semantic tokens only. Components never use raw colours; they use these variables through the
+ * Tailwind classes mapped in tailwind-preset.cjs (bg-surface, text-fg-muted, ...).
+ * A tenant theme is a JSON file of overrides for any subset of these names (see TOKENS.md and
+ * src/theme/tenants/). It is applied as inline CSS variables on the widget or app root, so a new
+ * tenant look needs no rebuild.
+ *
+ * Every value here is a placeholder until brand materials exist (backlog MIO-120).
+ * This is the only file (with the tenant JSON files) allowed to contain raw colour values;
+ * scripts/check-no-raw-colors.mjs enforces that.
  */
 :root {
-  --font-sans: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  /* Surfaces and text */
+  --bg: #f6f7f9;
+  --surface: #ffffff;
+  --surface-2: #eef0f4;
+  --border: #d5d9e0;
+  /* Form-field outline: identifies the control on its own, so it needs 3:1 (WCAG 1.4.11). */
+  --input-border: #7a8393;
+  --fg: #151922;
+  --fg-muted: #555e6e;
 
-  --background: 0 0% 100%;
-  --foreground: 222 47% 11%;
-  --card: 0 0% 100%;
-  --card-foreground: 222 47% 11%;
-  --primary: 221 83% 53%;
-  --primary-foreground: 0 0% 100%;
-  --secondary: 210 40% 96%;
-  --secondary-foreground: 222 47% 11%;
-  --muted: 210 40% 96%;
-  --muted-foreground: 215 16% 47%;
-  --destructive: 0 72% 51%;
-  --destructive-foreground: 0 0% 100%;
-  --border: 214 32% 91%;
-  --input: 214 32% 91%;
-  --ring: 221 83% 53%;
-  --radius: 0.5rem;
-}
+  /* Actions */
+  --primary: #3a4fd6;
+  --primary-fg: #ffffff;
+  --accent: #0f766e;
+  --accent-fg: #ffffff;
+  --ring: #3a4fd6;
 
-.dark {
-  --background: 222 47% 11%;
-  --foreground: 210 40% 98%;
-  --card: 222 47% 11%;
-  --card-foreground: 210 40% 98%;
-  --primary: 217 91% 60%;
-  --primary-foreground: 222 47% 11%;
-  --secondary: 217 33% 17%;
-  --secondary-foreground: 210 40% 98%;
-  --muted: 217 33% 17%;
-  --muted-foreground: 215 20% 65%;
-  --destructive: 0 63% 31%;
-  --destructive-foreground: 210 40% 98%;
-  --border: 217 33% 17%;
-  --input: 217 33% 17%;
-  --ring: 224 76% 60%;
+  /* Status (reserved: never used as decoration) */
+  --success: #15803d;
+  --warning: #9a5600;
+  --danger: #c0262d;
+  --info: #1d5fbf;
+
+  /* Gamification */
+  --coin: #b7791f;
+  --wheel-1: #3a4fd6;
+  --wheel-2: #0f766e;
+  --wheel-3: #7c3aed;
+  --wheel-4: #b4235a;
+  --wheel-5: #1d5fbf;
+  --wheel-6: #a3480f;
+  --wheel-fg: #ffffff;
+  --wheel-rim: #151922;
+
+  /* Shape and type */
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 16px;
+  --font-sans:
+    ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  --font-display: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  --shadow-card: 0 1px 2px rgb(0 0 0 / 0.06), 0 2px 8px rgb(0 0 0 / 0.04);
 }

@@ -1,30 +1,26 @@
 import type { Meta, StoryObj } from '@storybook/react';
 import { Button } from './Button';
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from './Card';
-import { Input } from './Input';
+import { Card } from './Card';
+import { StatusPill } from './StatusPill';
 
-const meta = {
-  title: 'Components/Card',
-  component: Card,
-} satisfies Meta<typeof Card>;
+const meta = { title: 'Primitives/Card', component: Card } satisfies Meta<typeof Card>;
 
 export default meta;
 type Story = StoryObj<typeof meta>;
 
-export const Default: Story = {
-  render: () => (
-    <Card className="w-80">
-      <CardHeader>
-        <CardTitle>Sign in</CardTitle>
-        <CardDescription>Enter your email to continue.</CardDescription>
-      </CardHeader>
-      <CardContent>
-        <Input placeholder="you@example.com" />
-      </CardContent>
-      <CardFooter className="justify-end gap-2">
-        <Button variant="ghost">Cancel</Button>
-        <Button>Continue</Button>
-      </CardFooter>
-    </Card>
-  ),
+export const Default: Story = { args: { children: 'Card body' } };
+export const WithHeader: Story = {
+  args: {
+    title: 'Spin rules',
+    description: 'When does a deposit earn spins?',
+    actions: <StatusPill status="published" />,
+    children: 'Card body',
+  },
+};
+export const WithAction: Story = {
+  args: {
+    title: 'Integration keys',
+    actions: <Button size="sm">Rotate</Button>,
+    children: 'Keys go here',
+  },
 };

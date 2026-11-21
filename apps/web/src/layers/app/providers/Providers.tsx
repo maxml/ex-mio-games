@@ -4,6 +4,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { ReactQueryDevtools } from '@tanstack/react-query-devtools';
 import { NextIntlClientProvider, type Messages } from 'next-intl';
 import { useState, type ReactNode } from 'react';
+import { MioApiProvider } from '@/layers/shared/api';
 import type { Locale } from '@/layers/shared/config';
 
 // FSD `app` layer (ADR-0001 §3.1, §7): cross-cutting providers / initialization that
@@ -45,7 +46,8 @@ export function Providers({
     <NextIntlClientProvider locale={locale} messages={messages}>
       <QueryClientProvider client={queryClient}>
         {/* The realtime provider (`./WSProvider`) is mounted here once a service exposes a socket endpoint. */}
-        {children}
+        {/* `NEXT_PUBLIC_MIO_API=http` swaps the in-memory mock for the real services. */}
+        <MioApiProvider>{children}</MioApiProvider>
         {process.env.NODE_ENV === 'development' ? (
           <ReactQueryDevtools initialIsOpen={false} />
         ) : null}

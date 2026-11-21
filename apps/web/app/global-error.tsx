@@ -1,7 +1,9 @@
 'use client';
 
 import { useEffect } from 'react';
+import { Alert, Button, Heading } from '@/layers/shared/ui';
 import { reportError } from '../lib/error-reporter';
+import './globals.css';
 
 export default function GlobalError({ error, reset }: { error: Error; reset: () => void }) {
   useEffect(() => {
@@ -10,16 +12,13 @@ export default function GlobalError({ error, reset }: { error: Error; reset: () 
 
   return (
     <html lang="en">
-      <body className="min-h-screen bg-neutral-950 text-neutral-100">
+      <body className="min-h-screen bg-bg text-fg">
         <main className="mx-auto flex max-w-screen-md flex-col gap-3 p-6">
-          <h1 className="text-lg font-semibold">Something went wrong</h1>
-          <p className="text-sm text-neutral-400">{error.message}</p>
-          <button
-            onClick={reset}
-            className="self-start rounded bg-neutral-800 px-3 py-1 text-sm hover:bg-neutral-700"
-          >
+          <Heading level={1}>Something went wrong</Heading>
+          <Alert tone="danger">{error.message}</Alert>
+          <Button variant="secondary" className="self-start" onClick={reset}>
             Try again
-          </button>
+          </Button>
         </main>
       </body>
     </html>
