@@ -15,6 +15,11 @@ export const EventEnvelope = z.object({
   occurred_at: z.string().datetime(),
   correlation_id: Uuid,
   causation_id: Uuid.nullable(),
+  /**
+   * Set by the PRODUCER from its server-side context (the verifying key of a sandbox tenant),
+   * never copied from a payload. A consumer that meters or bills reads this flag and nothing else.
+   */
+  sandbox: z.boolean().optional(),
   payload: z.unknown(),
 });
 export type EventEnvelope = z.infer<typeof EventEnvelope>;

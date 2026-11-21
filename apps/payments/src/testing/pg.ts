@@ -46,3 +46,45 @@ export async function inTenant<T>(
 }
 
 export const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+/**
+ * Hold a row lock while `fn` launches work, so that every contender is already in flight (and a
+ * read-then-write implementation has already read the old value) before the first write can land.
+ * Also reports the peak number of runtime-role connections that held an open transaction meanwhile:
+ * proof that the work really overlapped on separate connections.
+ */
+export async function withRowLocked<T>(
+  admin: Client,
+  lockSql: string,
+  params: unknown[],
+  launch: () => Promise<T>,
+  holdMs = 400,
+): Promise<{ result: T; peakOpenTransactions: number }> {
+  const locker = await connectAs('postgres');
+  let peak = 0;
+  let sampling = true;
+  const sampler = (async () => {
+    while (sampling) {
+      const { rows } = await admin.query(
+        `SELECT count(*)::int AS n FROM pg_stat_activity
+          WHERE usename = 'payments_app' AND xact_start IS NOT NULL AND pid <> pg_backend_pid()`,
+      );
+      peak = Math.max(peak, rows[0].n as number);
+      await sleep(5);
+    }
+  })();
+  try {
+    await locker.query('BEGIN');
+    await locker.query(lockSql, params);
+    const running = launch();
+    await sleep(holdMs);
+    await locker.query('COMMIT');
+    const result = await running;
+    return { result, peakOpenTransactions: peak };
+  } finally {
+    sampling = false;
+    await sampler;
+    await locker.query('ROLLBACK').catch(() => undefined);
+    await locker.end();
+  }
+}

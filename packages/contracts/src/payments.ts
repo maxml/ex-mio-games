@@ -24,11 +24,22 @@ export const PAYMENTS_ERROR_CODES = {
   reserve_not_found: 404,
   wallet_not_found: 404,
   insufficient_funds: 409,
-  invalid_reserve_transition: 409,
+  /** Rejection codes of a conflicting reserve transition (D-9). L4 adopts these names. */
+  reserve_already_captured: 409,
+  reserve_already_released: 409,
+  reserve_already_refunded: 409,
+  reserve_not_captured: 409,
   /** Same business operation id (spin or reserve) replayed with different parameters. */
   operation_conflict: 409,
   idempotency_in_progress: 409,
   idempotency_key_reused: 422,
+  /** Billing webhook whose signature does not verify. */
+  invalid_signature: 401,
+  attempt_not_found: 404,
+  /** Cancel of an attempt that already succeeded or was declined. */
+  attempt_not_cancellable: 409,
+  /** A card number that is not one of the provider's test cards (fake provider). */
+  card_not_accepted: 422,
 } as const;
 export type PaymentsErrorCode = keyof typeof PAYMENTS_ERROR_CODES;
 
@@ -42,16 +53,8 @@ export type PaymentsErrorBody = z.infer<typeof PaymentsErrorBody>;
 // ---- coin commands (internal: service identity only) -------------------------
 // Strict objects: an unknown field (for example `amount` on capture) is a 400.
 
-export const CreditCoinsRequest = z
-  .object({
-    player_id: Uuid,
-    /** The business operation: the spin that earned the coins. One award per spin. */
-    spin_id: Uuid,
-    amount: CoinAmount,
-    currency: CoinCurrency.default(COIN_CURRENCY),
-  })
-  .strict();
-export type CreditCoinsRequest = z.infer<typeof CreditCoinsRequest>;
+// There is no credit command: spin coins arrive through the inbox as `engagement.spin.completed`
+// (D-1), never over HTTP. The four commands below are the whole HTTP coin surface.
 
 export const ReserveCoinsRequest = z
   .object({
@@ -68,8 +71,47 @@ export type ReserveCoinsRequest = z.infer<typeof ReserveCoinsRequest>;
 export const ReserveRefRequest = z.object({ reserve_id: Uuid }).strict();
 export type ReserveRefRequest = z.infer<typeof ReserveRefRequest>;
 
+/** The HTTP commands (internal routes `/internal/v1/coins/<command>`). */
+export const COIN_COMMANDS = ['reserve', 'capture', 'release', 'refund'] as const;
+export type CoinCommand = (typeof COIN_COMMANDS)[number];
+
 export const COIN_OPERATION_TYPES = ['credit', 'reserve', 'capture', 'release', 'refund'] as const;
 export type CoinOperationType = (typeof COIN_OPERATION_TYPES)[number];
+
+/**
+ * Every action that changes the value of a coin balance (D-5). A token that carries
+ * `acting_tenant` (an operator acting inside a tenant) is refused for all of them.
+ * Adding an action here without adding its guard test fails the pin test.
+ */
+export const COIN_VALUE_ACTIONS = ['credit', 'reserve', 'capture', 'release', 'refund'] as const;
+
+/**
+ * What a command does to a reserve in each state (D-9). `replay`: the transition was already
+ * applied, so the stored result is returned (even under a new HTTP key). Anything else is the
+ * rejection code of a conflicting transition. `reserve_not_found` is for a missing reserve.
+ */
+export const RESERVE_COMMAND_OUTCOMES = {
+  reserved: {
+    capture: 'apply',
+    release: 'apply',
+    refund: 'reserve_not_captured',
+  },
+  captured: {
+    capture: 'replay',
+    release: 'reserve_already_captured',
+    refund: 'apply',
+  },
+  released: {
+    capture: 'reserve_already_released',
+    release: 'replay',
+    refund: 'reserve_already_released',
+  },
+  refunded: {
+    capture: 'reserve_already_refunded',
+    release: 'reserve_already_refunded',
+    refund: 'replay',
+  },
+} as const;
 
 export const WalletBalance = z.object({
   wallet_id: Uuid,
@@ -105,6 +147,8 @@ export const HEADER_SERVICE_ID = 'x-service-id';
 export const HEADER_SERVICE_TOKEN = 'x-service-token';
 /** `player` or `operator`; placeholder until the verified token claim replaces it. */
 export const HEADER_PRINCIPAL_KIND = 'x-principal-kind';
+/** Placeholder for the `acting_tenant` token claim (D-5); present = an operator acting in a tenant. */
+export const HEADER_ACTING_TENANT = 'x-acting-tenant';
 
 // ---- balance read (read from anywhere) ----------------------------------------
 
@@ -123,13 +167,22 @@ export const BillingPlan = z.object({
 });
 export type BillingPlan = z.infer<typeof BillingPlan>;
 
-export const SUBSCRIPTION_STATUSES = ['active', 'declined', 'canceled'] as const;
+/** `pending` until a verified provider webhook says otherwise (MIO-093); `declined` is a synchronous refusal. */
+export const SUBSCRIPTION_STATUSES = [
+  'pending',
+  'active',
+  'past_due',
+  'declined',
+  'canceled',
+] as const;
 export const Subscription = z.object({
   id: Uuid,
   plan_id: Uuid,
   status: z.enum(SUBSCRIPTION_STATUSES),
   provider: z.string(),
   provider_subscription_id: z.string(),
+  /** Version of the last provider snapshot applied; an older snapshot never overwrites it. */
+  provider_version: z.number().int().nonnegative(),
   current_period_start: z.string().datetime(),
   current_period_end: z.string().datetime(),
 });
@@ -150,11 +203,81 @@ export type Invoice = z.infer<typeof Invoice>;
 export const SubscribeRequest = z
   .object({
     plan_id: Uuid,
-    /** Test card for the `fake` provider: ends in 4242 = ok, 0002 = declined. */
-    card_number: z.string().regex(/^\d{12,19}$/),
+    /**
+     * A provider token, never a card number (a PAN must not enter our API or our stored request
+     * hashes). The `fake` provider: `tok_4242` is accepted, `tok_0002` is declined.
+     */
+    payment_method: z.string().regex(/^tok_[a-z0-9_]{3,64}$/),
   })
   .strict();
 export type SubscribeRequest = z.infer<typeof SubscribeRequest>;
+
+/** What a verified provider webhook says about one subscription at one provider version. */
+export const PROVIDER_SNAPSHOT_STATUSES = ['active', 'past_due', 'canceled'] as const;
+export const ProviderSnapshot = z.object({
+  eventId: z.string().min(1),
+  /** Set by us at subscribe time and echoed by the provider (metadata); never read from elsewhere. */
+  tenantId: Uuid,
+  subscriptionId: z.string().min(1),
+  status: z.enum(PROVIDER_SNAPSHOT_STATUSES),
+  /** Monotonic per subscription (the provider's sequence); the order of events is NOT the order of versions. */
+  version: z.number().int().positive(),
+  amountMinor: z.number().int().nonnegative(),
+  currency: z.string().length(3),
+  periodStart: z.string().datetime(),
+  periodEnd: z.string().datetime(),
+});
+export type ProviderSnapshot = z.infer<typeof ProviderSnapshot>;
+
+export const WebhookResult = z.object({
+  /** `ignored`: a callback for a cancelled payment attempt; recorded, changes nothing. */
+  outcome: z.enum(['applied', 'superseded', 'duplicate', 'ignored']),
+});
+
+// ---- payment attempt (operator checkout lifecycle) -----------------------------------
+
+export const PAYMENT_ATTEMPT_STATES = ['processing', 'succeeded', 'declined', 'cancelled'] as const;
+export type PaymentAttemptState = (typeof PAYMENT_ATTEMPT_STATES)[number];
+
+/**
+ * Allowed moves. `processing` is the only state that can change; a cancelled attempt never
+ * succeeds, whatever the provider later says.
+ */
+export const ALLOWED_ATTEMPT_TRANSITIONS: Record<
+  PaymentAttemptState,
+  readonly PaymentAttemptState[]
+> = {
+  processing: ['succeeded', 'declined', 'cancelled'],
+  succeeded: [],
+  declined: [],
+  cancelled: [],
+};
+
+/**
+ * The card number is accepted ONLY here, only for the provider's test cards, and is never stored or
+ * hashed: the attempt keeps `card_last4` and `card_brand`. Idempotency hashes the request without it.
+ */
+export const CreateAttemptRequest = z
+  .object({
+    plan_id: Uuid,
+    card_number: z.string().regex(/^\d{12,19}$/),
+  })
+  .strict();
+export type CreateAttemptRequest = z.infer<typeof CreateAttemptRequest>;
+
+export const CARD_BRANDS = ['visa', 'mastercard'] as const;
+export const PaymentAttempt = z.object({
+  id: Uuid,
+  plan_id: Uuid,
+  subscription_id: Uuid.nullable(),
+  state: z.enum(PAYMENT_ATTEMPT_STATES),
+  card_last4: z.string().regex(/^\d{4}$/),
+  card_brand: z.enum(CARD_BRANDS),
+  created_at: z.string().datetime(),
+  updated_at: z.string().datetime(),
+});
+export type PaymentAttempt = z.infer<typeof PaymentAttempt>;
+export type WebhookResult = z.infer<typeof WebhookResult>;
 
 // ---- usage metering ---------------------------------------------------------------
 
@@ -194,7 +317,12 @@ export const ReconciliationRun = z.object({
   mismatches: z.array(
     z.object({
       kind: z.enum(RECONCILIATION_MISMATCH_KINDS),
+      /** `balance_drift`: the account. Otherwise null. */
       account_id: Uuid.nullable(),
+      /** `reserve_state_drift` (including an orphan hold): the reserve. Otherwise null. */
+      reserve_id: Uuid.nullable(),
+      /** `unbalanced_transaction`: the journal transaction. Otherwise null. */
+      transaction_id: Uuid.nullable(),
       expected: z.number().int().nullable(),
       actual: z.number().int().nullable(),
     }),

@@ -1,8 +1,18 @@
+import * as contracts from './index';
 import {
+  ALLOWED_ATTEMPT_TRANSITIONS,
   ALLOWED_RESERVE_TRANSITIONS,
-  CreditCoinsRequest,
+  COIN_COMMANDS,
+  CreateAttemptRequest,
+  PAYMENT_ATTEMPT_STATES,
+  PaymentAttempt,
+  COIN_VALUE_ACTIONS,
+  PAYMENTS_ERROR_CODES,
+  RESERVE_COMMAND_OUTCOMES,
+  RESERVE_STATES,
   ReserveCoinsRequest,
   ReserveRefRequest,
+  SubscribeRequest,
   createEvent,
   parseEvent,
 } from './index';
@@ -18,9 +28,80 @@ describe('payments contracts', () => {
       ReserveCoinsRequest.safeParse({ player_id: U, reserve_id: U, amount, currency: 'COIN' })
         .success,
     ).toBe(false);
+  });
+
+  // Mutation: re-add a CreditCoinsRequest (an HTTP credit body) to the contracts (D-1).
+  it('has no HTTP credit body: spin coins only arrive as engagement.spin.completed', () => {
+    expect(Object.keys(contracts).filter((k) => /^Credit.*Request$/.test(k))).toEqual([]);
+    expect(COIN_COMMANDS).toEqual(['reserve', 'capture', 'release', 'refund']);
+  });
+
+  // Mutation: add or drop an action without updating the acting-tenant guard test (D-5).
+  it('pins the list of coin-value actions the acting_tenant ban covers', () => {
+    expect(COIN_VALUE_ACTIONS).toEqual(['credit', 'reserve', 'capture', 'release', 'refund']);
+  });
+
+  // Mutation: change one cell of RESERVE_COMMAND_OUTCOMES, or reintroduce invalid_reserve_transition.
+  it('the reserve outcome table agrees with the allowed transitions and uses defined codes', () => {
+    const target = { capture: 'captured', release: 'released', refund: 'refunded' } as const;
+    for (const state of RESERVE_STATES) {
+      for (const cmd of ['capture', 'release', 'refund'] as const) {
+        const outcome: string = RESERVE_COMMAND_OUTCOMES[state][cmd];
+        const allowed = (ALLOWED_RESERVE_TRANSITIONS[state] as readonly string[]).includes(
+          target[cmd],
+        );
+        if (allowed) expect(outcome).toBe('apply');
+        else if (state === target[cmd]) expect(outcome).toBe('replay');
+        else expect(Object.keys(PAYMENTS_ERROR_CODES)).toContain(outcome);
+      }
+    }
+    expect(Object.keys(PAYMENTS_ERROR_CODES)).not.toContain('invalid_reserve_transition');
+  });
+
+  // Mutation: accept a card number in SubscribeRequest again.
+  it('subscribe takes a provider token and refuses a card number', () => {
+    expect(SubscribeRequest.safeParse({ plan_id: U, payment_method: 'tok_4242' }).success).toBe(
+      true,
+    );
     expect(
-      CreditCoinsRequest.safeParse({ player_id: U, spin_id: U, amount, currency: 'COIN' }).success,
+      SubscribeRequest.safeParse({ plan_id: U, card_number: '4242424242424242' }).success,
     ).toBe(false);
+    expect(
+      SubscribeRequest.safeParse({ plan_id: U, payment_method: '4242424242424242' }).success,
+    ).toBe(false);
+  });
+
+  // Mutation: let a terminal attempt state move, or store more than last4 and brand in PaymentAttempt.
+  it('payment attempts: only processing can change; the model holds last4 and brand, no card number', () => {
+    expect(ALLOWED_ATTEMPT_TRANSITIONS).toEqual({
+      processing: ['succeeded', 'declined', 'cancelled'],
+      succeeded: [],
+      declined: [],
+      cancelled: [],
+    });
+    expect(PAYMENT_ATTEMPT_STATES).toEqual(['processing', 'succeeded', 'declined', 'cancelled']);
+    expect(
+      Object.keys(PaymentAttempt.shape)
+        .filter((k) => /card/.test(k))
+        .sort(),
+    ).toEqual(['card_brand', 'card_last4']);
+    expect(
+      CreateAttemptRequest.safeParse({ plan_id: U, card_number: '4242424242424242' }).success,
+    ).toBe(true);
+    expect(
+      CreateAttemptRequest.safeParse({ plan_id: U, card_number: '4242', extra: 1 }).success,
+    ).toBe(false);
+  });
+
+  // Mutation: drop `sandbox` from the envelope schema (zod would silently strip it).
+  it('the envelope carries a producer-set sandbox flag; spin.completed carries table_version', () => {
+    const e = createEvent({
+      type: 'engagement.spin.completed',
+      tenantId: U,
+      payload: { spin_id: U, player_id: U, reward_coins: 5, table_version: 3 },
+    });
+    expect(parseEvent({ ...e, sandbox: true }).sandbox).toBe(true);
+    expect(parseEvent(e).sandbox).toBeUndefined();
   });
 
   it('accepts the upper bound and rejects another currency', () => {
