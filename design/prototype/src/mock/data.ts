@@ -21,8 +21,27 @@ export const WHEEL_REWARDS: WheelReward[] = [
   { id: 'r8', label: '5', coins: 5, weight: 0.5 },
 ];
 
-export const WHEEL_VERSIONS = [
-  { version: 3, state: 'published' as Status, publishedAt: '2026-11-18', note: 'Current: expected payout 60.7 coins per spin' },
+/** Expected coins per spin for a weight vector (same order as WHEEL_REWARDS). */
+export function expectedPayout(weights: number[]): number {
+  const total = weights.reduce((a, b) => a + b, 0);
+  return total > 0 ? WHEEL_REWARDS.reduce((s, r, i) => s + (r.coins * weights[i]) / total, 0) : 0;
+}
+
+export interface WheelVersion {
+  version: number;
+  state: Status;
+  publishedAt: string;
+  note: string;
+}
+
+export const WHEEL_VERSIONS: WheelVersion[] = [
+  // The note is derived from the table above, never typed, so it cannot drift from the odds.
+  {
+    version: 3,
+    state: 'published',
+    publishedAt: '2026-11-18',
+    note: `Current: expected payout ${expectedPayout(WHEEL_REWARDS.map((r) => r.weight)).toFixed(1)} coins per spin`,
+  },
   { version: 2, state: 'archived' as Status, publishedAt: '2026-11-04', note: 'Jackpot weight 4 (too generous)' },
   { version: 1, state: 'archived' as Status, publishedAt: '2026-10-20', note: 'Initial table' },
 ];
@@ -92,12 +111,6 @@ export const FUNNEL = [
   { step: 'Sandbox test passed', value: 74 },
   { step: 'First live deposit', value: 41 },
   { step: 'Paid invoice', value: 29 },
-];
-
-export const INVOICE_LINES = [
-  { id: 'i1', item: 'Growth plan, November', qty: '1', amount: 799 },
-  { id: 'i2', item: 'Included spins (150,000)', qty: '150,000', amount: 0 },
-  { id: 'i3', item: 'Overage spins at 2.0 EUR per 1,000', qty: '0', amount: 0 },
 ];
 
 export const USAGE_DAYS = [31, 36, 33, 41, 44, 39, 47, 52, 49, 55, 58, 54, 61, 66];

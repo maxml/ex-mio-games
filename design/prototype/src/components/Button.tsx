@@ -25,18 +25,22 @@ const SIZES: Record<ButtonSize, string> = {
 };
 
 export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button(
-  { variant = 'primary', size = 'md', loading = false, disabled, className, children, type = 'button', ...rest },
+  { variant = 'primary', size = 'md', loading = false, disabled, className, children, type = 'button', onClick, ...rest },
   ref,
 ) {
+  // A busy button stays focusable (aria-disabled, not `disabled`) so keyboard focus is not thrown
+  // to <body> the moment a spin or redeem starts; the click is ignored while busy.
   return (
     <button
       ref={ref}
       type={type}
-      disabled={disabled || loading}
+      disabled={disabled}
+      aria-disabled={loading || undefined}
       aria-busy={loading || undefined}
+      onClick={loading ? (e) => e.preventDefault() : onClick}
       className={cn(
         'inline-flex items-center justify-center gap-2 rounded-md font-semibold transition',
-        'disabled:cursor-not-allowed disabled:opacity-50',
+        'disabled:cursor-not-allowed disabled:opacity-50 aria-disabled:cursor-not-allowed aria-disabled:opacity-50',
         VARIANTS[variant],
         SIZES[size],
         className,

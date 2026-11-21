@@ -3,7 +3,7 @@ import { AdminScreen } from './screens/AdminConsole';
 import { OperatorScreen } from './screens/OperatorConsole';
 import { PlayerScreen } from './screens/PlayerWidget';
 import { THEMES, useTheme } from './theme/theme';
-import { cn } from './components';
+import { Select, cn } from './components';
 
 const ROUTES = [
   { id: 'player', label: 'Player widget', view: PlayerScreen },
@@ -29,7 +29,20 @@ export function App() {
   const View = current.view;
   return (
     <>
-      <a href="#main" className="sr-only focus:not-sr-only focus:absolute focus:z-20 focus:bg-surface focus:p-2">Skip to content</a>
+      {/* The router owns the URL hash, so a plain #main link would change the screen. Focus the
+          current page's <main> instead and leave the hash alone. */}
+      <a
+        href={`#/${current.id}`}
+        onClick={(e) => {
+          e.preventDefault();
+          const main = document.getElementById('main');
+          main?.focus();
+          main?.scrollIntoView?.();
+        }}
+        className="sr-only focus:not-sr-only focus:absolute focus:z-20 focus:bg-surface focus:p-2"
+      >
+        Skip to content
+      </a>
       <header className="sticky top-0 z-10 border-b border-border bg-surface">
         <div className="mx-auto flex min-h-14 max-w-5xl flex-wrap items-center justify-between gap-x-4 gap-y-2 px-4 py-2">
           <nav aria-label="Prototype screens" className="flex gap-1">
@@ -46,19 +59,15 @@ export function App() {
           </nav>
           <label className="flex items-center gap-2 text-sm">
             <span className="text-fg-muted">Tenant theme</span>
-            <select
-              value={theme.id}
-              onChange={(e) => setThemeId(e.target.value)}
-              className="h-9 rounded-md border border-border bg-surface px-2 text-fg"
-            >
+            <Select size="sm" value={theme.id} onChange={(e) => setThemeId(e.target.value)}>
               {THEMES.map((t) => (
                 <option key={t.id} value={t.id}>{t.name}</option>
               ))}
-            </select>
+            </Select>
           </label>
         </div>
       </header>
-      <main id="main" tabIndex={-1}>
+      <main id="main" tabIndex={-1} className="outline-none">
         <View />
       </main>
     </>

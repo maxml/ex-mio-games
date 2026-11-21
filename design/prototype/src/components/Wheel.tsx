@@ -9,14 +9,15 @@ export interface WheelSegment {
 export interface WheelSpin {
   /** Index of the segment the SERVER picked. The wheel only animates to it; it never chooses. */
   index: number;
-  /** Changes on every spin so the same index twice still animates. */
-  nonce: number;
+  /** Server spin id. A new id animates; an id the wheel has already seen (or mounted with) never does. */
+  id: string;
 }
 
 export interface WheelProps {
   segments: WheelSegment[];
   spin: WheelSpin | null;
-  onSpinEnd?: (index: number) => void;
+  /** Animation finished. Cosmetic only: the prize was credited when the result arrived. */
+  onSpinEnd?: (spinId: string) => void;
   /** Pixel size of the square wheel; it also shrinks to the container width. */
   size?: number;
   durationMs?: number;
@@ -37,36 +38,47 @@ function slicePath(start: number, end: number, r: number): string {
   return `M0 0 L${x1.toFixed(3)} ${y1.toFixed(3)} A${r} ${r} 0 ${large} 1 ${x2.toFixed(3)} ${y2.toFixed(3)} Z`;
 }
 
+/** Resting angle for a result: the chosen segment under the pointer, with a small stable offset. */
+function restAngle(spin: WheelSpin, n: number): number {
+  const step = 360 / n;
+  let h = 0;
+  for (const c of spin.id) h = (h * 31 + c.charCodeAt(0)) % 233280;
+  const jitter = (h / 233280 - 0.5) * step * 0.6;
+  return (360 - ((spin.index + 0.5) * step + jitter)) % 360;
+}
+
 export function Wheel({ segments, spin, onSpinEnd, size = 320, durationMs = 4200, className }: WheelProps) {
-  const [rotation, setRotation] = useState(0);
-  const [animating, setAnimating] = useState(false);
-  const pending = useRef<number | null>(null);
   const n = segments.length;
   const step = 360 / n;
+  // A wheel that mounts with a result already in hand (tab switch, remount) shows it at rest.
+  // It must not animate it again and must not report it as new: `handled` starts at that id.
+  const handled = useRef<string | null>(spin?.id ?? null);
+  const [rotation, setRotation] = useState(() => (spin ? TURNS * 360 + restAngle(spin, n) : 0));
+  const [animating, setAnimating] = useState(false);
+  const pending = useRef<string | null>(null);
 
   useEffect(() => {
-    if (!spin) return;
+    if (!spin || spin.id === handled.current) return;
+    handled.current = spin.id;
     const reduce = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
-    // Small deterministic offset inside the segment so it does not always stop dead centre.
-    const jitter = (((spin.nonce * 9301 + 49297) % 233280) / 233280 - 0.5) * step * 0.6;
-    const target = (360 - ((spin.index + 0.5) * step + jitter)) % 360;
+    const target = restAngle(spin, n);
     setRotation((current) => {
       const base = current - (((current % 360) + 360) % 360);
       return base + TURNS * 360 + target;
     });
-    pending.current = spin.index;
+    pending.current = spin.id;
     setAnimating(true);
     const t = window.setTimeout(finish, reduce ? 50 : durationMs + 100); // fallback if transitionend is missed
     return () => window.clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [spin?.nonce]);
+  }, [spin?.id]);
 
   function finish() {
     if (pending.current === null) return;
-    const idx = pending.current;
+    const id = pending.current;
     pending.current = null;
     setAnimating(false);
-    onSpinEnd?.(idx);
+    onSpinEnd?.(id);
   }
 
   return (
@@ -101,7 +113,9 @@ export function Wheel({ segments, spin, onSpinEnd, size = 320, durationMs = 4200
                 style={{ fill: `var(--wheel-${(i % 6) + 1})`, stroke: 'var(--wheel-rim)', strokeWidth: 1 }}
               />
               <text
-                transform={`rotate(${mid}) translate(0 -62) rotate(90)`}
+                // Text runs along the radius. The label's final angle is mid + 90; for the right half
+                // that is 90..270 degrees (upside down), so turn it 180 to land in 270..450.
+                transform={`rotate(${mid}) translate(0 -62) rotate(${mid < 180 ? 270 : 90})`}
                 textAnchor="middle"
                 dominantBaseline="middle"
                 style={{ fill: 'var(--wheel-fg)', fontSize: n > 8 ? 9 : 11, fontWeight: 700, fontFamily: 'var(--font-sans)' }}

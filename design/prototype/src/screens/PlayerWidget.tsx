@@ -1,33 +1,17 @@
 import { useEffect, useRef, useState } from 'react';
-import { Badge, Button, Card, CoinBalance, StatusPill, StoreItemCard, Wheel, cn } from '../components';
-import type { Status, StoreItem, WheelSpin } from '../components';
-import { PLAYER_HISTORY, STORE_ITEMS, WHEEL_REWARDS } from '../mock/data';
-import { useTheme } from '../theme/theme';
+import { Badge, Button, Card, CoinBalance, StatusPill, StoreItemCard, TabPanel, Tabs, Toast, Wheel, cn } from '../components';
+import type { StoreItem } from '../components';
+import { WHEEL_REWARDS } from '../mock/data';
+import { appStore, requestSpin, simulateDeposit, startRedeem, useApp } from '../state/store';
+import { themeStyle, useTheme } from '../theme/theme';
 
 type Tab = 'wheel' | 'store' | 'history';
-interface MyRedemption {
-  id: string;
-  item: string;
-  coins: number;
-  status: Status;
-}
-interface HistoryRow {
-  id: string;
-  at: string;
-  what: string;
-  delta: number;
-}
-
-/** Stand-in for the server: picks by weight. The wheel component only animates to the result. */
-function pickReward(): number {
-  const total = WHEEL_REWARDS.reduce((s, r) => s + r.weight, 0);
-  let x = Math.random() * total;
-  for (let i = 0; i < WHEEL_REWARDS.length; i++) {
-    x -= WHEEL_REWARDS[i].weight;
-    if (x < 0) return i;
-  }
-  return 0;
-}
+const TABS: { id: Tab; label: string }[] = [
+  { id: 'wheel', label: 'Wheel' },
+  { id: 'store', label: 'Bonus Store' },
+  { id: 'history', label: 'History' },
+];
+const SPIN_MS = 4200;
 
 export function PlayerScreen() {
   const { theme } = useTheme();
@@ -59,179 +43,143 @@ export function PlayerScreen() {
 }
 
 function PlayerWidget() {
+  const { theme } = useTheme();
+  const player = useApp((s) => s.player);
+  const catalog = useApp((s) => s.operator.catalog);
   const [tab, setTab] = useState<Tab>('wheel');
-  const [spins, setSpins] = useState(3);
-  const [coins, setCoins] = useState(420);
-  const [spin, setSpin] = useState<WheelSpin | null>(null);
-  const [spinning, setSpinning] = useState(false);
-  const [result, setResult] = useState<string>('');
-  const [reds, setReds] = useState<MyRedemption[]>([]);
-  const [history, setHistory] = useState<HistoryRow[]>(PLAYER_HISTORY);
+  // The result was credited in the store when the server answered. These two only hold the
+  // presentation: the part of the balance still "in the air" and the text announced afterwards.
+  const [reveal, setReveal] = useState<{ id: string; coins: number } | null>(null);
+  const [result, setResult] = useState('');
   const [busyItem, setBusyItem] = useState<string | null>(null);
-  const [casinoDown, setCasinoDown] = useState(false);
   const [toast, setToast] = useState('');
-  const nonce = useRef(0);
   const timers = useRef<number[]>([]);
+  const revealed = useRef(new Set<string>());
   useEffect(() => () => timers.current.forEach(window.clearTimeout), []);
-
   const later = (fn: () => void, ms: number) => {
     timers.current.push(window.setTimeout(fn, ms));
   };
-  const log = (what: string, delta: number) =>
-    setHistory((h) => [{ id: `n${Date.now()}${Math.random()}`, at: 'Just now', what, delta }, ...h]);
+
+  const spinning = reveal !== null;
+  const balance = player.coins - (reveal?.coins ?? 0);
+
+  function finishReveal(id: string, coins: number) {
+    if (revealed.current.has(id)) return;
+    revealed.current.add(id);
+    setReveal((r) => (r?.id === id ? null : r));
+    setResult(`You won ${coins} coins`);
+  }
 
   function doSpin() {
-    if (spinning || spins < 1) return;
-    setSpinning(true);
-    setSpins((s) => s - 1);
+    if (spinning || player.spins < 1) return;
+    const res = requestSpin(); // credits once, inside the store
+    if (!res) return;
     setResult('');
-    nonce.current += 1;
-    setSpin({ index: pickReward(), nonce: nonce.current });
-  }
-  function onSpinEnd(index: number) {
-    const r = WHEEL_REWARDS[index];
-    setSpinning(false);
-    setCoins((c) => c + r.coins);
-    setResult(`You won ${r.coins} coins`);
-    log(`Spin: landed on ${r.coins}`, r.coins);
+    setReveal({ id: res.id, coins: res.coins });
+    const reduce = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+    // Independent of the Wheel (which may be unmounted by a tab switch): the reveal always ends.
+    later(() => finishReveal(res.id, res.coins), reduce ? 150 : SPIN_MS + 300);
   }
   function deposit() {
-    setSpins((s) => s + 2);
-    setToast('Deposit of 40 EUR confirmed by the casino: 2 spins added.');
-    log('Deposit 40 EUR earned 2 spins', 0);
+    const granted = simulateDeposit();
+    setToast(
+      granted > 0
+        ? `Deposit of 40 EUR confirmed by the casino: ${granted} ${granted === 1 ? 'spin' : 'spins'} added.`
+        : 'Deposit of 40 EUR confirmed, but it earns no spins under the casino rules (minimum deposit or daily cap).',
+    );
   }
   function redeem(item: StoreItem) {
-    if (busyItem || coins < item.priceCoins) return;
-    setBusyItem(item.id);
-    setCoins((c) => c - item.priceCoins); // coins are held at once; refunded if issuing fails
-    const id = `rd-${Date.now()}`;
-    setReds((r) => [{ id, item: item.name, coins: item.priceCoins, status: 'pending' }, ...r]);
-    log(`Redeemed ${item.name}`, -item.priceCoins);
-    const set = (status: Status) => setReds((r) => r.map((x) => (x.id === id ? { ...x, status } : x)));
-    later(() => setBusyItem(null), 600);
-    later(() => set('issuing'), 1200);
-    later(() => {
-      if (casinoDown) {
-        set('failed');
-        later(() => {
-          set('refunded');
-          setCoins((c) => c + item.priceCoins);
-          log(`Refund: ${item.name} could not be issued`, item.priceCoins);
-        }, 1400);
-      } else set('issued');
-    }, 2600);
+    if (busyItem) return;
+    if (startRedeem(item.id)) {
+      setBusyItem(item.id);
+      later(() => setBusyItem(null), 600);
+    }
   }
 
-  const tabs: { id: Tab; label: string }[] = [
-    { id: 'wheel', label: 'Wheel' },
-    { id: 'store', label: 'Bonus Store' },
-    { id: 'history', label: 'History' },
-  ];
+  const items = catalog.filter((i) => i.visible);
+  const history = player.history.filter((h) => !reveal || h.spinId !== reveal.id);
+  const spinsLabel = `${player.spins} ${player.spins === 1 ? 'spin' : 'spins'} available`;
 
   return (
-    <Card
-      aria-label="MIO Games widget"
-      title="Daily Wheel"
-      actions={<CoinBalance coins={coins} />}
-      description={`${spins} ${spins === 1 ? 'spin' : 'spins'} available`}
-    >
-      <div role="tablist" aria-label="Widget sections" className="mb-4 flex gap-1 rounded-md bg-surface-2 p-1">
-        {tabs.map((t) => (
-          <button
-            key={t.id}
-            role="tab"
-            id={`tab-${t.id}`}
-            aria-selected={tab === t.id}
-            aria-controls={`panel-${t.id}`}
-            tabIndex={tab === t.id ? 0 : -1}
-            onClick={() => setTab(t.id)}
-            onKeyDown={(e) => {
-              const i = tabs.findIndex((x) => x.id === tab);
-              if (e.key === 'ArrowRight') setTab(tabs[(i + 1) % tabs.length].id);
-              if (e.key === 'ArrowLeft') setTab(tabs[(i + tabs.length - 1) % tabs.length].id);
-            }}
-            className={cn(
-              'flex-1 rounded-sm px-2 py-2 text-sm font-semibold',
-              tab === t.id ? 'bg-surface text-fg shadow-card' : 'text-fg-muted hover:text-fg',
+    <div style={themeStyle(theme)} className="text-fg">
+      <Card aria-label="MIO Games widget" title="Daily Wheel" actions={<CoinBalance coins={balance} />} description={spinsLabel}>
+        {/* Always mounted, so the result is announced even when the Wheel tab is not showing. */}
+        <div className="sr-only" role="status" aria-live="polite" data-testid="result-live">{result}</div>
+
+        <Tabs tabs={TABS} value={tab} onChange={setTab} label="Widget sections" idPrefix="pw" className="mb-4" />
+        <Toast message={toast} onDismiss={() => setToast('')} className="mb-3 empty:hidden" />
+
+        {tab === 'wheel' && (
+          <TabPanel idPrefix="pw" id="wheel">
+            <Wheel
+              segments={WHEEL_REWARDS}
+              spin={player.lastSpin}
+              onSpinEnd={(id) => id === player.lastSpin?.id && finishReveal(id, player.lastSpin.coins)}
+              size={300}
+            />
+            <p className="mt-3 min-h-7 text-center font-display text-lg font-bold" data-testid="result-text">
+              {spinning ? 'Spinning...' : result}
+            </p>
+            <div className="mt-2 flex flex-col gap-2">
+              <Button size="lg" onClick={doSpin} loading={spinning} aria-disabled={player.spins < 1 || spinning || undefined}>
+                {player.spins < 1 ? 'No spins left' : 'Spin'}
+              </Button>
+              {player.spins < 1 && (
+                <p className="text-center text-sm text-fg-muted">Spins come from deposits. Make a deposit to get more.</p>
+              )}
+              <Button variant="secondary" onClick={deposit}>Simulate a 40 EUR deposit at the casino</Button>
+            </div>
+          </TabPanel>
+        )}
+
+        {tab === 'store' && (
+          <TabPanel idPrefix="pw" id="store">
+            <label className="mb-3 flex items-center gap-2 text-sm text-fg-muted">
+              <input type="checkbox" checked={player.casinoDown} onChange={(e) => appStore.dispatch({ type: 'player/casinoDown', on: e.target.checked })} />
+              Demo: make the casino fail the next reward (shows failed, then refunded)
+            </label>
+            <div className="grid gap-3 sm:grid-cols-2">
+              {items.map((it) => (
+                <StoreItemCard key={it.id} item={it} balance={balance} busy={busyItem === it.id} onRedeem={redeem} />
+              ))}
+            </div>
+            <h3 className="mb-2 mt-5 font-display text-base font-semibold">Your redemptions</h3>
+            {player.redemptions.length === 0 ? (
+              <p className="text-sm text-fg-muted">Nothing redeemed yet.</p>
+            ) : (
+              <ul className="divide-y divide-border rounded-md border border-border">
+                {player.redemptions.map((r) => (
+                  <li key={r.id} className="flex flex-wrap items-center justify-between gap-2 px-3 py-2 text-sm">
+                    <span>{r.item}</span>
+                    <span className="flex items-center gap-2">
+                      {r.status === 'refunded' && <Badge>{`+${r.coins} coins back`}</Badge>}
+                      <StatusPill status={r.status} />
+                    </span>
+                  </li>
+                ))}
+              </ul>
             )}
-          >
-            {t.label}
-          </button>
-        ))}
-      </div>
+          </TabPanel>
+        )}
 
-      {toast && (
-        <p role="status" className="mb-3 flex items-start justify-between gap-2 rounded-md border border-info bg-surface px-3 py-2 text-sm text-info">
-          <span>{toast}</span>
-          <button className="font-semibold underline" onClick={() => setToast('')}>Dismiss</button>
-        </p>
-      )}
-
-      {tab === 'wheel' && (
-        <div role="tabpanel" id="panel-wheel" aria-labelledby="tab-wheel">
-          <Wheel segments={WHEEL_REWARDS} spin={spin} onSpinEnd={onSpinEnd} size={300} />
-          <p className="mt-3 min-h-6 text-center font-display text-lg font-bold" role="status" aria-live="polite">
-            {spinning ? 'Spinning...' : result}
-          </p>
-          <div className="mt-2 flex flex-col gap-2">
-            <Button size="lg" onClick={doSpin} loading={spinning} disabled={spins < 1}>
-              {spins < 1 ? 'No spins left' : 'Spin'}
-            </Button>
-            {spins < 1 && (
-              <p className="text-center text-sm text-fg-muted">Spins come from deposits. Make a deposit to get more.</p>
-            )}
-            <Button variant="secondary" onClick={deposit}>Simulate a 40 EUR deposit at the casino</Button>
-          </div>
-        </div>
-      )}
-
-      {tab === 'store' && (
-        <div role="tabpanel" id="panel-store" aria-labelledby="tab-store">
-          <label className="mb-3 flex items-center gap-2 text-sm text-fg-muted">
-            <input type="checkbox" checked={casinoDown} onChange={(e) => setCasinoDown(e.target.checked)} />
-            Demo: make the casino fail the next reward (shows failed, then refunded)
-          </label>
-          <div className="grid gap-3 sm:grid-cols-2">
-            {STORE_ITEMS.map((it) => (
-              <StoreItemCard key={it.id} item={it} balance={coins} busy={busyItem === it.id} onRedeem={redeem} />
-            ))}
-          </div>
-          <h3 className="mb-2 mt-5 font-display text-base font-semibold">Your redemptions</h3>
-          {reds.length === 0 ? (
-            <p className="text-sm text-fg-muted">Nothing redeemed yet.</p>
-          ) : (
-            <ul className="divide-y divide-border rounded-md border border-border">
-              {reds.map((r) => (
-                <li key={r.id} className="flex flex-wrap items-center justify-between gap-2 px-3 py-2 text-sm">
-                  <span>{r.item}</span>
-                  <span className="flex items-center gap-2">
-                    {r.status === 'refunded' && <Badge>{`+${r.coins} coins back`}</Badge>}
-                    <StatusPill status={r.status} />
+        {tab === 'history' && (
+          <TabPanel idPrefix="pw" id="history">
+            <ul className="divide-y divide-border">
+              {history.map((h) => (
+                <li key={h.id} className="flex items-center justify-between gap-3 py-2.5 text-sm">
+                  <span>
+                    <span className="block">{h.what}</span>
+                    <span className="text-xs text-fg-muted">{h.at}</span>
+                  </span>
+                  <span className={cn('font-semibold tabular-nums', h.delta > 0 && 'text-success', h.delta < 0 && 'text-fg-muted')}>
+                    {h.delta > 0 ? `+${h.delta}` : h.delta < 0 ? `${h.delta}` : 'spins'}
                   </span>
                 </li>
               ))}
             </ul>
-          )}
-        </div>
-      )}
-
-      {tab === 'history' && (
-        <div role="tabpanel" id="panel-history" aria-labelledby="tab-history">
-          <ul className="divide-y divide-border">
-            {history.map((h) => (
-              <li key={h.id} className="flex items-center justify-between gap-3 py-2.5 text-sm">
-                <span>
-                  <span className="block">{h.what}</span>
-                  <span className="text-xs text-fg-muted">{h.at}</span>
-                </span>
-                <span className={cn('font-semibold tabular-nums', h.delta > 0 && 'text-success', h.delta < 0 && 'text-fg-muted')}>
-                  {h.delta > 0 ? `+${h.delta}` : h.delta < 0 ? `${h.delta}` : 'spins'}
-                </span>
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
-    </Card>
+          </TabPanel>
+        )}
+      </Card>
+    </div>
   );
 }

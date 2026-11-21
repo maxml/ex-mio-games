@@ -8,6 +8,7 @@
     "surface": "#ffffff",
     "surface-2": "#e3efea",
     "border": "#bcd2c9",
+    "input-border": "#6f8c80",
     "fg": "#0b2620",
     "fg-muted": "#43605a",
     "primary": "#0b7a55",

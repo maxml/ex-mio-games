@@ -3,11 +3,13 @@ import { cn } from './cn';
 export interface Step {
   id: string;
   label: string;
+  /** True only when the step's work is actually finished; position never implies completion. */
+  done?: boolean;
 }
 
 export interface StepperProps {
   steps: Step[];
-  /** Index of the current step; earlier ones are complete. */
+  /** Index of the current step. */
   current: number;
   onSelect?: (index: number) => void;
   className?: string;
@@ -19,7 +21,7 @@ export function Stepper({ steps, current, onSelect, className }: StepperProps) {
     <nav aria-label="Progress" className={className}>
       <ol className="flex flex-wrap gap-x-2 gap-y-2">
         {steps.map((s, i) => {
-          const done = i < current;
+          const done = Boolean(s.done);
           const active = i === current;
           const body = (
             <>
@@ -27,15 +29,15 @@ export function Stepper({ steps, current, onSelect, className }: StepperProps) {
                 aria-hidden
                 className={cn(
                   'inline-flex size-6 items-center justify-center rounded-full border text-xs font-bold',
-                  done && 'border-success bg-surface text-success',
                   active && 'border-primary bg-primary text-primary-fg',
-                  !done && !active && 'border-border text-fg-muted',
+                  done && !active && 'border-success bg-surface text-success',
+                  !done && !active && 'border-input-border text-fg-muted',
                 )}
               >
                 {done ? '✓' : i + 1}
               </span>
               <span className={cn('text-sm', active ? 'font-semibold text-fg' : 'text-fg-muted')}>{s.label}</span>
-              <span className="sr-only">{done ? '(complete)' : active ? '(current step)' : '(not started)'}</span>
+              <span className="sr-only">{[done && '(complete)', active && '(current step)', !done && !active && '(not done)'].filter(Boolean).join(' ')}</span>
             </>
           );
           return (

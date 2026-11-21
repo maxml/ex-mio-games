@@ -1,12 +1,12 @@
 # Design tokens
 
-All colours, radii, fonts and shadows are CSS variables defined in `src/theme/tokens.css`. The values are neutral placeholders: no brand material exists yet (backlog MIO-120). Components never contain raw colours; `pnpm check:no-raw-colors` fails the build if one appears outside `src/theme/`.
+All colours, radii, fonts and shadows are CSS variables defined in `src/theme/tokens.css`. The values are neutral placeholders: no brand material exists yet (backlog MIO-120). Components never contain raw colours; `pnpm check:no-raw-colors` fails the build if one appears outside `src/theme/`: hex, `rgb()` and friends, Tailwind palette classes, and CSS named colours in style props, `.css` declarations and SVG colour attributes.
 
 ## Token set
 
 | Group | Tokens | Used for |
 |---|---|---|
-| Surfaces and text | `bg`, `surface`, `surface-2`, `border`, `fg`, `fg-muted` | Page, cards, inset areas, lines, text |
+| Surfaces and text | `bg`, `surface`, `surface-2`, `border`, `input-border`, `fg`, `fg-muted` | Page, cards, inset areas, decorative lines, form-field outlines (3:1), text |
 | Actions | `primary`, `primary-fg`, `accent`, `accent-fg`, `ring` | Buttons, selected state, focus outline |
 | Status | `success`, `warning`, `danger`, `info` | Status text and borders only, always with an icon or word |
 | Gamification | `coin`, `wheel-1` to `wheel-6`, `wheel-fg`, `wheel-rim` | Coin icon, wheel segments (cycled), segment labels, rim |
@@ -26,6 +26,6 @@ At runtime `themeStyle()` / `ThemeProvider` write each entry as an inline CSS va
 
 ## Rules a tenant theme must meet
 
-- `pnpm check:contrast` checks 22 text and UI pairs per theme against WCAG AA (4.5 for text, 3 for focus ring, coin and primary-on-card). It runs inside `pnpm build`, so a failing tenant file fails the build. Check an extra file with `node scripts/check-contrast.mjs path/to/theme.json`.
+- `pnpm check:contrast` first validates each tenant file against `tenant-theme.schema.json` (an unknown token name such as `primry-fg`, or a malformed value, fails), then checks 28 text and UI pairs per theme against WCAG AA (4.5 for text; 3 for focus ring on page, card and inset, form-field border, wheel rim, coin and primary-on-card). It runs inside `pnpm build`, so a failing tenant file fails the build. Check an extra file with `node scripts/check-contrast.mjs path/to/theme.json`.
 - Status colours are never the only signal: pills carry an icon and a word.
 - Wheel segments cycle through `wheel-1..6`; every segment label uses `wheel-fg`, so all six must contrast with it.
