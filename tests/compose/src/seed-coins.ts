@@ -96,7 +96,7 @@ export async function seedCoinsMany(
   await eventually(async () => {
     for (const [i, g] of grants.entries()) {
       const now = await availableOf(tenantId, g.playerId, opts.operatorToken);
-      if (now === undefined || now < before[i] + g.coins) return undefined;
+      if (now === undefined || now < (before[i] ?? 0) + g.coins) return undefined;
     }
     return true;
   }, opts.timeoutMs);
