@@ -101,7 +101,14 @@ services:
       <<: *service-env
       PORT: '4001'
       DATABASE_URL: postgresql://identity:identity-dev@postgres:5432/identity
-      PLATFORM_ADMIN_TOKEN: dev-platform-token-0000
+      BASE_DOMAIN: mio.localhost
+      PLATFORM_ADMIN_EMAIL: root@mio.test
+      PLATFORM_ADMIN_PASSWORD: platform-dev-password-0000
+      CREDENTIALS_KEK: dev-credentials-kek-0000000000
+      SERVICE_CLIENT_SECRETS: '{"engagement":"engagement-dev-secret-0000","payments":"payments-dev-secret-00000"}'
+      IDENTITY_PROVIDER: firebase-emulator
+      FIREBASE_AUTH_EMULATOR_HOST: firebase-auth:9099
+      FIREBASE_PROJECT: demo-ex-mio
     # Migrations run as their own step (node dist/migrate.js), then the server starts.
     command: ['sh', '-c', 'node dist/migrate.js && exec node dist/main.js']
     ports:
@@ -110,6 +117,8 @@ services:
       postgres:
         condition: service_healthy
       rabbitmq:
+        condition: service_healthy
+      firebase-auth:
         condition: service_healthy
     healthcheck:
       <<: *node-health
@@ -129,6 +138,8 @@ services:
       PORT: '4002'
       DATABASE_URL: postgresql://engagement:engagement-dev@postgres:5432/engagement
       REDIS_URL: redis://redis:6379
+      IDENTITY_URL: http://identity:4001
+      SERVICE_CLIENT_SECRET: engagement-dev-secret-0000
     command: ['sh', '-c', 'node dist/migrate.js && exec node dist/main.js']
     ports:
       - '${ENGAGEMENT_PORT:-4002}:4002'
@@ -156,6 +167,8 @@ services:
       <<: *service-env
       PORT: '4003'
       DATABASE_URL: postgresql://payments:payments-dev@postgres:5432/payments
+      IDENTITY_URL: http://identity:4001
+      SERVICE_CLIENT_SECRET: payments-dev-secret-00000
     command: ['sh', '-c', 'node dist/migrate.js && exec node dist/main.js']
     ports:
       - '${PAYMENTS_PORT:-4003}:4003'
