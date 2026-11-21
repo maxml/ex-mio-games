@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { Uuid, Uuidv7, uuidv7 } from './ids';
+import { CoinsCapturedV1, CoinsRefundedV1, CoinsReleasedV1, CoinsReservedV1 } from './payments';
 
 /**
  * The event envelope every bus message carries. `tenant_id` is mandatory: there
@@ -54,6 +55,10 @@ export const EVENT_SCHEMAS = {
   'identity.tenant.created': { 1: TenantCreatedV1 },
   'identity.player.registered': { 1: PlayerRegisteredV1 },
   'payments.coins.credited': { 1: CoinsCreditedV1 },
+  'payments.coins.reserved': { 1: CoinsReservedV1 },
+  'payments.coins.captured': { 1: CoinsCapturedV1 },
+  'payments.coins.released': { 1: CoinsReleasedV1 },
+  'payments.coins.refunded': { 1: CoinsRefundedV1 },
   'engagement.spin.completed': { 1: SpinCompletedV1 },
   'engagement.redemption.requested': { 1: RedemptionRequestedV1 },
 } as const;

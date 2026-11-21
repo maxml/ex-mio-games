@@ -91,3 +91,14 @@ payload }`; `tenant_id` is mandatory; the payload schema is registered per (type
 - **spec:** one JSON object per line with `kind: "product_event"`, a snake_case `event`, and a mandatory
   `tenant_id`. Secrets are redacted.
 - **pinned:** `packages/logger/src/product-event.test.ts`
+
+## Coin commands, balance read and coin events
+
+- **provider:** `payments` (`packages/contracts/src/payments.ts`) · **consumers:** `engagement` (commands),
+  `web` and any service (balance read), any subscriber of `payments.coins.*`
+- **spec:** `docs/specs/payments.md`. Only `payments` changes a balance; `credit`, `reserve`, `capture`,
+  `release`, `refund` are internal routes for the `engagement` service identity, each idempotent on its own
+  key and on a durable business-operation id. Amounts are integers `1..1_000_000_000_000`. Events
+  `payments.coins.credited|reserved|captured|released|refunded` v1 are written in the effect's transaction.
+- **pinned:** `packages/contracts/src/payments.contracts.test.ts`, `apps/payments/src/controllers/coins.controller.test.ts`,
+  `apps/payments/src/**/*.pgtest.ts`
