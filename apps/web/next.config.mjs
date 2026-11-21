@@ -5,7 +5,7 @@ import createNextIntlPlugin from 'next-intl/plugin';
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
 // Point the next-intl plugin at the request config living in the FSD
-// `shared/config` segment (ADR-0001 §6, §7) instead of its default `./i18n/request`.
+// `shared/config` segment (ADR-0013 §6, §7) instead of its default `./i18n/request`.
 const withNextIntl = createNextIntlPlugin('./src/layers/shared/config/i18n/request.ts');
 
 /** @type {import('next').NextConfig} */

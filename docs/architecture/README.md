@@ -18,7 +18,7 @@ The HTML pages are standalone files; open them locally in a browser (a git host 
 - `tools/archify-render.sh` validates and re-renders all five diagrams. `tools/archify-render.sh --check` validates only, for CI. Needs Node 18 or newer and `git submodule update --init tools/archify`.
 - The Mermaid copies are written by hand and must agree with the IR files. When one changes, change the other (ADR 0012).
 - Built, partial and next items are marked in [overview.md](overview.md#14-built-versus-designed). The Stripe adapter, websocket replay, the production identity provider, rate limiting and per-service deployment secrets are next, not built.
-- The Mermaid copies below match the code. The interactive `*.html` and `*.json` diagrams were rendered before the saga and spin-credit flow were reconciled with the code: their redemption state names (`HELD`, `FAILED`), the coin credit arrow from engagement to payments and the Redis "rate limits, ws journal" label are stale. Re-render them with `tools/archify-render.sh` after updating the IR files (not done in this pass, the renderer submodule was not initialised).
+- The Mermaid copies and the IR files agree with the code. The `*.html` pages were re-rendered from the corrected IR with the pinned archify renderer (state names `RESERVED`, `REJECTED`, `RELEASED`; payments credits coins from `spin.completed`; the realtime gateway `/rt` in engagement; Redis as an optional balance projection).
 
 ## 1. Context and containers
 

@@ -5320,11 +5320,11 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
         </g>
         </g>
 
-        <g data-edge-from="engagement" data-edge-to="payments" data-edge-label="5 credit coins, operation id = spin id" data-edge-key="7" data-edge-id="m8">
+        <g data-edge-from="engagement" data-edge-to="payments" data-edge-label="5 spin.completed event (outbox), payments credits coins, key spin:spin_id" data-edge-key="7" data-edge-id="m8">
           <path data-composition-edge-from="engagement" data-composition-edge-to="payments" data-composition-edge-id="m8" data-composition-points="301.25,490;620.75,490" d="M 301.25 490 L 620.75 490" class="a-emphasis" data-animate="edge" style="--step:7" stroke-width="1.8" marker-end="url(#arrowhead-emphasis)"/>
         <g data-detail="context">
-          <rect x="356.2" y="470" width="209.6" height="16" rx="3" class="c-mask"/>
-          <text x="461" y="480" class="t-edge-emphasis" font-size="9" text-anchor="middle">5 credit coins, operation id = spin id</text>
+          <rect x="265.2" y="470" width="391.6" height="16" rx="3" class="c-mask"/>
+          <text x="461" y="480" class="t-edge-emphasis" font-size="9" text-anchor="middle">5 spin.completed event (outbox), payments credits coins, key spin:spin_id</text>
         </g>
         </g>
 
@@ -5336,19 +5336,19 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
         </g>
         </g>
 
-        <g data-edge-from="engagement" data-edge-to="payments" data-edge-label="hold coins (hold id = redemption id)" data-edge-key="9" data-edge-id="m10">
+        <g data-edge-from="engagement" data-edge-to="payments" data-edge-label="reserve coins (hold:redemption_id)" data-edge-key="9" data-edge-id="m10">
           <path data-composition-edge-from="engagement" data-composition-edge-to="payments" data-composition-edge-id="m10" data-composition-points="301.25,612;620.75,612" d="M 301.25 612 L 620.75 612" class="a-default" data-animate="edge" style="--step:9" stroke-width="1.4" marker-end="url(#arrowhead)"/>
         <g data-detail="context">
-          <rect x="361.4" y="592" width="199.20000000000002" height="16" rx="3" class="c-mask"/>
-          <text x="461" y="602" class="t-muted" font-size="9" text-anchor="middle">hold coins (hold id = redemption id)</text>
+          <rect x="366.6" y="592" width="188.8" height="16" rx="3" class="c-mask"/>
+          <text x="461" y="602" class="t-muted" font-size="9" text-anchor="middle">reserve coins (hold:redemption_id)</text>
         </g>
         </g>
 
-        <g data-edge-from="payments" data-edge-to="engagement" data-edge-label="held" data-edge-key="10" data-edge-id="m11">
+        <g data-edge-from="payments" data-edge-to="engagement" data-edge-label="reserved, or 409" data-edge-key="10" data-edge-id="m11">
           <path data-composition-edge-from="payments" data-composition-edge-to="engagement" data-composition-edge-id="m11" data-composition-points="620.75,650;301.25,650" d="M 620.75 650 L 301.25 650" class="a-default" data-animate="edge" style="--step:10" stroke-width="1.4" stroke-dasharray="3,5" marker-end="url(#arrowhead)"/>
         <g data-detail="context">
-          <rect x="444" y="630" width="34" height="16" rx="3" class="c-mask"/>
-          <text x="461" y="640" class="t-muted" font-size="9" text-anchor="middle">held</text>
+          <rect x="413.4" y="630" width="95.2" height="16" rx="3" class="c-mask"/>
+          <text x="461" y="640" class="t-muted" font-size="9" text-anchor="middle">reserved, or 409</text>
         </g>
         </g>
 
@@ -5368,11 +5368,11 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
         </g>
         </g>
 
-        <g data-edge-from="engagement" data-edge-to="payments" data-edge-label="capture hold" data-edge-key="13" data-edge-id="m14">
+        <g data-edge-from="engagement" data-edge-to="payments" data-edge-label="capture the reserve" data-edge-key="13" data-edge-id="m14">
           <path data-composition-edge-from="engagement" data-composition-edge-to="payments" data-composition-edge-id="m14" data-composition-points="301.25,780;620.75,780" d="M 301.25 780 L 620.75 780" class="a-default" data-animate="edge" style="--step:12" stroke-width="1.4" marker-end="url(#arrowhead)"/>
         <g data-detail="context">
-          <rect x="423.8" y="760" width="74.4" height="16" rx="3" class="c-mask"/>
-          <text x="461" y="770" class="t-muted" font-size="9" text-anchor="middle">capture hold</text>
+          <rect x="405.6" y="760" width="110.8" height="16" rx="3" class="c-mask"/>
+          <text x="461" y="770" class="t-muted" font-size="9" text-anchor="middle">capture the reserve</text>
         </g>
         </g>
 
@@ -5678,7 +5678,7 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
         <ul>
           <li>the outcome comes from a server secret and a versioned weight table</li>
           <li>one conditional update consumes the spin credit</li>
-          <li>the coin credit uses the spin id as operation id</li>
+          <li>payments credits the coins when it consumes spin.completed, key spin:spin_id, once through its inbox</li>
         </ul>
       </div>
 
@@ -5688,7 +5688,7 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
           <h3>Redeem</h3>
         </div>
         <ul>
-          <li>coins are held first, captured only after issuance</li>
+          <li>coins are reserved first, captured only after issuance</li>
           <li>a timeout is not a failure: the casino is asked by our key</li>
           <li>the final status is readable through the API</li>
         </ul>

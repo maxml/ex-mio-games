@@ -8,7 +8,7 @@ import { useUiStore } from '@/layers/shared/lib';
 import { HealthCheck } from '@/layers/shared/types';
 import { Card, Text } from '@/layers/shared/ui';
 
-// Client island (ADR-0001 §4.1): RSC renders the page; this `'use client'` widget is
+// Client island (ADR-0013 §4.1): RSC renders the page; this `'use client'` widget is
 // the interactive island that polls the API with TanStack Query. The parent
 // `HomePage` stays a Server Component.
 async function fetchHealth(): Promise<HealthCheck> {
@@ -24,7 +24,7 @@ async function fetchHealth(): Promise<HealthCheck> {
 }
 
 export function ApiHealthStatus() {
-  // Client-side i18n (ADR-0001 §6): `useTranslations` reads from the
+  // Client-side i18n (ADR-0013 §6): `useTranslations` reads from the
   // `NextIntlClientProvider` wired in the app-layer `Providers` — proving the
   // provider composition works for `'use client'` islands.
   const t = useTranslations('apiHealth');
@@ -34,7 +34,7 @@ export function ApiHealthStatus() {
   const { data, error, isPending, isFetching } = useQuery({
     queryKey: queryKeys.health.status(),
     queryFn: fetchHealth,
-    // ADR-0001 §4.1: client-side server-state — poll for liveness.
+    // ADR-0013 §4.1: client-side server-state — poll for liveness.
     refetchInterval: 10_000,
   });
 

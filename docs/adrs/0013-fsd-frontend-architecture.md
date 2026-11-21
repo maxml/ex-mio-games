@@ -189,4 +189,4 @@ without changing the skeleton:
 - Feature-Sliced Design — feature-sliced.design ; the Steiger FSD linter.
 - Bulletproof React — github.com/alan2207/bulletproof-react.
 - Next.js App Router project structure & Route Handlers — nextjs.org/docs.
-- Related: [ADR-0002](0002-realtime-websocket-client.md) (realtime client).
+- Related: [ADR-0014](0014-realtime-websocket-client.md) (realtime client).

@@ -7,7 +7,7 @@ import { accessClaims, generateRsaKey, signJwt } from '@ex-mio/service-kit/testi
  * Test authentication for engagement (coordinator decision D-4 and D-12): the tenant and the
  * principal come from a signed access token verified by the shared service-kit entry point, never
  * from `x-tenant-id` / `x-principal-id` headers (those are gone). The signing helpers are L1's
- * `service-kit/testing` fixtures, taken from identity epic; this file only wires them to the
+ * `service-kit/testing` fixtures, taken from the identity epic; this file only wires them to the
  * audience `engagement` with a fixture JWKS and a fixed clock.
  */
 

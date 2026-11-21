@@ -28,13 +28,13 @@
     { "id": "m5", "from": "engagement", "to": "player", "y": 360, "label": "3 one spin available (websocket)", "variant": "dashed" },
     { "id": "m6", "from": "player", "to": "engagement", "y": 402, "label": "4 POST /spins, Idempotency-Key", "variant": "emphasis" },
     { "id": "m7", "from": "engagement", "to": "player", "y": 440, "label": "reward from weighted table", "variant": "return" },
-    { "id": "m8", "from": "engagement", "to": "payments", "y": 490, "label": "5 credit coins, operation id = spin id", "variant": "emphasis" },
+    { "id": "m8", "from": "engagement", "to": "payments", "y": 490, "label": "5 spin.completed event (outbox), payments credits coins, key spin:spin_id", "variant": "emphasis" },
     { "id": "m9", "from": "player", "to": "engagement", "y": 570, "label": "6 POST /redemptions", "variant": "emphasis" },
-    { "id": "m10", "from": "engagement", "to": "payments", "y": 612, "label": "hold coins (hold id = redemption id)", "variant": "default" },
-    { "id": "m11", "from": "payments", "to": "engagement", "y": 650, "label": "held", "variant": "return" },
+    { "id": "m10", "from": "engagement", "to": "payments", "y": 612, "label": "reserve coins (hold:redemption_id)", "variant": "default" },
+    { "id": "m11", "from": "payments", "to": "engagement", "y": 650, "label": "reserved, or 409", "variant": "return" },
     { "id": "m12", "from": "engagement", "to": "casino", "y": 700, "label": "7 issue reward, our key", "variant": "emphasis" },
     { "id": "m13", "from": "casino", "to": "engagement", "y": 738, "label": "ok, or timeout then lookup by our key", "variant": "return" },
-    { "id": "m14", "from": "engagement", "to": "payments", "y": 780, "label": "capture hold", "variant": "default" },
+    { "id": "m14", "from": "engagement", "to": "payments", "y": 780, "label": "capture the reserve", "variant": "default" },
     { "id": "m15", "from": "payments", "to": "engagement", "y": 818, "label": "captured", "variant": "return" },
     { "id": "m16", "from": "player", "to": "engagement", "y": 870, "label": "8 GET /redemptions/:id", "variant": "default" },
     { "id": "m17", "from": "engagement", "to": "player", "y": 908, "label": "ISSUED, then COMPLETED", "variant": "return" }
@@ -52,7 +52,7 @@
   ],
   "cards": [
     { "dot": "cyan", "title": "Ingest", "items": ["signature, timestamp window and schema are checked before anything else", "a duplicate event id returns the original result and creates no second spin", "the player is resolved through identity, never by a client field"] },
-    { "dot": "amber", "title": "Spin and ledger", "items": ["the outcome comes from a server secret and a versioned weight table", "one conditional update consumes the spin credit", "the coin credit uses the spin id as operation id"] },
-    { "dot": "emerald", "title": "Redeem", "items": ["coins are held first, captured only after issuance", "a timeout is not a failure: the casino is asked by our key", "the final status is readable through the API"] }
+    { "dot": "amber", "title": "Spin and ledger", "items": ["the outcome comes from a server secret and a versioned weight table", "one conditional update consumes the spin credit", "payments credits the coins when it consumes spin.completed, key spin:spin_id, once through its inbox"] },
+    { "dot": "emerald", "title": "Redeem", "items": ["coins are reserved first, captured only after issuance", "a timeout is not a failure: the casino is asked by our key", "the final status is readable through the API"] }
   ]
 }

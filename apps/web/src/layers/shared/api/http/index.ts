@@ -1,5 +1,5 @@
 // Public API for the `shared/api/http` segment — the typed `fetch` wrapper plus
-// the unified error envelope (ADR-0001 §7, §8).
+// the unified error envelope (ADR-0013 §7, §8).
 export {
   createHttpClient,
   http,

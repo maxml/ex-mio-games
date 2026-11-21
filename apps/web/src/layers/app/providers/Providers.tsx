@@ -7,7 +7,7 @@ import { useState, type ReactNode } from 'react';
 import { MioApiProvider } from '@/layers/shared/api';
 import type { Locale } from '@/layers/shared/config';
 
-// FSD `app` layer (ADR-0001 §3.1, §7): cross-cutting providers / initialization that
+// FSD `app` layer (ADR-0013 §3.1, §7): cross-cutting providers / initialization that
 // the Next route shell (`apps/web/app/[locale]/layout.tsx`) composes around the
 // tree. This is the single composition point for client-side providers.
 //
@@ -17,7 +17,7 @@ import type { Locale } from '@/layers/shared/config';
 // body would discard the cache on every render). This is the documented App
 // Router pattern; the streaming-SSR singleton variant is intentionally deferred.
 //
-// i18n (ADR-0001 §6): `NextIntlClientProvider` makes `useTranslations` available to
+// i18n (ADR-0013 §6): `NextIntlClientProvider` makes `useTranslations` available to
 // client components. As a client boundary it can't read the request config
 // itself, so the server layout passes `locale` + `messages` down as props (the
 // standard next-intl App Router handoff). Server Components use `getTranslations`
@@ -35,7 +35,7 @@ export function Providers({
     () =>
       new QueryClient({
         defaultOptions: {
-          // ADR-0002 §5.2: WS-driven data favors a high staleTime; pick a sane
+          // ADR-0014 §5.2: WS-driven data favors a high staleTime; pick a sane
           // default here so query islands don't refetch on every mount.
           queries: { staleTime: 60_000 },
         },

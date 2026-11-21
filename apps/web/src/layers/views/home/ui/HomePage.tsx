@@ -36,7 +36,7 @@ async function fetchHealth(): Promise<HealthState> {
 }
 
 export async function HomePage() {
-  // Server-side i18n (ADR-0001 §6): Server Components read translations directly via
+  // Server-side i18n (ADR-0013 §6): Server Components read translations directly via
   // `getTranslations` (no client provider needed); the active locale comes from
   // the parent `[locale]` layout.
   const t = await getTranslations('home');
@@ -56,7 +56,7 @@ export async function HomePage() {
         </Text>
       </Card>
 
-      {/* Client island (ADR-0001 §4.1): this Server Component renders the first
+      {/* Client island (ADR-0013 §4.1): this Server Component renders the first
           paint above, then delegates live polling to a `'use client'` widget. */}
       <ApiHealthStatus />
 

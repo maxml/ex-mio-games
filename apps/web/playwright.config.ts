@@ -1,6 +1,6 @@
 import { defineConfig, devices } from '@playwright/test';
 
-// Playwright e2e for the web app (ADR-0001 §8). One smoke spec asserts the home page
+// Playwright e2e for the web app (ADR-0013 §8). One smoke spec asserts the home page
 // renders and next-intl locale routing works (`/en` vs `/uk`). The webServer
 // builds and serves the production app on a dedicated test port with no baked
 // NEXT_PUBLIC_API_URL — exactly the domain-agnostic production image. The smoke

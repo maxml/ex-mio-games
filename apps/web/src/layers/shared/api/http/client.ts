@@ -1,4 +1,4 @@
-// Typed `fetch` wrapper for the FSD `shared/api/http` segment (ADR-0001 §7, §8).
+// Typed `fetch` wrapper for the FSD `shared/api/http` segment (ADR-0013 §7, §8).
 //
 // - Base URL is resolved at RUNTIME by `resolveApiBaseUrl`: the server reads the
 //   runtime `API_URL` env; the browser defaults to the SAME ORIGIN

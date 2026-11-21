@@ -23,7 +23,7 @@ import { reconnectionOptions } from './backoff';
 export const WS_ACK_TIMEOUT_MS = 5000;
 
 // Singleton, multiplexed socket.io client for the `notifications` namespace
-// (ADR-0002 §5.2). One long-lived connection is shared across the
+// (ADR-0014 §5.2). One long-lived connection is shared across the
 // app; components never `new` up their own socket. The socket is created lazily
 // the first time `getWsClient` is called — and that call happens only inside the
 // app-layer `WSProvider`'s `useEffect`, never at module scope, because newing a
@@ -107,7 +107,7 @@ export function getWsClient(options: WsClientOptions = {}): Socket {
     transports: ['websocket'],
     autoConnect: false,
     // Function form: re-invoked before each (re)connection, so a token refreshed
-    // after a drop is used on reconnect (ADR-0002 §3 — browsers can't set the WS
+    // after a drop is used on reconnect (ADR-0014 §3 — browsers can't set the WS
     // `Authorization` header, so the token rides socket.io's `auth` handshake).
     auth: (cb) => {
       void Promise.resolve(getToken()).then((token) => cb({ token: token ?? '' }));
@@ -128,7 +128,7 @@ export function disconnectWsClient(): void {
 
 /**
  * Subscribe to inbound `notification` frames, narrowing each against the shared
- * Zod schema (ADR-0002 §4). Malformed frames are dropped, never dispatched.
+ * Zod schema (ADR-0014 §4). Malformed frames are dropped, never dispatched.
  * Returns an unsubscribe function.
  */
 export function onNotification(
