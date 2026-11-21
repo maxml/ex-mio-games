@@ -1,0 +1,68 @@
+{
+  "name": "@ex-mio/engagement",
+  "version": "0.1.0",
+  "private": true,
+  "main": "dist/main.js",
+  "nx": {
+    "tags": [
+      "type:app",
+      "scope:engagement"
+    ]
+  },
+  "scripts": {
+    "dev": "tsx watch src/main.ts",
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "start": "node dist/main.js",
+    "migrate": "node dist/migrate.js",
+    "lint": "eslint src --max-warnings=0",
+    "test": "jest --passWithNoTests"
+  },
+  "dependencies": {
+    "@ex-mio/bus": "workspace:^1.0.0",
+    "@ex-mio/contracts": "workspace:^1.0.0",
+    "@ex-mio/logger": "workspace:^1.0.0",
+    "@ex-mio/service-kit": "workspace:^1.0.0",
+    "@ex-mio/tenancy": "workspace:^1.0.0",
+    "@nestjs/common": "^11.1.9",
+    "@nestjs/core": "^11.1.9",
+    "@nestjs/platform-fastify": "^11.1.9",
+    "dotenv": "^16.4.5",
+    "pg": "^8.13.1",
+    "reflect-metadata": "^0.2.2",
+    "rxjs": "^7.8.2",
+    "typeorm": "^0.3.20",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@nestjs/testing": "^11.1.9",
+    "@types/jest": "^30.0.0",
+    "@types/node": "24.13.3",
+    "jest": "^30.0.2",
+    "ts-jest": "^29.4.0",
+    "tsx": "^4.19.1",
+    "typescript": "^5.6.2"
+  },
+  "jest": {
+    "preset": "ts-jest",
+    "testEnvironment": "node",
+    "roots": [
+      "<rootDir>/src"
+    ],
+    "testMatch": [
+      "**/?(*.)+(spec|test).ts"
+    ],
+    "moduleNameMapper": {
+      "^@ex-mio/contracts$": "<rootDir>/../../packages/contracts/src",
+      "^@ex-mio/logger$": "<rootDir>/../../packages/logger/src",
+      "^@ex-mio/tenancy$": "<rootDir>/../../packages/tenancy/src",
+      "^@ex-mio/bus$": "<rootDir>/../../packages/bus/src",
+      "^@ex-mio/idempotency$": "<rootDir>/../../packages/idempotency/src",
+      "^@ex-mio/service-kit$": "<rootDir>/../../packages/service-kit/src"
+    },
+    "testTimeout": 30000,
+    "clearMocks": true
+  },
+  "author": "maxml",
+  "license": "MIT"
+}
