@@ -2,6 +2,7 @@ export * from './casino-adapter';
 export * from './events';
 export * from './health';
 export * from './http';
+export * from './identity';
 export * from './ids';
 export * from './ingest';
 export * from './realtime';
