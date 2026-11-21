@@ -75,9 +75,13 @@ export const ReserveCoinsRequest = z
   .strict();
 export type ReserveCoinsRequest = z.infer<typeof ReserveCoinsRequest>;
 
-/** Capture, release and refund name a reserve; the amount is always the reserve's own. */
-export const ReserveRefRequest = z.object({ reserve_id: Uuid }).strict();
+/**
+ * Capture, release and refund name the reserve in the PATH (`:reserveId`, X-4) and carry an empty
+ * body: the amount is always the reserve's own, so any field (an `amount`, a `tenant_id`) is a 400.
+ */
+export const ReserveRefRequest = z.object({}).strict();
 export type ReserveRefRequest = z.infer<typeof ReserveRefRequest>;
+export const ReserveIdParam = z.object({ reserveId: Uuid }).strict();
 
 /** The HTTP commands (internal routes: `PAYMENTS_INTERNAL_ROUTES` in identity.ts). */
 export const COIN_COMMANDS = ['reserve', 'capture', 'release', 'refund'] as const;
