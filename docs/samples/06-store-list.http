@@ -1,0 +1,43 @@
+@engagement = http://localhost:4002
+
+### Bonus Store: active items of the caller's tenant (workflow step 6)
+GET {{engagement}}/v1/store/items
+Authorization: Bearer {{player_token}}
+
+# Response: expected, to be replaced with captured output
+# HTTP/1.1 200 OK
+# [
+#   {
+#     "id": "0190...-item", "name": "Free bonus 5 EUR", "description": "", "image_url": null,
+#     "price": 40, "reward": { "type": "bonus", "params": { "amount_minor": 500, "currency": "EUR" } },
+#     "stock": 100, "per_player_limit": 2, "active": true, "version": 1
+#   }
+# ]
+
+### Operator creates an item (roles owner or admin)
+POST {{engagement}}/v1/store/items
+Authorization: Bearer {{operator_token}}
+Content-Type: application/json
+
+{
+  "name": "Free bonus 5 EUR",
+  "price": 40,
+  "reward": { "type": "bonus", "params": { "amount_minor": 500, "currency": "EUR" } },
+  "stock": 100,
+  "per_player_limit": 2
+}
+
+# Response: expected, to be replaced with captured output
+# HTTP/1.1 201 Created
+# { "id": "0190...-item", "name": "Free bonus 5 EUR", "price": 40, "stock": 100, "active": true, "version": 1, "...": "..." }
+
+### A non-integer or non-positive price is refused
+POST {{engagement}}/v1/store/items
+Authorization: Bearer {{operator_token}}
+Content-Type: application/json
+
+{ "name": "Bad", "price": 0.5, "reward": { "type": "bonus", "params": {} } }
+
+# Response: expected, to be replaced with captured output
+# HTTP/1.1 422 Unprocessable Entity
+# { "code": "item_price_invalid", "message": "..." }

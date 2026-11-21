@@ -1,0 +1,58 @@
+@engagement = http://localhost:4002
+@payments = http://localhost:4003
+
+### Tenant A's player reads tenant B's redemption (Part C: tenant isolation)
+# 404, not 403: the response does not confirm that the id exists.
+# Isolation holds at three layers: the tenant comes only from the verified token, every query is scoped,
+# and Postgres row-level security (ENABLE + FORCE) refuses rows of another tenant even if a query forgets.
+GET {{engagement}}/v1/redemptions/{{tenant_b_redemption_id}}
+Authorization: Bearer {{tenant_a_player_token}}
+
+# Response: expected, to be replaced with captured output
+# HTTP/1.1 404 Not Found
+# { "code": "redemption_not_found", "message": "..." }
+
+### Another player of the SAME tenant reads this redemption: also 404
+GET {{engagement}}/v1/redemptions/{{player_77_redemption_id}}
+Authorization: Bearer {{player_12_token}}
+
+# Response: expected, to be replaced with captured output
+# HTTP/1.1 404 Not Found
+
+### Spin with another player's credit_id
+POST {{engagement}}/v1/spins
+Authorization: Bearer {{player_12_token}}
+Idempotency-Key: spin-0500-player-12
+Content-Type: application/json
+
+{ "credit_id": "{{player_77_credit_id}}" }
+
+# Response: expected, to be replaced with captured output
+# HTTP/1.1 404 Not Found   (that credit is left untouched)
+
+### Operator of tenant A asks for tenant B's player balance
+GET {{payments}}/v1/players/{{tenant_b_player_id}}/balance
+Authorization: Bearer {{tenant_a_operator_token}}
+
+# Response: expected, to be replaced with captured output
+# HTTP/1.1 404 Not Found
+# { "code": "wallet_not_found", "message": "..." }
+
+### Tenant A's store never lists tenant B's items
+GET {{engagement}}/v1/store/items
+Authorization: Bearer {{tenant_a_player_token}}
+
+# Response: expected, to be replaced with captured output
+# HTTP/1.1 200 OK  (only tenant A's items)
+
+### Internal coin routes refuse player and operator tokens
+POST {{payments}}/internal/v1/coins/reserve
+Authorization: Bearer {{tenant_a_operator_token}}
+Idempotency-Key: reserve-hostile-0001
+Content-Type: application/json
+
+{ "reserve_id": "0190...-r", "player_id": "{{player_id}}", "amount": 1 }
+
+# Response: expected, to be replaced with captured output
+# HTTP/1.1 403 Forbidden
+# Only the engagement service identity may call /internal/v1/coins/*.

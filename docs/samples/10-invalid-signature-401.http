@@ -1,0 +1,72 @@
+@engagement = http://localhost:4002
+
+### Wrong signature (Part C: invalid or unauthorized events)
+# Check order: slug (404), signature (401), suspended tenant (402), parse (400/422), ignore (200), then the write.
+# The signature is checked before the body is parsed, so a stranger learns nothing about schemas or tenant state.
+POST {{engagement}}/v1/integrations/casino-a-demo/events
+Content-Type: application/json
+x-a-timestamp: 1790000000
+x-a-signature: 0000000000000000000000000000000000000000000000000000000000000000
+
+{"eventId":"evt-a-0100","playerId":"A-PLAYER-77","amount":{"value":999999,"currency":"EUR"},"status":"SUCCESS","ts":1790000000}
+
+# Response: expected, to be replaced with captured output
+# HTTP/1.1 401 Unauthorized
+# { "message": "...", "code": "signature_invalid" }
+# Nothing is stored and nothing is published.
+
+### Missing signature header
+POST {{engagement}}/v1/integrations/casino-a-demo/events
+Content-Type: application/json
+
+{"eventId":"evt-a-0101","playerId":"A-PLAYER-77","amount":{"value":5000,"currency":"EUR"},"status":"SUCCESS","ts":1790000000}
+
+# Response: expected, to be replaced with captured output
+# HTTP/1.1 401 Unauthorized
+# { "message": "...", "code": "signature_missing" }
+
+### Valid MAC, timestamp outside the +-300 s window (replay of an old capture)
+POST {{engagement}}/v1/integrations/casino-a-demo/events
+Content-Type: application/json
+x-a-timestamp: 1700000000
+x-a-signature: {{casino_a_signature_old}}
+
+{"eventId":"evt-a-0102","playerId":"A-PLAYER-77","amount":{"value":5000,"currency":"EUR"},"status":"SUCCESS","ts":1700000000}
+
+# Response: expected, to be replaced with captured output
+# HTTP/1.1 401 Unauthorized
+# { "message": "...", "code": "stale" }
+
+### Casino A's valid signature on tenant B's URL
+# Each tenant has its own secrets, so the same bytes signed for tenant A fail on tenant B.
+POST {{engagement}}/v1/integrations/casino-b-demo/events
+Content-Type: application/json
+x-a-timestamp: 1790000000
+x-a-signature: {{casino_a_signature}}
+
+{"eventId":"evt-a-0001","playerId":"A-PLAYER-77","amount":{"value":5000,"currency":"EUR"},"status":"SUCCESS","ts":1790000000}
+
+# Response: expected, to be replaced with captured output
+# HTTP/1.1 401 Unauthorized
+# { "message": "...", "code": "signature_invalid" }
+
+### Float amount (valid signature, bad schema)
+# HTTP/1.1 422 Unprocessable Entity  { "code": "schema_invalid", "message": "..." }
+
+### Spin without a token
+POST {{engagement}}/v1/spins
+Idempotency-Key: spin-0900-anon
+Content-Type: application/json
+
+{}
+
+# Response: expected, to be replaced with captured output
+# HTTP/1.1 401 Unauthorized
+
+### A forged x-tenant-id header is ignored; only the verified token names the tenant
+GET {{engagement}}/v1/me/spins
+Authorization: Bearer {{tenant_a_player_token}}
+x-tenant-id: {{tenant_b_id}}
+
+# Response: expected, to be replaced with captured output
+# HTTP/1.1 200 OK  { "available": <tenant A player's count> }

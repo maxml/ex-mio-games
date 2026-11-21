@@ -1,0 +1,52 @@
+@engagement = http://localhost:4002
+
+### Spin the wheel (workflow step 4)
+# The tenant and the player come only from the verified token. The body may hold at most credit_id;
+# there is no field to choose a segment or a weight. The server draws from HMAC(server_seed[version], spin_id).
+# The response carries the reward, not the balance (coins are credited by payments from the spin event).
+POST {{engagement}}/v1/spins
+Authorization: Bearer {{player_token}}
+Idempotency-Key: spin-0001-player-77
+Content-Type: application/json
+
+{}
+
+# Response: expected, to be replaced with captured output
+# HTTP/1.1 201 Created
+# {
+#   "spin_id": "0190...-spin",
+#   "segment_index": 3,
+#   "segment_label": "50 coins",
+#   "reward_coins": 50
+# }
+
+### Public wheel view: labels and order only, never the weights
+GET {{engagement}}/v1/wheel/{{wheel_id}}
+Authorization: Bearer {{player_token}}
+
+# Response: expected, to be replaced with captured output
+# HTTP/1.1 200 OK
+# { "id": "0190...-wheel", "segments": [ { "label": "10 coins" }, { "label": "Nothing" }, "..." ] }
+
+### No credit left: the client stops
+POST {{engagement}}/v1/spins
+Authorization: Bearer {{player_token}}
+Idempotency-Key: spin-0002-player-77
+Content-Type: application/json
+
+{}
+
+# Response: expected, to be replaced with captured output
+# HTTP/1.1 409 Conflict
+# { "message": "no spin credit available", "code": "no_credit" }
+
+### A body that tries to choose the outcome is refused
+POST {{engagement}}/v1/spins
+Authorization: Bearer {{player_token}}
+Idempotency-Key: spin-0003-player-77
+Content-Type: application/json
+
+{ "segment_index": 0, "weights": [1, 0, 0] }
+
+# Response: expected, to be replaced with captured output
+# HTTP/1.1 422 Unprocessable Entity
