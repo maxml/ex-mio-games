@@ -79,6 +79,8 @@ export function accessClaims(over: {
   aud?: string;
   ttl?: number;
   act?: { tenant_id: string; reason: string };
+  /** X-3: a player token launched through a sandbox credential. Absent means production. */
+  sbx?: true;
   jti?: string;
 }): Record<string, unknown> {
   return {
@@ -91,6 +93,7 @@ export function accessClaims(over: {
     exp: over.now + (over.ttl ?? 600),
     jti: over.jti ?? 'jti-0000000001',
     ...(over.act ? { act: over.act } : {}),
+    ...(over.sbx ? { sbx: true } : {}),
   };
 }
 
