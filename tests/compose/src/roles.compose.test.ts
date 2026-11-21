@@ -27,9 +27,24 @@ const EXPECTED_GRANTS: Record<Service, Record<string, string[]>> = {
     users: ['INSERT', 'SELECT'],
   },
   engagement: {
-    tenant_projections: ['INSERT', 'SELECT', 'UPDATE'],
+    // L3 review F2: the ingest tables. Column grant UPDATE (status, used_at) on spin_credits is not
+    // listed here (table_privileges has no columns); INV-ENGAGEMENT-SCHEMA-DB pins it.
+    audit_intents: ['DELETE', 'INSERT', 'SELECT'], // 1732500000000-AuditIntents (D-23 / F4)
+    inbound_events: ['INSERT', 'SELECT'],
     inbox: ['INSERT', 'SELECT'],
     outbox: ['INSERT', 'SELECT', 'UPDATE'],
+    reward_tables: ['INSERT', 'SELECT'],
+    rules: ['INSERT', 'SELECT'],
+    spin_credits: ['INSERT', 'SELECT'],
+    spins: ['INSERT', 'SELECT'],
+    tenant_projections: ['INSERT', 'SELECT', 'UPDATE'],
+    // The store tables (Store1732300000000, StageBFixes1732400000000).
+    item_player_usage: ['INSERT', 'SELECT', 'UPDATE'],
+    redemption_history: ['INSERT', 'SELECT'],
+    redemption_inbox: ['INSERT', 'SELECT'],
+    redemption_work_queue: ['DELETE', 'INSERT', 'SELECT', 'UPDATE'],
+    redemptions: ['INSERT', 'SELECT', 'UPDATE'],
+    store_items: ['INSERT', 'SELECT', 'UPDATE'],
   },
   // The ledger replaced `coin_credits`; column-level UPDATEs (balances.amount, reserves.state*) do not
   // show in table_privileges and are pinned by apps/payments ledger.schema.pgtest.ts.

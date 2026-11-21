@@ -9,6 +9,7 @@ const app = buildServer({
   logger,
   keyA: process.env.CASINO_A_KEY,
   secretB: process.env.CASINO_B_SECRET,
+  faultsEnabled: process.env.SIM_FAULTS === '1',
 });
 
 const shutdown = (): void => void app.close().then(() => process.exit(0));

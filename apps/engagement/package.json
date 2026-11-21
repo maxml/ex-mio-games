@@ -16,7 +16,8 @@
     "start": "node dist/main.js",
     "migrate": "node dist/migrate.js",
     "lint": "eslint src --max-warnings=0",
-    "test": "jest --passWithNoTests"
+    "test": "jest --passWithNoTests",
+    "test:pg": "jest --maxWorkers=1 --testMatch \"**/*.itest.ts\""
   },
   "dependencies": {
     "@ex-mio/bus": "workspace:^1.0.0",

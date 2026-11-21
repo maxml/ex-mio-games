@@ -126,11 +126,10 @@ describe('spin.completed (D-1: payments credits coins from this event)', () => {
     const payload = { ...base, table_version: 6 };
     const ev = parseEvent(createEvent({ type: 'engagement.spin.completed', tenantId: T, payload }));
     expect(ev.payload).toEqual(payload);
+    // X-16: a spin without its table version cannot be audited; it is not an event.
     // Mutation: make table_version optional again.
     expect(() =>
-      parseEvent(
-        createEvent({ type: 'engagement.spin.completed', tenantId: T, payload: base } as never),
-      ),
+      createEvent({ type: 'engagement.spin.completed', tenantId: T, payload: base as never }),
     ).toThrow();
     expect(() =>
       parseEvent(
