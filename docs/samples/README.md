@@ -2,7 +2,7 @@
 
 One `.http` file per flow of the 8-step workflow. Open them in any REST client that reads the `.http` format (VS Code REST Client, JetBrains HTTP Client) or copy the requests into `curl`.
 
-Every response block is marked `expected, to be replaced with captured output`: the shapes come from the service contracts in `packages/contracts`, not from a recorded run. The demo script will overwrite them with real captured output after integration. <!-- verify after integration -->
+Every response block is marked `expected, to be replaced with captured output`: the shapes come from the service contracts in `packages/contracts`, not from a recorded run. The recorded output of one full run is placed in the root README. There is no demo script; these files are the flow.
 
 | File | Flow | Workflow step |
 | --- | --- | --- |
@@ -18,4 +18,4 @@ Every response block is marked `expected, to be replaced with captured output`: 
 | [10-invalid-signature-401.http](10-invalid-signature-401.http) | Bad or missing signature | Part C |
 | [11-cross-tenant-404.http](11-cross-tenant-404.http) | One tenant reads another tenant's data | Part C |
 
-Conventions: services listen on `localhost` ports 4001 (identity), 4002 (engagement), 4003 (payments), 4004 (casino simulator). Tokens are placeholders (`{{player_token}}`, `{{operator_token}}`); the demo script obtains real ones from the launch and login endpoints. Amounts are integers in minor units.
+Conventions: services listen on `localhost` ports 4001 (identity), 4002 (engagement), 4003 (payments), 4004 (casino simulator). Tokens are placeholders (`{{player_token}}`, `{{operator_token}}`); real ones come from the launch and login endpoints. Amounts are integers in minor units.

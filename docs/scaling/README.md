@@ -2,7 +2,7 @@
 
 Short technical plan for the six questions of Part E. A one-page week table is in [90-days.md](90-days.md).
 
-Status words: **Built** means implemented in the submission, **Designed** means decided and described but not implemented. The status of each system item follows the table in [`docs/architecture/overview.md`](../architecture/overview.md) section 14. Anything in the plan below that is not in that table is a plan, not a fact. Team size, durations and speed-ups are estimates, not measurements, unless a sentence says it was measured.
+Status words: **Built** means implemented in the submission, **Partial** means the core exists and the named part does not, **Designed** (or "Next") means decided and described but not implemented. The status of each system item follows the table in [`docs/architecture/overview.md`](../architecture/overview.md) section 14. Anything in the plan below that is not in that table is a plan, not a fact. Team size, durations and speed-ups are estimates, not measurements, unless a sentence says it was measured.
 
 Working principles (from the product owner, they decide every trade-off below):
 
@@ -15,7 +15,7 @@ Working principles (from the product owner, they decide every trade-off below):
 
 Answer: in five phases, ordered by risk to money and trust, with the first paying operator reached at the end of phase 2 and not after phase 5. Each phase has a pass/fail exit, so it is clear when to stop.
 
-What the prototype already has, so the phases do not redo it: five services (`identity`, `engagement`, `payments`, `web`, `casino-sim`) with a database each, RabbitMQ with outbox and inbox, Postgres RLS with a generated isolation suite, a double-entry ledger, a redemption saga, two casino adapters behind one canonical model, an identity interface backed by the Firebase Auth Emulator. These are Built per the overview. A `fake` payment provider is Built.
+What the prototype already has, so the phases do not redo it: five services (`identity`, `engagement`, `payments`, `web`, `casino-sim`) with a database each, RabbitMQ with outbox and inbox, Postgres RLS with tenant-isolation tests, a double-entry ledger, a redemption saga with an operator review route, two casino adapters behind one canonical model, an identity interface backed by the Firebase Auth Emulator, and a Socket.IO gateway in `engagement` with at-most-once delivery. These are Built per the overview. A `fake` payment provider is Built. Not built, and counted in the phases below: rate limiting, product events emitted by the services (the contract and logger function exist), console writes for rules and wheel versions, refresh tokens.
 
 ### Phase 0: close the known gaps that block any real money (before the pilot goes live)
 
@@ -29,7 +29,7 @@ Identity provider choice. Criteria, in order: per-tenant users with the same ema
 
 ### Phase 1: observability and SLOs
 
-- Structured logs with correlation, tenant and trace ids go to Varta (the stdout contract is Built; changes inside Varta such as a separate stream and longer retention are Designed).
+- Structured logs with correlation, tenant and trace ids go to Varta (structured stdout logs are Built, the product-event contract is Built but no service emits product events yet, and the wiring to a running Varta is described, not run here; changes inside Varta such as a separate stream and longer retention are Designed).
 - Two user-journey SLOs to start: deposit to spin credit visible, and redemption request to final status. Initial targets are proposals: 99.5% of deposits credit a spin within 5 seconds, 99% of redemptions reach a final status within 2 minutes, zero double credits. Revisit after four weeks of real data.
 - Alerts tied to the SLOs and to the invariants: ledger reconciliation mismatch, DLQ depth, redemptions in `UNKNOWN` or `NEEDS_REVIEW` past their deadline, inbound signature failures per tenant.
 - Runbooks: DLQ replay, `NEEDS_REVIEW` redemption, casino unreachable, broker down. One named on-call role.

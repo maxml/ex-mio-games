@@ -25,7 +25,7 @@ Services must start separately in Docker, so that one can be rebuilt, restarted 
 
 Option 2.
 
-- Compose services: `identity`, `engagement`, `payments`, `web`, `casino-sim`, a worker per service where needed, RabbitMQ, Redis (append-only persistence), one Postgres instance with a database per service, and the identity emulator.
+- Compose services: `identity`, `engagement`, `payments`, `web`, `casino-sim`, RabbitMQ, Redis (append-only persistence), one Postgres instance with a database per service, and the identity emulator (nine containers). Workers run inside the service process; there is no separate worker container.
 - Each service has health and readiness endpoints, and fails fast on invalid configuration.
 - Deployment goes through Deckhand's blue-green flow for docker-compose projects. Observability goes to Varta.
 - Production claims are limited. Isolation of services at deployment level, in particular per-service secret delivery, is **not claimed** by this submission: it is designed only and depends on deployment tooling work that has not been done. Database-level isolation (roles, RLS) is built and tested regardless.
@@ -38,5 +38,6 @@ Bad: a larger stack to start; one Postgres instance for several databases is a l
 
 ## Built vs designed
 
-- Built: container per service, compose stack, health checks, a Deckhand manifest.
-- Designed only: per-service deploy secrets, production sizing, multi-host topology.
+- Built: container per service, compose stack, health checks, a Deckhand manifest (`.deckhand/deploy.yml`) and a migration script.
+- Described, not run here: a blue-green deploy through Deckhand, and the Varta wiring.
+- Next: per-service deploy secrets, production sizing, multi-host topology.

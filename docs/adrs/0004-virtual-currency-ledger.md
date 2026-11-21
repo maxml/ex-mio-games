@@ -27,12 +27,12 @@ Players earn and spend virtual coins. The brief says financially relevant operat
 Option 3, with a materialised balance as a cache of the journal.
 
 - `journal_transactions` has business uniqueness `(tenant_id, operation_type, operation_id)`. A repeat of the same business operation returns the original result.
-- `journal_legs` are append-only. A deferred constraint trigger requires at least two legs, debits equal to credits, one currency per transaction. Update and delete are not granted to the application role.
+- `ledger_entries` (the legs) are append-only. A deferred constraint trigger requires a balanced transaction (debits equal to credits). Update and delete are not granted to the application role; a balance row can change only its amount and a reserve only its state (column-level grants).
 - Amounts are integer minor units (`BIGINT`), validated and bounded.
 - The balance is updated in the same transaction by a conditional update (`WHERE balance >= :amount`) and a `CHECK (balance >= 0)`. Two concurrent debits cannot both pass.
-- Only `payments` exposes write operations. Other services read balances through a read API or a projection. There is no public `credit` route; credits come from validated events (a spin reward) with an operation id.
-- A reconciliation job checks that legs sum to the materialised balance and that conservation holds across accounts. A mismatch raises an alert and is never auto-repaired silently.
-- Redemption uses holds: a hold reserves coins, capture finalises, release returns them, refund reverses a captured amount (ADR 0006).
+- Only `payments` exposes write operations. Other services read balances through a read API or a projection. There is no public `credit` route; credits come from the `spin.completed` event with the operation id `spin:<spin_id>`. An acting (support) token is refused on every coin route.
+- A reconciliation job (periodic in the payments worker, and a CLI) checks that entries sum to the materialised balance and that conservation holds across accounts. A mismatch is recorded and reported, with exit code 1 from the CLI; it is never auto-repaired. There is no pager integration (Partial).
+- Redemption uses reserves: a reserve holds coins, capture finalises, release returns them, refund reverses a captured amount (ADR 0006). The reserve is a synchronous internal API, idempotent by the state of the reserve id.
 
 ### Consequences
 
@@ -47,5 +47,5 @@ Bad: more tables and more write amplification than a balance column; deferred tr
 
 ## Built vs designed
 
-- Built: journal, legs, trigger, non-negative balance, hold/capture/release/refund, reconciliation query.
-- Designed only: operator billing in money (the `fake` payment provider is built; a Stripe adapter is an interface only); multi-currency.
+- Built: journal, entries, trigger, non-negative balance, reserve/capture/release/refund, reconciliation job and CLI, the `fake` payment provider for operator plan billing.
+- Next: a real payment provider (Stripe exists only as a port and a stub that throws); multi-currency.

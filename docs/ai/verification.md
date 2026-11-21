@@ -114,10 +114,29 @@ Not everything above worked the first time.
   dead-letter queue nobody consumed, a theme schema no check read, a sandbox flag no meter consumed. Reviewers
   now ask, for every durable record, for a test that a reader consumes it and describes it correctly.
 
+## The integrated tree
+
+After the areas were merged into one tree, a reviewer who had not written the code resolved the
+frozen-test conflicts on the test side and ran the whole compose suite against the built images:
+
+- First run 98 of 111 compose tests; second run 107 of 111 after test-side fixes. The 4 remaining reds
+  were implementation bugs, each with a red test: a sandbox token could spend production spin credits,
+  the casino credential served only one environment, the audit decision was taken from the HTTP status
+  instead of the guard outcome, and a work-queue table had no row-level security. A fifth gap (the
+  internal route that redeems a realtime ticket) also had red tests.
+- Unit suites on that tree: payments 164 of 164, engagement 293 of 293, web 157 of 157, identity 231
+  of 237, service-kit 122 of 127, contracts 99 of 102. The reds were the tests for the gaps above.
+- Mutations re-applied by the reviewer on this tree: a forged-header scan, the acting-ban guard,
+  the web theme token, the realtime audience list, row-level security on `wallets` and on the tenants
+  registry, a dropped inbox key, a dropped ingest unique constraint. Each turned its named test red.
+  Two guards (the bus backoff and one sandbox seed) could not be mutated without an image rebuild and are
+  recorded as not verified by mutation.
+- The coder then fixed the listed gaps on a separate branch against the frozen tests.
+
 ## What is not verified
 
-- At the time of writing, the Stage B service code (the implementation against the frozen tests) had not
-  yet gone through its independent review. The numbers on this page come from the foundation, the
-  prototype and the specs and tests of four areas.
+- The end-to-end run of the final tree (compose up, the demo flow, the captured outputs) is recorded in
+  the root README only where an output block is filled in.
 - The one-sentence outcome of each review is the reviewer's, and the owner has not re-run them.
 - Reviews that read code instead of running a browser are marked as such in the review text.
+- No browser-driven run of the realtime socket against the full stack is recorded; the gateway is tested in process.

@@ -14,6 +14,11 @@ Index only: where to go when you need to know something.
 | Identity, tokens, tenants, roles, launch admission    | [`specs/identity.md`](specs/identity.md)                     |
 | What the ingest, rules and wheel code must do         | [`specs/engagement-ingest.md`](specs/engagement-ingest.md)   |
 | How to run the stack, the ports, the tests            | [`../README.md`](../README.md)                               |
+| Architecture diagrams and the written overview        | [`architecture/`](architecture/README.md)                    |
+| Reliability and security (Part C), known gaps         | [`submission/`](submission/README.md)                        |
+| How AI was used and how its output was checked        | [`ai/`](ai/README.md)                                        |
+| Scaling, the first 90 days, the team                  | [`scaling/`](scaling/README.md)                              |
+| Request samples for the 8-step workflow               | [`samples/`](samples/README.md)                              |
 | Security rules and how to report a problem            | [`../SECURITY.md`](../SECURITY.md)                           |
 | Where an AI agent starts                              | [`../AGENTS.md`](../AGENTS.md)                               |
 

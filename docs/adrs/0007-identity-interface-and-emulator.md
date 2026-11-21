@@ -25,9 +25,10 @@ The product needs authentication and authorization for players, casino staff and
 
 Option 2.
 
-- `identity` is the single service for authN and authZ. It defines `IdentityProvider` (create user in tenant, verify credential, mint a launch credential, delete user) and ships one implementation against the Firebase Auth Emulator, which supports tenants and per-tenant users.
-- `identity` exchanges a verified provider credential or a signed casino launch token for its own short-lived JWT, published through JWKS. Other services verify that JWT locally and take the tenant only from the verifying key.
-- Authorization is role-based, with a `can(subject, action, object)` check, and tenant-scoped.
+- `identity` is the single service for authN and authZ. It defines `IdentityProvider` (create provider tenant, create user, verify credentials, revoke sessions, delete user) and ships one implementation against the Firebase Auth Emulator, which supports tenants and per-tenant users (one provider tenant per MIO tenant). A second, `fake`, implementation is for tests and is refused in production.
+- **Players do not use the provider.** A player is identified only by the casino launch token; identity issues our own player JWT. Only staff and operators have provider accounts.
+- `identity` exchanges a verified provider credential or a signed, single-use casino launch token for its own short-lived JWT (15 minutes, no refresh token), published through JWKS. Other services verify that JWT locally and take the tenant only from the verified `tid` claim.
+- Authorization is role-based (a permission guard on each route) and tenant-scoped.
 - The mapping `(tenant, platform, external_player_id) -> user_id` is owned by `identity`, which is the only writer (`resolveOrCreatePlayer`).
 - Personal data lives only in `identity`. Other services hold opaque ids (supports erasure without editing ledger, audit or analytics rows).
 - Provider-specific concepts must not leak past the interface. One-way doors to check before the production choice: how a launch token is minted, custom claim size limits, tenant model, data location.
@@ -41,4 +42,4 @@ Bad: the emulator is not the production provider, so behaviours that differ (rat
 ## Built vs designed
 
 - Built: the interface, the emulator implementation, JWT and JWKS, RBAC, launch-token exchange, the identity mapping.
-- Designed only: the production provider adapter (Firebase Identity Platform or Cognito), password import, social login.
+- Next: the production provider adapter (Firebase Identity Platform or Cognito; the choice is not made), password import, social login, refresh tokens.

@@ -25,11 +25,11 @@ Each casino platform has its own event schema, its own reward API and its own au
 
 Option 2.
 
-- **Inbound.** An adapter validates the casino's signature (HMAC over the body with a timestamp, secret per tenant with rotation), validates the payload with a zod schema, and maps it to a canonical event `{event_id, tenant_id, platform, external_player_id, kind, amount_minor, currency, occurred_at}`.
-- **Ingestion.** Deduplication is `UNIQUE (tenant, source, external_event_id)`. Invalid and unsigned events are rejected, counted and kept for inspection; they never reach the rules engine.
-- **Outbound.** A `RewardIssuer` port with `issue(ourKey, reward)` and `getRewardStatus(ourKey)`. Each adapter declares native lookup by our key or guaranteed idempotent replay; an adapter that offers neither cannot register.
+- **Inbound.** An adapter validates the casino's own signature scheme (casino A: HMAC over `timestamp.body` in headers with a 300 s window; casino B: signature inside the body), with a secret per tenant held by identity and rotatable (the adapter in engagement reads it over an allow-listed internal route), validates the payload with a zod schema, and maps it to a canonical event `{event_id, tenant_id, platform, external_player_id, kind, amount_minor, currency, occurred_at}`.
+- **Ingestion.** Deduplication is `UNIQUE (tenant, source, external_event_id)`. Invalid and unsigned events are rejected with a code and logged (no counter metric, and rejected bodies are not stored); they never reach the rules engine. The stored event keeps a per-tenant HMAC of the casino's player id, not the raw id.
+- **Outbound.** One casino reward port in `packages/contracts/src/casino-adapter.ts` with `issueReward` and `getRewardStatus(ourKey)`; results are `issued`, `pending`, `rejected` or `unknown` (a timeout is `unknown`, never a failure), and a lookup returns `issued`, `pending`, `rejected`, `not_found` or `unknown`. Each adapter declares native lookup by our key or guaranteed idempotent replay; an adapter that offers neither cannot register.
 - **Contract suite.** One shared suite runs against every adapter (duplicates, bad signature, replay, timeout, lost reply).
-- **Operators** are tenants with per-tenant configuration (secrets, mapping, rate limits).
+- **Operators** are tenants with per-tenant configuration (credentials with an `environment` of sandbox or production, mapping). Rate limits are Next.
 - The module stays inside `engagement` (owner decision) behind an Nx boundary, so rules and wheel import only the canonical types.
 - New features (missions, PvP) consume canonical events and never call an adapter directly.
 
@@ -47,4 +47,4 @@ Bad: a canonical model loses platform-specific detail unless extended with care;
 ## Built vs designed
 
 - Built: adapters for the two simulated casinos, canonical model, ingestion with dedupe, contract suite.
-- Designed only: self-service operator onboarding, a third adapter, canonical model v2.
+- Next: self-service operator onboarding, a third adapter, canonical model v2.

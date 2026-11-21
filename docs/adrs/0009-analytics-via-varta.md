@@ -40,5 +40,6 @@ Bad: stdout lines are not a durable queue, so an event can be lost between the l
 
 ## Built vs designed
 
-- Built: the event contract, emission through the logger, outbox for business events, distinct-count reads.
-- Designed only: changes inside Varta (separate stream, longer retention, tenant attribution, scope amendment). The submission writes events to stdout under Varta's contract and does not modify Varta.
+- Built: the event contract (`ProductEventLine`, matching Varta's product-event schema, with a conformance test against a vendored copy) and the logger function `logProductEvent`.
+- Partial: no service calls `logProductEvent` yet, so no product event is emitted by the running stack; the web app has no frontend event endpoint.
+- Next: emission of business events through the outbox, frontend events, distinct-count reads, and changes inside Varta (separate stream, longer retention, tenant attribution, scope amendment). The submission writes events to stdout under Varta's contract and does not modify Varta.

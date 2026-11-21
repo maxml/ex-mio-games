@@ -29,8 +29,8 @@ Option 2.
 - **Outbox.** A service writes the event row in the same transaction as the business change. A relay publishes it with publisher confirms and marks it sent. A crash after commit and before publish resends on restart.
 - **Inbox.** A consumer records `event_id` in the same transaction as the effect, under a unique constraint, then acks. A redelivery finds the id and acks without applying.
 - **Envelope.** `{event_id, type, version, tenant_id, occurred_at, correlation_id, causation_id, payload}`, schema in `packages/contracts` (zod), versioned.
-- **Failure path.** Poison messages go to a dead-letter queue with an alert and a replay command. A consumer acks only after its effect is committed.
-- Redis (append-only file persistence on) holds caches, rate-limit counters and the websocket journal. It is not a source of truth for money or identity.
+- **Failure path.** A transient handler error (connection, timeout, deadlock) is retried with bounded backoff; a permanent error or retry exhaustion goes to a dead-letter queue (`<service>.dlq`), which has a replay command (`node dist/dlq-replay.js`). There is no alerting on the queue yet (Partial). A consumer acks only after its effect is committed.
+- Redis (append-only file persistence on) holds an optional balance projection for read APIs. It is not a source of truth for money or identity. Rate-limit counters and a websocket journal are Next, not built.
 
 ### Consequences
 
@@ -45,5 +45,6 @@ Bad: no log to replay a new consumer from history (we accept that, since history
 
 ## Built vs designed
 
-- Built: outbox, inbox, dead-letter queue, publisher confirms.
-- Designed only: a history-replay consumer; broker clustering.
+- Built: outbox, inbox, retry with backoff, dead-letter queue with a replay command, publisher confirms.
+- Partial: no alert on a dead-letter queue.
+- Next: a history-replay consumer; broker clustering.

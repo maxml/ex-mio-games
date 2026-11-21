@@ -26,13 +26,14 @@ The brief requires a "deterministic, server-authoritative reward selected from a
 
 Option 2.
 
-- Outcome = `HMAC-SHA256(server_seed[version], spin_id)`, reduced to an integer in `[0, total_weight)` without modulo bias (rejection of out-of-range values), then looked up in the cumulative weight table.
+- Outcome = `HMAC-SHA256(server_seed[version], spin_id)`, reduced to an integer in `[0, total_weight)` by taking the first 48 bits and scaling them (`roll * total_weight >> 48`, no modulo; the residual bias is below `total_weight / 2^48`, and the total is capped), then looked up in the cumulative weight table.
 - The weight table is versioned and immutable once used. The spin row stores the table version and seed version, so any result can be recomputed.
 - The seed is a server secret, never sent to a client. Weights are not exposed to players either.
 - A spin credit is a row. Consuming it is `UPDATE ... SET status = 'used' WHERE id = ? AND status = 'available' RETURNING`. Of N concurrent requests, one gets a row and the others get a conflict.
 - Credits are created only by the processing of a validated, deduplicated deposit event (ADR 0003, 0008). No API creates a credit on a player's request.
 - The spin endpoint authenticates the player, authorizes ownership of the credit, and takes the tenant from the verified session.
-- Ledger credit for the reward is written with the spin id as the operation id, so a retry cannot pay twice.
+- The reward coins are credited by `payments`, not by the spin endpoint: engagement writes `spin.completed` to its outbox in the spin's transaction and payments credits with the key `spin:<spin_id>` from its inbox, so a retry cannot pay twice.
+- Spin credits are scoped to an environment (sandbox or production); a sandbox token cannot consume a production credit.
 
 ### Consequences
 

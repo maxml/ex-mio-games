@@ -187,7 +187,7 @@ reservation is `reserved`. Implementations take a clock: `new PgRedemptionStore(
 implementation wraps `runWithTenant` around the explicit `tenantId`.
 
 4.2 `RedemptionSagaService` (`services/redemption-saga.service.ts`), constructed with `SagaDeps = { store, coins,
-ports: CasinoRewardPorts, requests: RewardRequestBuilder, clock, random }` (X-6: the ingest epic's port, not a
+ports: CasinoRewardPorts, requests: RewardRequestBuilder, clock, random }` (X-6: the ingest area's port, not a
 private one). `ports.forTenant(tenant, {sandbox})` gives the port and `info.recovery_mode` and
 `info.issue_deadline_ms`; `requests.build` builds the `RewardRequest` from the frozen order and the identity link;
 the built request is frozen on the order at ISSUING and the same request goes to `issueReward` and to every
@@ -228,7 +228,7 @@ saga sends the order's flag in the reserve body, and the test fake keys wallets 
 `release_not_allowed`), engagement events `engagement.redemption.status_changed|issued|rejected|
 needs_review` (payload `player_id: Uuid`; `sandbox` is on the envelope, X-13). **Removed** (D-1, D-2, X-9): the bus
 commands `engagement.hold.*`, the events `payments.hold.*`, the store's own adapter port, and `PrincipalHeaders`
-(role and sandbox come from the verified token). `casino-adapter.ts` and `ingest.ts` are the ingest epic's
+(role and sandbox come from the verified token). `casino-adapter.ts` and `ingest.ts` are the ingest area's
 reconciled versions. `ErrorBody` has an optional `code` (foundation).
 
 ## 7. API

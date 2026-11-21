@@ -23,7 +23,7 @@ Content-Type: application/json
 ### Operator login. The tenant comes from the Host, never from the body.
 # @name login
 POST {{identity}}/v1/auth/login
-Host: casino-a-demo.localhost
+Host: casino-a-demo.mio.localhost
 Content-Type: application/json
 
 { "email": "owner@casino-a.example", "password": "correct-horse-battery", "audience": "web" }

@@ -90,5 +90,8 @@ decisions, including 8 in which the owner overruled an AI recommendation.
 - Identity, ingest, payments and store specs: each had a first review that found vacuous tests
   (tests that cannot go red) and contract mismatches between areas; those mismatches were reconciled
   before any service code was written against them.
+- Integrated tree: 107 of 111 compose tests after the reviewer's test-side fixes, with the 4 remaining
+  reds all implementation bugs that the reviewer pinned with a red test before the coder fixed them
+  (see `verification.md`).
 
 `defects-found.md` gives the individual cases.
