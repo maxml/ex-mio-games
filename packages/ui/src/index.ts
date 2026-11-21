@@ -1,3 +1,8 @@
+'use client';
+
+// The barrel is a client boundary: many components hold state, and a server component that imports
+// the barrel gets client references instead of tripping over hooks in a server module.
+//
 // Public API of @ex-mio/ui. The frontend is built only from these components;
 // each one has a Storybook story (a test compares the two lists), and a new UI
 // element starts as a story.

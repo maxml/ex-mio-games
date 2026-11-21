@@ -5,7 +5,8 @@ import { server } from '../../../../test/msw/server';
 import { createHttpClient } from '../http';
 import { MioApiError } from './api';
 import { createHttpApi } from './http';
-import { createIsolatedMockApi, resolveMioApiMode } from './index';
+import { createIsolatedMockApi } from './mock';
+import { resolveMioApiMode } from './select';
 
 describe('adapter switch', () => {
   it('is the mock unless the env says http', () => {

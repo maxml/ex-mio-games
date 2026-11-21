@@ -1,5 +1,6 @@
-/* Token variables (:root and .dark) come from the design-system package. */
+/* Token variables and the base rules (focus ring, reduced motion) come from the design-system package. */
 @import '@ex-mio/ui/tokens.css';
+@import '@ex-mio/ui/base.css';
 
 @tailwind base;
 @tailwind components;

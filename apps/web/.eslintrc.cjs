@@ -55,4 +55,27 @@ module.exports = {
     ],
     'import/no-restricted-paths': ['error', { zones }],
   },
+  overrides: [
+    {
+      // MIO-123: screens are built from `@ex-mio/ui`. Only layout and structure wrappers may be raw
+      // HTML (div, span, section, main, header, nav, ul/ol/li, dl, form, strong); every control, link,
+      // heading, paragraph, table and image comes from the design system.
+      files: ['app/**/*.{ts,tsx}', 'src/layers/{app,views,widgets,features,entities}/**/*.{ts,tsx}'],
+      excludedFiles: ['**/*.test.{ts,tsx}'],
+      rules: {
+        'react/forbid-elements': [
+          'error',
+          {
+            forbid: [
+              'button', 'input', 'select', 'textarea', 'label', 'a', 'img', 'p',
+              'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'table', 'thead', 'tbody', 'tr', 'th', 'td',
+            ].map((element) => ({
+              element,
+              message: `Use the matching component from @ex-mio/ui instead of a raw <${element}>.`,
+            })),
+          },
+        ],
+      },
+    },
+  ],
 };

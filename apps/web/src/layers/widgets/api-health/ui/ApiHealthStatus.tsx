@@ -6,6 +6,7 @@ import { queryKeys } from '@/layers/shared/api';
 import { resolveApiBaseUrl, joinApiUrl } from '@/layers/shared/config';
 import { useUiStore } from '@/layers/shared/lib';
 import { HealthCheck } from '@/layers/shared/types';
+import { Card, Text } from '@/layers/shared/ui';
 
 // Client island (ADR-0001 §4.1): RSC renders the page; this `'use client'` widget is
 // the interactive island that polls the API with TanStack Query. The parent
@@ -44,12 +45,11 @@ export function ApiHealthStatus() {
       : `${data.status}${isFetching ? ' (refreshing…)' : ''}`;
 
   return (
-    <section className="rounded-lg border border-neutral-800 bg-neutral-900 p-4">
-      <h2 className="mb-2 text-base font-medium">{t('liveTitle')}</h2>
-      <p className="text-sm text-neutral-400">
+    <Card title={t('liveTitle')}>
+      <Text tone="muted">
         Status: {label}
-        <span className="ml-2 text-xs text-neutral-600">theme: {theme}</span>
-      </p>
-    </section>
+        <span className="ml-2 text-xs">theme: {theme}</span>
+      </Text>
+    </Card>
   );
 }
