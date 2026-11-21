@@ -52,11 +52,8 @@ const WebhookB = z
   .strict();
 
 /** The signed message of a webhook, from the fields as they appear on the wire. */
-const signedMessage = (
-  sentAt: string,
-  type: string,
-  d: { txn_id: unknown; customer_ref: unknown; amount_cents: unknown; ccy: unknown },
-): string => `${sentAt}.${type}.${d.txn_id}.${d.customer_ref}.${d.amount_cents}.${d.ccy}`;
+const signedMessage = (sentAt: string, type: string, d: Record<string, unknown>): string =>
+  `${sentAt}.${type}.${d.txn_id}.${d.customer_ref}.${d.amount_cents}.${d.ccy}`;
 
 export function createCasinoB(config: AdapterConfig): CasinoAdapter {
   const reasonOf = (body: unknown, fallback: string): string =>
