@@ -29,6 +29,15 @@ export class Db {
     return withTenantTransaction(this.dataSource, fn);
   }
 
+  /**
+   * Tenant-scoped with an explicit tenant (validated as a UUID). For callers that pick the tenant
+   * per call, like identity's login and launch flows, where the tenant comes from the Host or a
+   * credential key rather than from an ambient request context.
+   */
+  tenantTxFor<T>(tenantId: string, fn: (tx: Tx) => Promise<T>): Promise<T> {
+    return withTenantTransaction(this.dataSource, fn, tenantId);
+  }
+
   platformTx<T>(fn: (tx: Tx) => Promise<T>): Promise<T> {
     return this.dataSource.transaction(fn);
   }
