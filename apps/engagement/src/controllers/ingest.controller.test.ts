@@ -10,6 +10,7 @@ import {
   ADAPTER_REGISTRY,
   CLOCK,
   InboundEventsRepository,
+  PLAYER_DIRECTORY,
   TENANT_INTEGRATIONS,
   type InboundEventRow,
   type TenantIntegration,
@@ -32,6 +33,9 @@ import { IngestionService } from '../services/ingestion.service'; // RED: missin
  *  - check `suspended` before the signature -> INV-ING-SUSPENDED.
  *  - store the raw external player id in the row, hash without the tenant key, or hash a different
  *    message than `${source}\n${external_player_id}` -> INV-ING-PLAYER-HMAC (D-12).
+ *  - put external_player_id back into the event, resolve after the outbox write, or publish when
+ *    identity is down                                       -> INV-ING-ACCEPT, INV-ING-IDENTITY-DOWN (X-1).
+ *  - take `sandbox` from anything but the verified integration's environment -> INV-ING-SANDBOX (X-3).
  */
 
 const NOW = new Date('2026-11-21T12:00:00.000Z');
@@ -39,9 +43,16 @@ const T1 = '0190a1b2-c3d4-4e5f-8a6b-000000000001';
 const T2 = '0190a1b2-c3d4-4e5f-8a6b-000000000002';
 const T3 = '0190a1b2-c3d4-4e5f-8a6b-000000000003';
 const T4 = '0190a1b2-c3d4-4e5f-8a6b-000000000004';
+const T5 = '0190a1b2-c3d4-4e5f-8a6b-000000000005';
 const hmac = (secret: string, msg: string) =>
   createHmac('sha256', secret).update(msg).digest('hex');
-const HASH_KEYS = { acme: 'hk-acme', globex: 'hk-globex', bravo: 'hk-bravo', frozen: 'hk-frozen' };
+const HASH_KEYS = {
+  acme: 'hk-acme',
+  globex: 'hk-globex',
+  bravo: 'hk-bravo',
+  frozen: 'hk-frozen',
+  sandboxed: 'hk-sandboxed',
+};
 
 // Independent signers (the oracle for each casino's wire protocol, docs/specs section 3).
 function signedA(
@@ -75,6 +86,12 @@ function signedB(secret: string, o: { id?: string } = {}) {
 }
 
 let integrations: Record<string, TenantIntegration>;
+let identityDown = false;
+/** What the fake identity directory was asked: [tenant, source, raw casino player id]. */
+const resolved: Array<[string, string, string]> = [];
+/** The internal player id identity would return: stable per (tenant, casino id), a uuid. */
+const playerIdOf = (tenantId: string, externalPlayerId: string) =>
+  `0190a1b2-c3d4-4e5f-8a6b-${hmac(tenantId, externalPlayerId).slice(0, 12)}`;
 class FakeInbound extends InboundEventsRepository {
   rows = new Map<string, { id: string; row: InboundEventRow }>();
   async insertIfAbsent(_tx: unknown, row: InboundEventRow) {
@@ -120,34 +137,49 @@ describe('ingestion endpoint', () => {
     published = [];
     txCalls = [];
     publishFails = false;
+    identityDown = false;
+    resolved.length = 0;
+    // identity's TenantIntegration contract type (X-7): `platform` is the adapter registry key
     integrations = {
       acme: {
         tenant_id: T1,
-        casino: 'casino-a',
+        platform: 'casino-a',
         status: 'active',
+        environment: 'production',
         webhook_secrets: ['sec-acme'],
         player_hash_key: HASH_KEYS.acme,
       },
       globex: {
         tenant_id: T2,
-        casino: 'casino-a',
+        platform: 'casino-a',
         status: 'active',
+        environment: 'production',
         webhook_secrets: ['sec-globex'],
         player_hash_key: HASH_KEYS.globex,
       },
       bravo: {
         tenant_id: T3,
-        casino: 'casino-b',
+        platform: 'casino-b',
         status: 'active',
+        environment: 'production',
         webhook_secrets: ['sec-bravo'],
         player_hash_key: HASH_KEYS.bravo,
       },
       frozen: {
         tenant_id: T4,
-        casino: 'casino-a',
+        platform: 'casino-a',
         status: 'suspended',
+        environment: 'production',
         webhook_secrets: ['sec-frozen'],
         player_hash_key: HASH_KEYS.frozen,
+      },
+      sandboxed: {
+        tenant_id: T5,
+        platform: 'casino-a',
+        status: 'active',
+        environment: 'sandbox',
+        webhook_secrets: ['sec-sbx'],
+        player_hash_key: HASH_KEYS.sandboxed,
       },
     };
     const mod = await Test.createTestingModule({
@@ -161,6 +193,17 @@ describe('ingestion endpoint', () => {
         {
           provide: TENANT_INTEGRATIONS,
           useValue: { lookup: async (s: string) => integrations[s] },
+        },
+        // X-1: identity is the only writer of the player link; ingest resolves BEFORE the outbox write
+        {
+          provide: PLAYER_DIRECTORY,
+          useValue: {
+            resolveOrCreate: async (tenantId: string, source: string, externalPlayerId: string) => {
+              if (identityDown) throw new Error('identity unreachable');
+              resolved.push([tenantId, source, externalPlayerId]);
+              return playerIdOf(tenantId, externalPlayerId);
+            },
+          },
         },
         { provide: ADAPTER_REGISTRY, useValue: createDefaultRegistry() },
         { provide: CLOCK, useValue: { now: () => NOW } },
@@ -240,14 +283,18 @@ describe('ingestion endpoint', () => {
       const event = parseEvent(published[0]!.event);
       expect(event.type).toBe('engagement.deposit.confirmed');
       expect(event.tenant_id).toBe(integrations[slug]!.tenant_id);
-      expect(event.payload).toMatchObject({
+      // X-1/D-12: the event carries the INTERNAL player id only (resolved through identity before
+      // the outbox write); the raw casino id is nowhere in it. Mutation: put external_player_id back.
+      expect(event.payload).toEqual({
         inbound_event_id: ack.inbound_event_id,
         source: slug === 'acme' ? 'casino-a' : 'casino-b',
         external_event_id: 'evt-1',
-        external_player_id: 'pl-1',
+        player_id: playerIdOf(integrations[slug]!.tenant_id, 'pl-1'),
         amount_minor: 5000,
         currency: 'EUR',
+        occurred_at: expect.any(String),
       });
+      expect(JSON.stringify(published[0]!.event)).not.toContain('pl-1');
     });
   });
 
@@ -349,7 +396,42 @@ describe('ingestion endpoint', () => {
     expect(inbound.rows.size).toBe(1);
   });
 
-  it('INV-ING-PLAYER-HMAC: the inbound row stores an HMAC of the casino player id (tenant key), never the raw id; the outbox event still carries it for the player mapping (D-12)', async () => {
+  // X-1. Mutation: resolve the player after the outbox write or at the consumer, or swallow an
+  // identity failure and publish anyway. Identity down means 503 and NOTHING written: the inbound
+  // row is not stored, so the casino's retry is not a dedupe hole.
+  it('INV-ING-IDENTITY-DOWN: when identity cannot resolve the player the answer is 503, no row and no event; the retry then succeeds', async () => {
+    identityDown = true;
+    const down = await post('acme', signedA('sec-acme'));
+    expect(down.statusCode).toBe(503);
+    nothingHappened();
+    identityDown = false;
+    const retry = await post('acme', signedA('sec-acme'));
+    expect(retry.statusCode).toBe(200);
+    expect(IngestAck.parse(retry.json()).status).toBe('accepted');
+    expect(inbound.rows.size).toBe(1);
+    expect(published).toHaveLength(1);
+  });
+
+  // X-3/D-13. Mutation: copy `sandbox` from the body or a header, never set it, or set it for production.
+  it('INV-ING-SANDBOX: a deposit through a sandbox integration is published with envelope.sandbox = true; a production one carries none', async () => {
+    await post('sandboxed', signedA('sec-sbx'));
+    await post('acme', signedA('sec-acme'));
+    const byTenant = (t: string) => published.find((p) => p.event.tenant_id === t)!.event;
+    expect(byTenant(T5).sandbox).toBe(true);
+    expect('sandbox' in byTenant(T1)).toBe(false);
+    // a client cannot ask for it: the body and a header are ignored
+    const forged = signedA('sec-acme', { id: 'evt-forged' });
+    const res = await post('acme', {
+      raw: forged.raw,
+      headers: { ...forged.headers, 'x-sandbox': '1' },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(published.filter((p) => p.event.tenant_id === T1).every((p) => !p.event.sandbox)).toBe(
+      true,
+    );
+  });
+
+  it('INV-ING-PLAYER-HMAC: the inbound row stores an HMAC of the casino player id (tenant key), never the raw id; the raw id goes only to identity, which owns the mapping (D-12, X-1)', async () => {
     const res = await post('acme', signedA('sec-acme'));
     expect(res.statusCode).toBe(200);
     const { row } = [...inbound.rows.values()][0]!;
@@ -368,6 +450,14 @@ describe('ingestion endpoint', () => {
     const b = [...inbound.rows.values()].find((r) => r.row.tenantId === T3)!.row;
     expect(b.externalPlayerHmac).toBe(hmac(HASH_KEYS.bravo, 'casino-b\npl-1'));
     expect(published.every((p) => p.event.type === 'engagement.deposit.confirmed')).toBe(true);
+    expect(JSON.stringify(published.map((p) => p.event))).not.toContain('pl-1');
+    expect(resolved).toEqual(
+      expect.arrayContaining([
+        [T1, 'casino-a', 'pl-1'],
+        [T2, 'casino-a', 'pl-1'],
+        [T3, 'casino-b', 'pl-1'],
+      ]),
+    );
   });
 
   it('INV-ING-ROTATION: with two active secrets either verifies; after the old one is revoked it is refused', async () => {

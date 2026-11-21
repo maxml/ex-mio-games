@@ -140,7 +140,7 @@ describe('ingest: database guarantees', () => {
 describe('ingest: the raw casino player id is not stored (D-12, MIO-107)', () => {
   // Mutation: keep `external_player_id` as a column of inbound_events, or put the raw value in
   // `external_player_hmac`. The raw id lives only in the identity player mapping.
-  it('INV-ING-NO-RAW-ID-DB: inbound_events has an HMAC column and no raw-id column; the stored value is the tenant-keyed HMAC and the raw value is in no table but the transient outbox', async () => {
+  it('INV-ING-NO-RAW-ID-DB: inbound_events has an HMAC column and no raw-id column; the stored value is the tenant-keyed HMAC and the raw value is in NO table, the outbox included (X-1)', async () => {
     const eventId = `hmac-${randomUUID()}`;
     const raw = `raw-casino-player-${randomUUID()}`;
     expect((await postDeposit(T1.slug, depositA(T1.secret, eventId, raw))).status).toBe(200);
@@ -163,15 +163,27 @@ describe('ingest: the raw casino player id is not stored (D-12, MIO-107)', () =>
       expect(row.external_player_hmac).toBe(hmac(T1.hashKey, `casino-a\n${raw}`));
       expect(row.external_player_hmac).not.toContain(raw);
       // Erasure (MIO-107) deletes the identity mapping row. What remains in engagement must hold no
-      // raw id: scan every row of every public table except `outbox` (a transport buffer; the event
-      // payload still carries the id to the consumer that resolves the player, see spec section 10).
+      // raw id: scan every row of EVERY public table, the outbox included. X-1/D-12: the
+      // deposit.confirmed event carries only the internal player_id (resolved through identity before
+      // the outbox write), so the outbox row is not a durable copy of the raw id that erasure cannot
+      // reach. Mutation: put external_player_id back into DepositConfirmedV1, or resolve at the consumer.
       const tables = (
         await admin.query<{ table_name: string }>(
           `SELECT table_name FROM information_schema.tables
-            WHERE table_schema = 'public' AND table_type = 'BASE TABLE' AND table_name <> 'outbox'`,
+            WHERE table_schema = 'public' AND table_type = 'BASE TABLE'`,
         )
       ).rows.map((r) => r.table_name);
       expect(tables).toContain('inbound_events');
+      expect(tables).toContain('outbox');
+      const evt = (
+        await admin.query(
+          `SELECT envelope FROM outbox WHERE type = 'engagement.deposit.confirmed'
+              AND envelope->'payload'->>'external_event_id' = $1`,
+          [eventId],
+        )
+      ).rows[0];
+      expect(evt.envelope.payload).toHaveProperty('player_id');
+      expect(evt.envelope.payload).not.toHaveProperty('external_player_id');
       for (const t of tables) {
         const hit = await admin.query(`SELECT 1 FROM "${t}" x WHERE x::text LIKE $1 LIMIT 1`, [
           `%${raw}%`,

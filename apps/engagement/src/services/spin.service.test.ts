@@ -318,6 +318,22 @@ describe('SpinService', () => {
       reward_coins: res.reward_coins,
       table_version: 6,
     });
+    expect('sandbox' in published[0]!.event).toBe(false); // production: no flag on the envelope
+  });
+
+  // X-3/D-13, the producer side. The spin is the producer of spin.completed: a spin that runs for a
+  // sandbox token (the controller passes `sandbox: true` from the `sbx` claim) writes the event with
+  // envelope.sandbox = true, so payments credits the sandbox wallet and meters nothing (X-2).
+  // Mutation: drop `sandbox` when building the envelope, or write it for a production spin.
+  it('INV-SPIN-SANDBOX: a sandbox spin publishes spin.completed with envelope.sandbox = true; the payload has no sandbox field', async () => {
+    addCredit(credit(1), A);
+    addCredit(credit(2), A);
+    await asPlayer(A, () => service.spin({ idempotencyKey: 'k-sbx', sandbox: true }));
+    await asPlayer(A, () => service.spin({ idempotencyKey: 'k-prod' }));
+    const [sbx, prod] = published.map((p) => parseEvent(p.event));
+    expect(sbx!.sandbox).toBe(true);
+    expect('sandbox' in (sbx!.payload as object)).toBe(false);
+    expect(prod!.sandbox).toBeUndefined();
   });
 
   it('INV-SPIN-NO-CREDIT-CALL: the spin path makes no HTTP call; coins come from payments consuming spin.completed (D-1)', async () => {

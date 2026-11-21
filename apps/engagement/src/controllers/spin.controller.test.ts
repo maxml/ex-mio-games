@@ -124,6 +124,33 @@ describe('spin controller', () => {
     ]);
   });
 
+  // X-3/D-13. The environment of a spin is server-side state: the `sbx` claim of the verified token.
+  // Mutation: read `sandbox` from the body or a header, ignore the claim, or pass `sandbox: true` for
+  // a production token.
+  it('INV-SPIN-SANDBOX-CLAIM: a sandbox token makes the service run with sandbox: true; a production token passes none; a client flag is refused', async () => {
+    spin.mockClear();
+    spin.mockResolvedValue({ spin_id: SPIN, segment_index: 0, segment_label: 'Win', reward_coins: 25 });
+    const sbx = { ...bearer(playerToken(T, A, { sbx: true })), 'idempotency-key': 'k-sbx' };
+    expect((await post({}, sbx)).statusCode).toBe(201);
+    expect(spin).toHaveBeenLastCalledWith({ idempotencyKey: 'k-sbx', sandbox: true });
+    expect((await post({}, headers)).statusCode).toBe(201);
+    expect(spin).toHaveBeenLastCalledWith({ idempotencyKey: 'k-1' }); // no sandbox key at all
+    spin.mockClear();
+    expect((await post({ sandbox: true })).statusCode).toBe(422); // the body cannot ask for it
+    const viaHeader = await post({}, { ...headers, 'x-sandbox': '1' });
+    expect(viaHeader.statusCode).toBe(201);
+    expect(spin).toHaveBeenLastCalledWith({ idempotencyKey: 'k-1' }); // a header is ignored
+  });
+
+  // W-2: the widget does not know the wheel id, so the tenant's active wheel has a route of its own.
+  // Mutation: drop the route, or return weights/version on it.
+  it('W-2: GET /v1/wheel answers the tenant active wheel as PublicWheel (labels only)', async () => {
+    const res = await app.inject({ method: 'GET', url: '/v1/wheel', headers });
+    expect(res.statusCode).toBe(200);
+    expect(PublicWheel.parse(res.json()).wheel_id).toBe(WHEEL);
+    expect(res.body).not.toMatch(/weight|seed|version/i);
+  });
+
   it('INV-WHEEL-PUBLIC-NO-WEIGHTS: GET /v1/wheel/:wheelId returns labels only', async () => {
     const res = await app.inject({ method: 'GET', url: `/v1/wheel/${WHEEL}`, headers });
     expect(res.statusCode).toBe(200);

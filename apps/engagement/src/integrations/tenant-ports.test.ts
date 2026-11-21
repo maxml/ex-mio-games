@@ -1,12 +1,18 @@
 import {
   IssueDeadlineMs,
+  PlayerLinkResponse,
   RewardRequest,
+  TenantIntegration as TenantIntegrationSchema,
   type CasinoPlayerPort,
   type CasinoRewardApiConfig,
 } from '@ex-mio/contracts';
 import type { Transport, TransportRequest } from './adapter';
 import { createDefaultRegistry } from './registry'; // RED: module missing
-import { createRewardRequestBuilder, createTenantCasinoPorts } from './tenant-ports'; // RED: module missing
+import {
+  createCasinoPlayerPort,
+  createRewardRequestBuilder,
+  createTenantCasinoPorts,
+} from './tenant-ports'; // RED: module missing
 import type { TenantIntegration, TenantIntegrationPort } from './ports';
 
 /**
@@ -35,19 +41,23 @@ const T5 = '0190a1b2-c3d4-4e5f-8a6b-000000000005';
 const U1 = '0190a1b2-c3d4-4e5f-8a6b-0000000000a1';
 const U2 = '0190a1b2-c3d4-4e5f-8a6b-0000000000a2';
 
+// X-7: built from identity's contract type, so a drift between what identity serves and what the
+// ports read fails here (parse), not at integration.
 const integ = (
   tenant_id: string,
-  casino: string,
+  platform: string,
   reward_api: CasinoRewardApiConfig | undefined,
   status: 'active' | 'suspended' = 'active',
-): TenantIntegration => ({
-  tenant_id,
-  casino,
-  status,
-  webhook_secrets: ['s'],
-  player_hash_key: 'k',
-  ...(reward_api ? { reward_api } : {}),
-});
+): TenantIntegration =>
+  TenantIntegrationSchema.parse({
+    tenant_id,
+    platform,
+    status,
+    environment: 'production',
+    webhook_secrets: ['s'],
+    player_hash_key: 'k'.repeat(32),
+    ...(reward_api ? { reward_api } : {}),
+  });
 
 const TENANTS: Record<string, TenantIntegration> = {
   [T1]: integ(T1, 'casino-a', {
@@ -205,5 +215,36 @@ describe('the casino player id comes from the mapping', () => {
     expect(
       await builder.build({ tenantId: T2, userId: U1, reward: REWARD, sandbox: false }),
     ).toBeUndefined(); // U1 is mapped in T1 only
+  });
+});
+
+// X-8: the port is backed by identity's reverse link route (`INTERNAL_ROUTES.playerLink`), the only
+// writer and reader of the mapping. Engagement keeps no copy.
+describe('the casino player port is backed by the identity player link', () => {
+  const calls: Array<[string, string]> = [];
+  const identity = {
+    playerLink: async (tenantId: string, userId: string) => {
+      calls.push([tenantId, userId]);
+      if (userId === U1) return PlayerLinkResponse.parse({ platform: 'casino-a', external_player_id: 'ext-777' });
+      if (userId === 'down') throw new Error('identity unreachable');
+      return undefined; // 404: never linked, or erased
+    },
+  };
+
+  // Mutation: keep a local copy of the mapping, guess the id from the user id, or treat an
+  // identity outage as "no mapping" (the saga would read that as player_unmapped, not as transport).
+  it('INV-REQ-LINK: the id is what the link route returns for THIS tenant and user; 404 is undefined; an outage is an error', async () => {
+    const port = createCasinoPlayerPort({ identity });
+    expect(await port.externalPlayerId(T1, U1)).toEqual({
+      platform: 'casino-a',
+      external_player_id: 'ext-777',
+    });
+    expect(await port.externalPlayerId(T1, U2)).toBeUndefined();
+    await expect(port.externalPlayerId(T1, 'down')).rejects.toThrow('identity unreachable');
+    expect(calls).toEqual([
+      [T1, U1],
+      [T1, U2],
+      [T1, 'down'],
+    ]);
   });
 });

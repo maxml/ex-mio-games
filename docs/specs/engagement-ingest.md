@@ -8,21 +8,29 @@ against the tests named below and never edits them.
 ## 1. Behaviour
 
 1. A casino (A or B) posts a signed deposit webhook to `POST /v1/integrations/{tenantSlug}/events`.
-2. The tenant is resolved from the slug only. The tenant's adapter verifies the HMAC and the timestamp
-   window with the tenant's secrets (from identity), then validates the schema.
-3. In **one transaction** the event is inserted into `inbound_events` (UNIQUE
+2. The tenant is resolved from the slug only. The tenant's adapter verifies the casino's OWN signature
+   (D-15 Q-1: casino-native, never a MIO `x-mio-*` scheme) and the timestamp window with the tenant's secrets
+   (`TenantIntegration.webhook_secrets`, served by identity to `svc:engagement`), then validates the schema.
+   The environment of the integration (`TenantIntegration.environment`, X-3) decides `envelope.sandbox` of
+   everything this delivery produces; a body or a header can never set it.
+3. **Before the transaction** the casino player is resolved to our internal `player_id` through identity
+   (`PLAYER_DIRECTORY.resolveOrCreate`, the only writer of the link; X-1, D-12). If identity is unavailable the
+   answer is 503 and nothing is written (no inbound row, no event), so the casino's retry is safe. Then, in
+   **one transaction**, the event is inserted into `inbound_events` (UNIQUE
    `(tenant_id, source, external_event_id)`) and, only if the insert was new, an
-   `engagement.deposit.confirmed` v1 message is written to the outbox. A duplicate returns 200 with the
-   first delivery's body.
+   `engagement.deposit.confirmed` v1 message is written to the outbox. The event carries `player_id` and never
+   the raw casino player id (strict schema), so the outbox row is not a durable copy of the raw id. A duplicate
+   returns 200 with the first delivery's body.
 4. The outbox relay publishes; the engagement consumer (`SpinCreditsService.onDepositConfirmed`, inbox
-   dedupe) maps the casino player to our `user_id` through the player directory, evaluates the tenant's
-   rules and inserts `spin_credits` rows (`available`) plus `engagement.spin.granted`.
+   dedupe) evaluates the tenant's rules for the `player_id` in the event and inserts `spin_credits` rows
+   (`available`) plus `engagement.spin.granted`.
 5. The player calls `POST /v1/spins` (`Idempotency-Key`, body at most `{credit_id}`). One conditional
    `UPDATE` consumes a credit; the server draws the segment from `HMAC(server_seed[v], spin_id)` against
    the active reward table version; the spin row and `engagement.spin.completed` commit together.
 6. Coins for a spin (coordinator decision D-1). Payments owns every coin operation; engagement never
    calls a credit endpoint and never writes balances. The spin writes `engagement.spin.completed` v1
-   (`spin_id`, `player_id`, `reward_coins`, `table_version`; the tenant is in the envelope) to the outbox
+   (`spin_id`, `player_id`, `reward_coins`, required `table_version` (X-16); the tenant and, for a sandbox
+   token (`sbx`, X-3), `sandbox: true` are in the envelope, set by this producer, never in the payload) to the outbox
    in the same transaction as the spin row, also for a `nothing` segment (0 coins). Payments consumes it
    through its inbox and credits coins with the idempotency key `spin:<spin_id>` (the business id is
    `spin_id`) in the same transaction as the inbox row; metering reads the same event in payments.
@@ -160,9 +168,11 @@ The existing `/casino-*/v1/wallet/credit` routes are untouched.
 
 ## 4. Ports (src/integrations/ports.ts, src/model/repositories.ts)
 
-`TENANT_INTEGRATIONS.lookup(slug) | lookupById(tenantId) -> {tenant_id, casino, status,
-webhook_secrets[1..2], player_hash_key, reward_api?}` (identity is the source; `INGEST_STATIC_TENANTS`
-JSON in dev, section 10), `TENANT_CASINO_PORTS`, `CASINO_PLAYERS` (section 3.4), `CLOCK`, `ADAPTER_REGISTRY`,
+`TENANT_INTEGRATIONS.lookup(slug) | lookupById(tenantId) -> TenantIntegration` (identity's contract type, X-7:
+`{tenant_id, platform, status, environment, webhook_secrets[1..2], player_hash_key, reward_api?}`; identity is
+the source through `INTERNAL_ROUTES.integrationBySlug` and `.integration`; `INGEST_STATIC_TENANTS` JSON in dev,
+section 10), `TENANT_CASINO_PORTS`, `CASINO_PLAYERS` (section 3.4, backed by identity's `INTERNAL_ROUTES.playerLink`,
+X-8; a 404 is `undefined`, an outage is an error), `CLOCK`, `ADAPTER_REGISTRY`,
 `PLAYER_DIRECTORY.resolveOrCreate(tenant, source, externalPlayerId) -> user_id` (identity writes the
 mapping), `InboundEventsRepository`, `RulesRepository`, `SpinCreditsRepository`, `WheelsRepository`,
 `SpinsRepository`, `SEEDS`. Services receive a `Tx` from `Db`; repositories own all SQL.
@@ -225,7 +235,11 @@ Algorithm pinned in `wheel.test.ts` header: `hmac = HMAC-SHA256(seed, spinId)` h
 bytes; `pick = floor(roll * total / 2^48)`; first segment with cumulative weight `> pick`. `selectSegment`
 re-validates the table (positive integer weights, at least one segment, total <= 1,000,000) and throws on
 a corrupt one. Reward tables are immutable versions; the spin stores `seed_version`, `table_version`,
-`hmac`, `segment_index`. `GET /v1/wheel/:wheelId` returns `PublicWheel` (labels only). `SpinService.spin`
+`hmac`, `segment_index`. `GET /v1/wheel/:wheelId` returns `PublicWheel` (labels only); `GET /v1/wheel` returns the
+tenant's active wheel as the same `PublicWheel` (W-2: the widget does not know the id; pinned by
+`spin.controller.test.ts`). `SpinService.spin({idempotencyKey, creditId?, sandbox?})` gets `sandbox: true` from the
+`sbx` claim of the verified token (INV-SPIN-SANDBOX-CLAIM) and writes it to the envelope of `spin.completed`
+(INV-SPIN-SANDBOX); it is not a body field (422). `SpinService.spin`
 runs in the tenant context with the principal as the player; `SpinService.wheel(wheelId)` builds the public
 view with `toPublicWheel` from the stored table (404 for an unknown wheel), and the controller parses
 whatever the service returns with `PublicWheel` (strict): a weight-bearing object is a 500, never a
@@ -270,10 +284,10 @@ bootstrap (`docker/postgres/init.sh`, password `ENGAGEMENT_APP_DB_PASSWORD`, dev
 `engagement-app-dev`) creates the role and the migration grants it exactly this. `tests/compose` checks all
 of this in the catalog and by attempting it (`INV-ENGAGEMENT-SCHEMA-DB`, `INV-ENGAGEMENT-ROLE-DB`), and
 every compose DB call except the catalog checks and the fault trigger runs as `engagement_app`.
-Open point (not decided by D-12): the `engagement.deposit.confirmed`payload still carries the raw`external_player_id`to the consumer that resolves the player, and an outbox row holds it until it is
-published;`INV-ING-NO-RAW-ID-DB`scans every table except`outbox`. If the privacy model must also cover
-the outbox, the event should carry the resolved `user_id`or the hash instead; that is a change to`DepositConfirmedV1`and to MIO-061, for the coordinator.
-Dev compose env for engagement (so`ingest.compose.test.ts`runs without identity):`INGEST_STATIC_TENANTS`=`{"ingest-t1":{"tenant_id":"0190a1b2-c3d4-4e5f-8a6b-1000000000a1","casino":"casino-a","status":"active",
+Closed (X-1, D-12): the `engagement.deposit.confirmed` payload carries the resolved internal `player_id` and never
+the raw `external_player_id` (strict schema; the player is resolved through identity before the outbox write), so
+`INV-ING-NO-RAW-ID-DB` scans EVERY table, the outbox included.
+Dev compose env for engagement (so`ingest.compose.test.ts`runs without identity):`INGEST_STATIC_TENANTS`=`{"ingest-t1":{"tenant_id":"0190a1b2-c3d4-4e5f-8a6b-1000000000a1","platform":"casino-a","status":"active","environment":"production",
 "webhook_secrets":["dev-ingest-secret-1"],"player_hash_key":"dev-hash-key-1"},"ingest-t2":{... "...a2",
 "dev-ingest-secret-2", "dev-hash-key-2"}}`. Spin and me/spins calls in compose carry a real player token:
 `tests/compose/src/player-session.ts` signs up an operator, issues a casino key and launches a player
@@ -304,7 +318,7 @@ in their own identity tenants and need identity in the stack,`WHEEL_SEEDS={"1":"
 | INV-REGISTRY-ISSUE-DEADLINE (no deadline, no registration), INV-ADAPTER-SANDBOX-MISMATCH (both directions, no I/O)                                                                                                                                                                                                                                                                                                                                             | D-12, D-2 not_found is final only after the deadline        | `AdapterRegistry.register`, every adapter                                                       | `integrations/adapters.contract.test.ts`                                              |
 | INV-REG-PER-TENANT (type, URL, credentials per tenant), INV-REG-DEADLINE (override, else default), INV-REG-SANDBOX (sandbox endpoint only, no production fallback), INV-REG-ABSENT (absent is `undefined`, a failing lookup rejects), INV-REQ-MAPPING (casino player id from the mapping, none gives `undefined`)                                                                                                                                              | D-12 R2-1                                                   | `createTenantCasinoPorts`, `createRewardRequestBuilder`                                         | `integrations/tenant-ports.test.ts`                                                   |
 | INV-ING-PLAYER-HMAC (row holds the tenant-keyed HMAC, no raw id field; also pins `${source}\n${id}`)                                                                                                                                                                                                                                                                                                                                                           | D-12, MIO-107                                               | `IngestionService`                                                                              | `controllers/ingest.controller.test.ts`                                               |
-| INV-ING-NO-RAW-ID-DB (no raw-id column, value is the HMAC, raw id in no table but `outbox`), INV-ENGAGEMENT-ROLE-DB (`engagement_app` owns nothing, cannot drop or disable the trigger, disable or un-force RLS, drop a table or grant itself UPDATE; catalog unchanged afterwards), INV-ME-SPINS-DB (own count, tenant-scoped, 401 without a token), INV-SPIN-CONFLICT-CODE-DB (inside the ONE-WINNER and REPLAY-PARALLEL tests)                              | D-12 R2-6, R2-7; coordinator; R2-5                          | migration, roles, `SpinCreditsRepository.countAvailable`                                        | `tests/compose/src/ingest.compose.test.ts`                                            |
+| INV-ING-NO-RAW-ID-DB (no raw-id column, value is the HMAC, raw id in no table, the outbox included (X-1); the deposit event carries `player_id` only), INV-ENGAGEMENT-ROLE-DB (`engagement_app` owns nothing, cannot drop or disable the trigger, disable or un-force RLS, drop a table or grant itself UPDATE; catalog unchanged afterwards), INV-ME-SPINS-DB (own count, tenant-scoped, 401 without a token), INV-SPIN-CONFLICT-CODE-DB (inside the ONE-WINNER and REPLAY-PARALLEL tests)                              | D-12 R2-6, R2-7; coordinator; R2-5                          | migration, roles, `SpinCreditsRepository.countAvailable`                                        | `tests/compose/src/ingest.compose.test.ts`                                            |
 | INV-SEED-BY-VERSION, -CURRENT-IS-HIGHEST, -UNKNOWN-THROWS, -PER-TENANT, -ROTATION-LIVE (the real `SeedProvider` over a versioned store; INV-SPIN-RECOMPUTE-AFTER-ROTATION now reads through it)                                                                                                                                                                                                                                                                | MIO-063 recompute, MIO-069; R2-3                            | `createSeedProvider`                                                                            | `model/seeds.test.ts`, `services/spin.service.test.ts`                                |
 | INV-SPIN-CONFLICT-CODE (the 409 body code in ONE-WINNER, NO-CREDIT, OWNERSHIP, REPLAY-PARALLEL), INV-SPIN-SERVER-AUTHORITY (also `segment_index`, replay keeps it), INV-ME-SPINS (`availableSpins`: own, available only, user from the principal)                                                                                                                                                                                                              | R2-5; coordinator                                           | `SpinService`                                                                                   | `services/spin.service.test.ts`                                                       |
 | INV-ME-SPINS (token only, no user input, strict output), INV-SPIN-PRINCIPAL-ONLY (tenant and principal from the verified token, no header)                                                                                                                                                                                                                                                                                                                     | coordinator; D-4 R2-2                                       | `SpinController`, `ServiceAuthModule`                                                           | `controllers/spin.controller.test.ts`                                                 |
