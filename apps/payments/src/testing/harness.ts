@@ -111,7 +111,7 @@ export interface Harness {
   /** Credit `amount` coins to `player` the only way coins can arrive: a `spin.completed` event. */
   fund(tenantId: string, player: string, amount: number): Promise<{ spinId: string }>;
   /** A player's wallet read straight from the tables (never through BalanceService or the cache). */
-  dbWallet(tenantId: string, player: string): Promise<DbWallet>;
+  dbWallet(tenantId: string, player: string, opts?: { sandbox?: boolean }): Promise<DbWallet>;
   dbWalletById(tenantId: string, walletId: string): Promise<DbWallet>;
   /** Sign a webhook body the way the fake provider does. */
   sign(rawBody: string): string;
@@ -287,9 +287,13 @@ export async function openHarness(opts: OpenOptions = {}): Promise<Harness> {
       if (d.outcome !== 'applied') throw new Error(`fund: expected applied, got ${d.outcome}`);
       return { spinId };
     },
-    dbWallet: async (tenantId, player) => {
+    // X-2/D-13: a player has one wallet per environment (`wallets.sandbox`); the default is production.
+    dbWallet: async (tenantId, player, opts = {}) => {
       const join = `JOIN wallet_owner_links l ON l.tenant_id = w.tenant_id AND l.wallet_id = w.id`;
-      const { rows } = await admin.query(walletSql(join, `l.user_id = $2`), [tenantId, player]);
+      const { rows } = await admin.query(
+        walletSql(join, `l.user_id = $2 AND w.sandbox = $3`),
+        [tenantId, player, opts.sandbox ?? false],
+      );
       if (!rows[0]) throw new Error('dbWallet: no wallet for that player');
       return rows[0] as DbWallet;
     },

@@ -153,14 +153,18 @@ describe('INV-M5 the sandbox flag comes from the producer, never from the payloa
     expect(rows[0].n).toBe(0);
   });
 
-  it('through the inbox a sandbox spin still credits its coins but meters nothing', async () => {
+  // X-2/D-13 (rewritten: the old assertion put sandbox coins into the production wallet, which would
+  // let a flag remove a paid operation from the bill). Mutation: credit the production wallet for a
+  // sandbox envelope.
+  it('through the inbox a sandbox spin credits the SANDBOX wallet, leaves the production wallet alone and meters nothing', async () => {
     const t = newTenant();
     const p = newPlayer();
     const d = await h.consume(
       spinCompleted(t, p, 5, { at: '2026-11-05T10:00:00.000Z', sandbox: true }),
     );
     expect(d.outcome).toBe('applied');
-    expect((await h.dbWallet(t, p)).available).toBe(5);
+    expect((await h.dbWallet(t, p, { sandbox: true })).available).toBe(5);
+    await expect(h.dbWallet(t, p)).rejects.toThrow(/no wallet/);
     expect(await report(t, '2026-11')).toMatchObject({ spins: 0, monthly_active_players: 0 });
   });
 });

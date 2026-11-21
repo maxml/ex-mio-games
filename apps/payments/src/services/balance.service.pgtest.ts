@@ -86,7 +86,7 @@ describe('INV-B2 the cache is tenant-scoped and never used by a command (decisio
     await expect(
       h.as(t, () =>
         h.ledger.reserve(
-          { player_id: p, reserve_id: uuidv7(), amount: 50, currency: 'COIN' },
+          { player_id: p, reserve_id: uuidv7(), amount: 50, currency: 'COIN', sandbox: false },
           key('reserve'),
         ),
       ),
@@ -103,7 +103,10 @@ describe('INV-B2 the cache is tenant-scoped and never used by a command (decisio
     const id = uuidv7();
     const run = (fn: () => Promise<unknown>) => h.as(t, fn);
     await run(() =>
-      h.ledger.reserve({ player_id: p, reserve_id: id, amount: 4, currency: 'COIN' }, key('r')),
+      h.ledger.reserve(
+        { player_id: p, reserve_id: id, amount: 4, currency: 'COIN', sandbox: false },
+        key('r'),
+      ),
     );
     await run(() => h.ledger.capture({ reserve_id: id }, key('c')));
     await run(() => h.ledger.refund({ reserve_id: id }, key('f')));

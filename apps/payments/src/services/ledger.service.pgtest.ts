@@ -33,7 +33,10 @@ afterAll(async () => h.close());
 
 const reserve = (t: string, player: string, amount: number, id = uuidv7(), k = key('reserve')) =>
   h.as(t, () =>
-    h.ledger.reserve({ player_id: player, reserve_id: id, amount, currency: 'COIN' }, k),
+    h.ledger.reserve(
+      { player_id: player, reserve_id: id, amount, currency: 'COIN', sandbox: false },
+      k,
+    ),
   );
 const capture = (t: string, id: string, k = key('capture')) =>
   h.as(t, () => h.ledger.capture({ reserve_id: id }, k));
@@ -113,7 +116,7 @@ describe('INV-C1b the same property with ONE connection, caught from the SQL its
         Array.from({ length: 50 }, () =>
           one.as(t, () =>
             one.ledger.reserve(
-              { player_id: p, reserve_id: uuidv7(), amount: 1, currency: 'COIN' },
+              { player_id: p, reserve_id: uuidv7(), amount: 1, currency: 'COIN', sandbox: false },
               key('reserve'),
             ),
           ),
@@ -632,5 +635,68 @@ describe('INV-O2 erasing the identity link keeps the stable account', () => {
       code: 'wallet_not_found',
     });
     expect(await count('ledger_entries', t)).toBe(2);
+  });
+});
+
+// X-2 / D-13: a sandbox flag must never touch production coins, and it must not remove a paid
+// operation from the bill. A player has one wallet per environment; the environment of a credit
+// is the envelope flag, of a reserve the request flag, and capture, release and refund use the
+// reserve's own wallet.
+describe('INV-SBX sandbox effects use separate sandbox wallets', () => {
+  // Mutation: pick the wallet by (tenant, player) alone, or ignore envelope.sandbox on the credit.
+  it('INV-SBX-1 a sandbox spin credits the SANDBOX wallet; the production balance is unchanged and nothing is metered', async () => {
+    const t = newTenant();
+    const p = newPlayer();
+    await h.fund(t, p, 10); // production
+    const d = await h.consume(
+      spinCompleted(t, p, 7, { at: '2026-11-05T10:00:00.000Z', sandbox: true }),
+    );
+    expect(d.outcome).toBe('applied');
+    expect((await h.dbWallet(t, p)).available).toBe(10);
+    expect((await h.dbWallet(t, p, { sandbox: true })).available).toBe(7);
+    expect(await count('wallets', t)).toBe(2);
+    const { rows } = await h.admin.query(
+      `SELECT count(*)::int AS n FROM usage_events WHERE tenant_id = $1 AND occurred_at >= '2026-11-01'`,
+      [t],
+    );
+    expect(rows[0].n).toBe(0);
+  });
+
+  // Mutation: let a sandbox reserve read or debit the production wallet.
+  it('INV-SBX-2 a reserve against the sandbox wallet cannot spend production coins', async () => {
+    const t = newTenant();
+    const p = newPlayer();
+    await h.fund(t, p, 10); // production only
+    await expect(
+      h.as(t, () =>
+        h.ledger.reserve(
+          { player_id: p, reserve_id: uuidv7(), amount: 5, currency: 'COIN', sandbox: true },
+          key('reserve'),
+        ),
+      ),
+    ).rejects.toMatchObject({ code: 'insufficient_funds' });
+    expect(await h.dbWallet(t, p)).toMatchObject({ available: 10, held: 0 });
+  });
+
+  // Mutation: capture, release or refund look the wallet up by player instead of by the reserve.
+  it('INV-SBX-3 capture, release and refund act on the wallet of the reserve, in both environments', async () => {
+    const t = newTenant();
+    const p = newPlayer();
+    await h.fund(t, p, 10);
+    await h.consume(spinCompleted(t, p, 10, { at: '2026-11-05T10:00:00.000Z', sandbox: true }));
+    const id = uuidv7();
+    await h.as(t, () =>
+      h.ledger.reserve(
+        { player_id: p, reserve_id: id, amount: 4, currency: 'COIN', sandbox: true },
+        key('reserve'),
+      ),
+    );
+    expect(await h.dbWallet(t, p, { sandbox: true })).toMatchObject({ available: 6, held: 4 });
+    expect(await h.dbWallet(t, p)).toMatchObject({ available: 10, held: 0 });
+    await h.as(t, () => h.ledger.capture({ reserve_id: id }, key('capture')));
+    expect(await h.dbWallet(t, p, { sandbox: true })).toMatchObject({ available: 6, held: 0 });
+    await h.as(t, () => h.ledger.refund({ reserve_id: id }, key('refund')));
+    expect(await h.dbWallet(t, p, { sandbox: true })).toMatchObject({ available: 10, held: 0 });
+    expect(await h.dbWallet(t, p)).toMatchObject({ available: 10, held: 0 });
   });
 });

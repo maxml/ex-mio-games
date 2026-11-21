@@ -92,10 +92,11 @@ Schemas: `packages/contracts/src/payments.ts`. All routes parse input with them 
 
 | Route                                  | Who                  | Body                              | Success                   |
 | -------------------------------------- | -------------------- | --------------------------------- | ------------------------- |
-| `POST /internal/v1/coins/reserve`      | service `engagement` | `ReserveCoinsRequest`             | 201 `CoinOperationResult` |
-| `POST /internal/v1/coins/capture`      | service `engagement` | `ReserveRefRequest`               | 200/201                   |
-| `POST /internal/v1/coins/release`      | service `engagement` | `ReserveRefRequest`               | 200/201                   |
-| `POST /internal/v1/coins/refund`       | service `engagement` | `ReserveRefRequest`               | 200/201                   |
+| `POST /internal/v1/tenants/:tenantId/reserves` | service `engagement` | `ReserveCoinsRequest` (with `sandbox`) | 201 `CoinOperationResult` |
+| `POST /internal/v1/tenants/:tenantId/reserves/:reserveId/capture` | service `engagement` | `ReserveRefRequest` (empty) | 200/201 |
+| `POST /internal/v1/tenants/:tenantId/reserves/:reserveId/release` | service `engagement` | `ReserveRefRequest` (empty) | 200/201 |
+| `POST /internal/v1/tenants/:tenantId/reserves/:reserveId/refund` | service `engagement` | `ReserveRefRequest` (empty) | 200/201 |
+| `GET /internal/v1/tenants/:tenantId/players/:playerId/balance` | service `engagement` | none | 200 `WalletBalance` |
 | `GET /v1/me/balance`                   | player               | none; the player is the principal | 200 `WalletBalance`       |
 | `GET /v1/players/:player_id/balance`   | operator             | none                              | 200 `WalletBalance`       |
 | `GET /v1/billing/plans`                | operator             | none                              | 200 `BillingPlan[]`       |
@@ -124,19 +125,32 @@ state = 'processing'`. The fake provider accepts only test numbers (`42424242424
 - The POST set of the whole application is exactly: the four coin commands, `attempts`, `attempts/:id/cancel`, `webhooks`. A
   route-table test over the REAL `createAppModule` fails on any other POST route. There is no credit route
   of any kind; the foundation's `POST /v1/credits` and its files are deleted.
-- Service identity (placeholder until the identity token lands): headers `x-service-id` and
-  `x-service-token`, checked by `ServiceTokenGuard` against `SERVICE_TOKENS` (`{ engagement: <secret> }`
-  from config). Only `engagement` may call the four commands; a player or operator principal
-  (`x-principal-kind`) gets 403 even with a valid service token.
-- **Acting tenant (D-5).** `ActingTenantGuard` on the coins controller answers 403 `forbidden` when the
-  auth context carries `acting_tenant` (placeholder header `x-acting-tenant` until L1's token lands). The
-  list of coin-value actions is the contract constant `COIN_VALUE_ACTIONS` (`credit`, `reserve`, `capture`,
-  `release`, `refund`), pinned by its own test; every coin route must be one of them. `credit` has no
-  route, its only entry is the inbox, which has no token to carry the claim.
+- **Service identity (D-4, X-9, X-18).** There are no header placeholders (`x-service-id`, `x-service-token`,
+  `x-principal-kind`, `x-acting-tenant`, `ServiceTokenGuard`, `SERVICE_TOKENS` are deleted). The internal
+  routes are `PAYMENTS_INTERNAL_ROUTES` (declared once, in `identity.ts`, next to the allow-list): the tenant is in
+  the path, the route accepts only a service token with `aud=payments`, and the callee-side allow-list
+  (`SERVICE_CALL_POLICY`) admits only `svc:engagement`. A user token (operator, player, acting) is 401; a valid
+  service token of another caller (`svc:identity`) is 403 `SERVICE_CALL_FORBIDDEN`. Capture, release and refund name
+  the reserve in the path and carry an empty body. `ReserveCoinsRequest.sandbox` is required (no default): it is
+  legal because the route is service-token only and engagement sets it from its own server-side auth context (X-4).
+- **Sandbox wallets (X-2, D-13).** A player has one wallet per environment: `wallets(tenant_id, id, sandbox)` with
+  `UNIQUE(tenant_id, user_id, sandbox)` on the owner link. A spin credit picks its wallet from `envelope.sandbox`; a
+  reserve from the request flag; capture, release and refund use the reserve's own wallet. Balance reads take the
+  environment from the token claim `sbx` (never a header or query) and answer the wallet of that environment. A
+  reserve on the sandbox wallet cannot spend production coins, and a sandbox spin never credits the production wallet.
+  Metering reads the envelope flag only and skips sandbox events.
+- **Acting tenant (D-5, X-10, X-11, D-15 Q-2).** Payments keeps one guard, on user-mode routes, as defence in depth:
+  `ActingCoinGuard` (`controllers/coin-action.ts`, with `@CoinAction(action)` and `@NoCoinEffect()`, pinned by
+  `acting-ban.test.ts` and `wiring.test.ts`) reads `authOf(req).act` and answers 403 `acting_forbidden` (a payments
+  code, lower-case) for every coin-value action, before the handler runs. The internal coin routes take service
+  tokens, which carry no `act`, so the choke point where an acting user causes a coin command is engagement's operator
+  resolve (D-15 Q-2 (a), engagement spec). The list of coin-value actions is the contract constant
+  `COIN_VALUE_ACTIONS` (`credit`, `reserve`, `capture`, `release`, `refund`), the ONLY list (identity derives its
+  action names from it), pinned by its own test. `credit` has no route; its only entry is the inbox.
 - Every command needs `Idempotency-Key` (8..128 chars); a replay answers the stored status and sets
   `idempotent-replayed: true`. An in-flight duplicate is 409 (retryable), a changed body is 422 (D-3).
 - **Error codes** (`PaymentsErrorBody { code, message }`): `validation_failed` 400,
-  `idempotency_key_required` 400, `forbidden` 403, `invalid_signature` 401 (webhook), `reserve_not_found` 404,
+  `idempotency_key_required` 400, `forbidden` 403, `acting_forbidden` 403 (X-10), `invalid_signature` 401 (webhook), `reserve_not_found` 404,
   `wallet_not_found` 404, `insufficient_funds` 409, `reserve_already_captured` 409,
   `reserve_already_released` 409, `reserve_already_refunded` 409, `reserve_not_captured` 409,
   `operation_conflict` 409, `idempotency_in_progress` 409, `idempotency_key_reused` 422,
@@ -149,8 +163,10 @@ wallet_id, reserve_id, amount, available_after, held_after }`.
 - **Events consumed:** `engagement.spin.completed` v1 (owned by L3), through the inbox, consumer name
   `payments`. The envelope's `sandbox` flag is set by the producer from its server context.
 - **Contract ownership (D-9).** L3 owns `spin.completed` and `casino-adapter.ts`; L2 (this epic) owns the coin
-  events, the reserve API and the rejection codes above; L4 imports them. `EventEnvelope.sandbox` is an added
-  optional field (decision of this fix round, for the coordinator to confirm).
+  events, the reserve API and the rejection codes above; L4 imports them. `EventEnvelope.sandbox` is confirmed
+  (D-13, FX-1) and lives in the foundation envelope.
+- **Sandbox invariants (X-2):** INV-SBX-1..3 in `services/ledger.service.pgtest.ts`, and the rewritten sandbox case
+  of INV-M5 in `usage.service.pgtest.ts`, pin the separate sandbox wallets.
 - **Billing webhooks.** `PaymentProvider.verifyWebhook(rawBody, signature)` returns a `ProviderSnapshot`
   (`eventId`, `tenantId` echoed from our subscribe metadata, `subscriptionId`, `status`, monotonic
   `version`, `periodStart/End`) or throws `WebhookSignatureError`. Verification is the adapter's job, always
@@ -312,8 +328,8 @@ All pgtests need Postgres (section 12); `*.test.ts` run without it.
 | D1-1..D1-13 spin credit through the real `InboxConsumer`                                       | D-1; MIO-082, MIO-084, MIO-086, MIO-150-20 | inbox handler, journal unique                        | `services/spin-credit.consumer.pgtest.ts`                                                      |
 | INV-B1..B3 fresh read, Redis down, tenant-scoped cache, commands never use it                  | MIO-083; D-9                               | `BalanceService`, `tenantCacheKey`                   | `services/balance.service.pgtest.ts`                                                           |
 | INV-B4 own balance only                                                                        | MIO-083                                    | controller principal                                 | `controllers/coins.controller.test.ts`                                                         |
-| INV-X1 route table exact; only `engagement` moves coins; no public credit                      | MIO-082, MIO-150-02                        | `ServiceTokenGuard`, real route table                | same                                                                                           |
-| INV-X5 acting tenant refused, action list pinned                                               | D-5                                        | `ActingTenantGuard`; `COIN_VALUE_ACTIONS`            | same; `payments.contracts.test.ts`                                                             |
+| INV-X1 route table exact; only `engagement` moves coins; no public credit                      | MIO-082, MIO-150-02                        | service-kit entry point, real route table                | same                                                                                           |
+| INV-X5 acting tenant refused, action list pinned                                               | D-5                                        | `ActingCoinGuard`; `COIN_VALUE_ACTIONS`            | same; `payments.contracts.test.ts`                                                             |
 | INV-X2 validation before service                                                               | MIO-081, MIO-150-08/13                     | zod `parseInput`                                     | same                                                                                           |
 | INV-X3 defined error codes, every domain code                                                  | MIO-150-19                                 | controller exception mapping                         | same                                                                                           |
 | INV-R1..R5 reconciliation: kinds, orphan hold, unbalanced, `runAll`                            | MIO-084, MIO-150-28                        | `ReconciliationService`                              | `services/reconciliation.service.pgtest.ts`                                                    |
@@ -357,6 +373,13 @@ grants, the plan seed; drop `coin_credits`); delete the foundation's `credits.*`
 its options; and add the modules the tests import: `ledger.module.ts`, `services/{ledger,balance,
 reconciliation,usage,billing}.service.ts`, `services/inbox.handler.ts`, `services/ledger.errors.ts`,
 `services/providers/*` (`payment-provider.ts` exporting `PAYMENT_PROVIDER`, `WebhookSignatureError`),
-`controllers/{coins,balance,billing}.controller.ts`, `controllers/service-token.guard.ts` (exporting
-`SERVICE_TOKENS`), the acting-tenant guard, `model/ledger.faults.ts`. `createAppModule` must register the
+`controllers/{coins,balance,billing}.controller.ts`, `controllers/coin-action.ts` (the acting guard and its
+decorators, see `acting-ban.test.ts`), `model/ledger.faults.ts`. There is no `service-token.guard.ts`: the app is
+wired with `ServiceAuthModule.forService({ audience: 'payments', identityUrl })` only (`wiring.test.ts`), and the
+HTTP tests (`testing/app.ts`) override just the `SERVICE_AUTH_OPTIONS` sources with the fixtures of
+`testing/auth.ts`. `createAppModule(config)` reads `IDENTITY_URL`. It must register the
 inbox handler for `engagement.spin.completed` (the bus binding) and start the app with `rawBody: true`.
+The `payments_app` grants are listed in ONE migration, folded into the foundation `AppRoleGrants` migration
+(foundation grants `coin_credits`, which this epic drops: remove it there, `roles.compose.test.ts` pins it), and
+`wallets` gains `sandbox` (X-2). `seedCoins` (`tests/compose/src/seed-coins.ts`, owned by this epic, X-3 of the
+reconciliation section 3) funds players in compose tests through a real `spin.completed` publish.

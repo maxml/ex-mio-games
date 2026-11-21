@@ -19,7 +19,10 @@ async function activity(t: string) {
   const c = uuidv7();
   const rsv = (id: string, amount: number) =>
     h.as(t, () =>
-      h.ledger.reserve({ player_id: p, reserve_id: id, amount, currency: 'COIN' }, key('r')),
+      h.ledger.reserve(
+        { player_id: p, reserve_id: id, amount, currency: 'COIN', sandbox: false },
+        key('r'),
+      ),
     );
   await rsv(a, 5);
   await rsv(b, 4);

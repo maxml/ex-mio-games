@@ -1,18 +1,20 @@
 import 'reflect-metadata';
 import { Test } from '@nestjs/testing';
 import { FastifyAdapter, type NestFastifyApplication } from '@nestjs/platform-fastify';
-import { BusRuntime, DATA_SOURCE } from '@ex-mio/service-kit';
+import { BusRuntime, DATA_SOURCE, SERVICE_AUTH_OPTIONS } from '@ex-mio/service-kit';
 import { createAppModule } from '../app.module';
 import { loadConfig } from '../config';
-import { SERVICE_TOKENS } from '../controllers/service-token.guard';
 import { BALANCE_CACHE, BalanceService } from '../services/balance.service';
 import { BillingService } from '../services/billing.service';
 import { LedgerService } from '../services/ledger.service';
 import { FakePaymentProvider } from '../services/providers/fake.provider';
 import { PAYMENT_PROVIDER } from '../services/providers/payment-provider';
+import { authFixture, type AuthFixture } from './auth';
 import { FakeCache } from './harness';
 
 export interface BuiltApp {
+  /** The fixture the entry point was booted with: `audit` holds every acting/service-call event (D-11). */
+  auth: AuthFixture;
   app: NestFastifyApplication;
   /** Every route the real application module registered, as `METHOD path`. */
   routes: string[];
@@ -25,7 +27,10 @@ type Mockable = { ledger?: object; balances?: object; billing?: object };
 
 /**
  * The REAL application module (`createAppModule`), with only the outside world replaced: the database
- * (a stub that records any use and then fails), the broker, Redis, the provider, the service tokens.
+ * (a stub that records any use and then fails), the broker, Redis, the provider. Authentication is NOT
+ * replaced: the app boots through `ServiceAuthModule.forService` (wired by `createAppModule(config)` from
+ * `IDENTITY_URL`), and only the `SERVICE_AUTH_OPTIONS` sources (`jwks`, `tenantStatus`, `auditPort`, the
+ * clock) are overridden with the fixtures of `./auth`, so the real entry point checks every token.
  * Services named in `mock` are replaced too. The route table is whatever the module registers, so a
  * route nobody remembered to delete (the foundation's `POST /v1/credits`) shows up here.
  */
@@ -38,6 +43,7 @@ export async function buildApp(
     PORT: '4003',
     DATABASE_URL: 'postgresql://app:pw@127.0.0.1:1/payments',
     AMQP_URL: 'amqp://u:p@127.0.0.1:1',
+    IDENTITY_URL: 'http://identity.test:4001',
     ...env,
   });
   const dbTouched = jest.fn();
@@ -53,7 +59,12 @@ export async function buildApp(
   });
   const provider = new FakePaymentProvider({ webhookSecret: 'whsec_test_secret' });
 
+  const auth = authFixture();
   let builder = Test.createTestingModule({ imports: [createAppModule(config)] })
+    // The entry point is the real one; only its sources (keys, tenant status, audit port, clock)
+    // are fixtures, the way `ServiceAuthModule.forService` accepts them in tests (service-kit spec).
+    .overrideProvider(SERVICE_AUTH_OPTIONS)
+    .useValue(auth.options)
     .overrideProvider(DATA_SOURCE)
     .useValue(dataSource)
     .overrideProvider(BusRuntime)
@@ -61,9 +72,7 @@ export async function buildApp(
     .overrideProvider(BALANCE_CACHE)
     .useValue(new FakeCache())
     .overrideProvider(PAYMENT_PROVIDER)
-    .useValue(provider)
-    .overrideProvider(SERVICE_TOKENS)
-    .useValue({ engagement: 'engagement-secret' });
+    .useValue(provider);
   if (mock.ledger) builder = builder.overrideProvider(LedgerService).useValue(mock.ledger);
   if (mock.balances) builder = builder.overrideProvider(BalanceService).useValue(mock.balances);
   if (mock.billing) builder = builder.overrideProvider(BillingService).useValue(mock.billing);
@@ -79,5 +88,5 @@ export async function buildApp(
   const app = mod.createNestApplication<NestFastifyApplication>(adapter, { rawBody: true });
   await app.init();
   await app.getHttpAdapter().getInstance().ready();
-  return { app, routes, provider, dbTouched };
+  return { app, routes, provider, dbTouched, auth };
 }
