@@ -1,0 +1,4 @@
+# Keep transient Claude Code agent worktrees out of the Nx project graph.
+# Each worktree under .claude/worktrees/ contains a full copy of the workspace;
+# without this, Nx raises MultipleProjectsWithSameNameError while agents run.
+.claude

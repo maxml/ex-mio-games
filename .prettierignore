@@ -1,0 +1,9 @@
+node_modules
+.agents
+.claude
+.codex
+.vscode
+.next
+dist
+coverage
+pnpm-lock.yaml

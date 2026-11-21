@@ -1,33 +1,35 @@
-# dependencies and builds
-node_modules/
-dist/
-build/
-.next/
-out/
-coverage/
-.nx/
-.turbo/
-storybook-static/
-playwright-report/
-test-results/
+node_modules
+.pnpm-store
+.nx
+dist
+coverage
+.next
+out
+tmp
+storybook-static
 
-# env and secrets (never commit)
+# Playwright e2e output (reports, traces, last-run marker)
+test-results
+playwright-report
+.last-run.json
+vitest.config.*.timestamp*
+
 .env
-.env.*
-!.env.example
-!**/.env.example
-*.pem
-*.key
-*.p12
-*.crt
-service-account*.json
-*-credentials.json
+.env.local
+.env.*.local
 
-# local tooling and agent state
-.claude/settings.local.json
-.idea/
-.vscode/*
-!.vscode/extensions.json
-.DS_Store
 *.log
-tmp/
+*.tsbuildinfo
+.DS_Store
+.idea
+.vscode
+vite.config.*.timestamp*
+
+# Claude Code agent worktrees (transient; each is its own git worktree)
+.claude/
+
+# husky regenerates its hook wrappers under .husky/_/ on install and drops its own
+# _/.gitignore there. Track that ignore here too so a fresh clone or a copy made
+# before that file exists (e.g. an rsync of the skeleton) never stages the
+# generated wrappers. Only .husky/pre-commit is tracked.
+.husky/_/

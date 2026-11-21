@@ -1,0 +1,30 @@
+# Files AI agents should keep out of context (noise, generated, or secret).
+# Canonical AI-ignore for this repo; tool-specific files (.cursorignore,
+# .aiexclude, .codeiumignore) can copy or symlink this.
+
+# Dependencies & package manager
+node_modules
+.pnpm-store
+pnpm-lock.yaml
+
+# Build output & caches
+dist
+.next
+out
+coverage
+.nx
+tmp
+*.tsbuildinfo
+
+# Generated code (edit the source/schema, not these)
+**/.prisma
+**/generated
+
+# Secrets & local env
+.env
+.env.local
+.env.*.local
+
+# Misc
+*.log
+.DS_Store

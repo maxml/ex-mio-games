@@ -1,0 +1,52 @@
+services:
+  postgres:
+    image: postgres:16
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ex_mio
+      POSTGRES_USER: starter
+      POSTGRES_PASSWORD: starter
+    ports:
+      - '${POSTGRES_PORT:-5432}:5432'
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U starter -d ex_mio']
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  cloudbeaver:
+    image: dbeaver/cloudbeaver:24.3
+    restart: unless-stopped
+    ports:
+      - '${CLOUDBEAVER_PORT:-8081}:8978'
+    volumes:
+      - cloudbeaver_data:/opt/cloudbeaver/workspace
+    # On Linux, host.docker.internal is not defined by default. Map it to the
+    # host gateway so CloudBeaver reaches Postgres at host.docker.internal:5432
+    # (the host-published port) — the same address works on macOS/Windows too.
+    extra_hosts:
+      - 'host.docker.internal:host-gateway'
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  redis:
+    image: redis:7
+    restart: unless-stopped
+    command: ['redis-server', '--appendonly', 'yes', '--maxmemory-policy', 'noeviction']
+    ports:
+      - '${REDIS_PORT:-6379}:6379'
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+volumes:
+  postgres_data:
+  cloudbeaver_data:
+  redis_data:

@@ -1,0 +1,67 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+# Deterministic least-privilege token. nrwl/nx-set-shas reads the last successful
+# run through the Actions API (needs actions:read); nothing here writes the repo.
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  ci:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16
+        ports:
+          - 5432:5432
+        env:
+          POSTGRES_DB: ex_mio_ci
+          POSTGRES_USER: starter
+          POSTGRES_PASSWORD: starter
+        options: >-
+          --health-cmd "pg_isready -U starter -d ex_mio_ci"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 20
+
+    env:
+      DATABASE_URL: postgresql://starter:starter@localhost:5432/ex_mio_ci?sslmode=disable
+
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - uses: nrwl/nx-set-shas@v5
+
+      # pnpm version comes from package.json "packageManager".
+      # action-setup@v6 errors if a version is also given here.
+      - uses: pnpm/action-setup@v6
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - uses: actions/cache@v6
+        with:
+          path: .nx/cache
+          key: nx-${{ runner.os }}-${{ github.sha }}
+          restore-keys: nx-${{ runner.os }}-
+
+      - run: pnpm nx format:check --base=$NX_BASE --head=$NX_HEAD
+
+      - run: pnpm nx affected -t lint build test

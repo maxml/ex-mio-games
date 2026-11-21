@@ -1,0 +1,47 @@
+{
+  "schemaVersion": 8,
+  "generatedAt": "2026-11-21T14:15:11.248Z",
+  "project": {
+    "displayName": "ex-mio-games",
+    "packageName": "ex-mio",
+    "author": "maxml",
+    "contactEmail": "",
+    "license": "MIT",
+    "workspaceScope": "@ex-mio"
+  },
+  "api": {
+    "framework": "nestjs"
+  },
+  "auth": {
+    "provider": "firebase"
+  },
+  "database": {
+    "provider": "typeorm-postgres",
+    "productionTlsRequired": true
+  },
+  "redis": {
+    "enabled": true
+  },
+  "realtime": {
+    "enabled": true
+  },
+  "storage": {
+    "enabled": false,
+    "driver": "local"
+  },
+  "queue": {
+    "enabled": false
+  },
+  "deckhand": {
+    "enabled": true
+  },
+  "telemetry": {
+    "enabled": true
+  },
+  "tooling": {
+    "ci": "github-actions",
+    "containerization": "docker",
+    "huskyLintStaged": true,
+    "snyk": false
+  }
+}

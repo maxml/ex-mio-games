@@ -1,0 +1,7 @@
+# Snyk policy file.
+# Use time-boxed ignores (with an `expires` date) for findings that have no fix
+# yet — never permanent exceptions. Re-review on expiry.
+# Docs: https://docs.snyk.io/snyk-cli/test-for-vulnerabilities/the-.snyk-file
+version: v1.25.0
+ignore: {}
+patch: {}
