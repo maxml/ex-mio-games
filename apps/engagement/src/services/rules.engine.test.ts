@@ -11,6 +11,8 @@ import { evaluateRules } from './rules.engine'; // RED: module missing
  *  - `>=` -> `>` on min_amount_minor           -> INV-RULE-THRESHOLD (exact-threshold row).
  *  - ignore `currency`                          -> INV-RULE-CONDITIONS.
  *  - evaluate the newest version, not the one active at occurred_at -> INV-RULE-VERSION-AT-TIME.
+ *  - fire every version active at occurred_at (no per-rule_id highest-version pick)
+ *                                               -> INV-RULE-ONE-VERSION.
  *  - ignore max_grants_per_player               -> INV-RULE-CAP.
  *  - mutate the inputs / read Date.now()        -> INV-RULE-PURE.
  */
@@ -97,7 +99,25 @@ describe('evaluateRules', () => {
     expect(g('2026-11-10T00:00:00.000Z')).toEqual([
       { rule_id: 'r1', rule_version: 2, wheel_id: W, spins: 5 },
     ]);
-    expect(g('2026-11-12T00:00:00.000Z')[0]?.rule_version).toBe(2);
+    expect(g('2026-11-12T00:00:00.000Z')).toEqual([
+      { rule_id: 'r1', rule_version: 2, wheel_id: W, spins: 5 },
+    ]);
+  });
+
+  it('INV-RULE-ONE-VERSION: when two versions of one rule are active at occurred_at, only the highest version grants (no double grant)', () => {
+    // v1 was never closed (active_to null); v2 starts 11-10 and overlaps it
+    const v1 = rule('r1', 1, def({ spins: 1, active_from: '2026-11-01T00:00:00.000Z' }));
+    const v2 = rule('r1', 2, def({ spins: 5, active_from: '2026-11-10T00:00:00.000Z' }));
+    const at = (s: string, rules = [v1, v2]) => evaluateRules(rules, event({ occurred_at: s }), {});
+    expect(at('2026-11-12T00:00:00.000Z')).toEqual([
+      { rule_id: 'r1', rule_version: 2, wheel_id: W, spins: 5 },
+    ]);
+    expect(at('2026-11-12T00:00:00.000Z', [v2, v1])).toEqual([
+      { rule_id: 'r1', rule_version: 2, wheel_id: W, spins: 5 },
+    ]); // input order does not matter
+    expect(at('2026-11-05T00:00:00.000Z')).toEqual([
+      { rule_id: 'r1', rule_version: 1, wheel_id: W, spins: 1 },
+    ]);
   });
 
   it('INV-RULE-CAP: a rule that already fired max_grants_per_player times for the player grants nothing', () => {

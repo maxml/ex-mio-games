@@ -7,6 +7,7 @@ import type {
   Transport,
   TransportRequest,
 } from './adapter';
+import { IssueResult, RewardStatus } from '@ex-mio/contracts'; // the single port (D-2)
 import { createAdapterRegistry, createDefaultRegistry } from './registry'; // RED: module missing
 
 /**
@@ -21,6 +22,15 @@ import { createAdapterRegistry, createDefaultRegistry } from './registry'; // RE
  *  - issueReward: classify a timeout as `rejected` -> INV-ADAPTER-TIMEOUT-UNKNOWN.
  *  - getRewardStatus: look up by the casino reference, not our key -> INV-ADAPTER-LOST-REPLY.
  *  - register(): skip the recoveryMode check -> INV-REGISTRY-RECOVERY-MODE.
+ *  - getRewardStatus: map a transport error, timeout or 5xx to `not_found` or `rejected`, or let it
+ *    throw -> INV-ADAPTER-STATUS-UNKNOWN (a `not_found` after a lost reply leads to a refund while the
+ *    casino issued the bonus).
+ *  - casino B: map the ticket state PENDING to `rejected` (or `issued`) -> INV-ADAPTER-PENDING.
+ *
+ * Result shapes are the single port in packages/contracts/src/casino-adapter.ts (decision D-2):
+ * issued{external_ref} | pending{external_ref?} | rejected{reason} | unknown, and for a status lookup
+ * issued | pending | rejected | not_found | unknown. Every result below is also parsed with the zod
+ * schemas of that port, so a field named `reference` or `code` fails.
  */
 
 const NOW = new Date('2026-11-21T12:00:00.000Z');
@@ -50,8 +60,11 @@ interface FakeCasino {
 interface FakeOpts {
   dropReply?: boolean;
   reject?: boolean;
+  pending?: boolean; // casino B only: the ticket stays PENDING (GET returns {state:'PENDING'})
 }
 interface Profile {
+  /** true: the casino answers an issue with a ticket first (async); false: synchronous, never `pending`. */
+  async: boolean;
   webhook(o: WebhookOpts): Built;
   rawBody(raw: string, secret: string, at: Date): Built; // arbitrary body, validly signed
   expectedCanonical(o: { id: string; player: string; amount: number; at: Date }): object;
@@ -60,6 +73,7 @@ interface Profile {
 
 const PROFILES: Record<string, Profile> = {
   'casino-a': {
+    async: false,
     webhook: (o) => {
       const at = o.at ?? NOW;
       const ts = Math.floor(at.getTime() / 1000);
@@ -113,6 +127,7 @@ const PROFILES: Record<string, Profile> = {
     },
   },
   'casino-b': {
+    async: true,
     webhook: (o) => {
       const at = o.at ?? NOW;
       const data = {
@@ -172,10 +187,12 @@ const PROFILES: Record<string, Profile> = {
           return { status: 202, body: { ticket: tickets.get(key) } };
         }
         const m = /\/casino-b\/v2\/rewards\/(T-\d+)$/.exec(req.url);
-        if (req.method === 'GET' && m)
+        if (req.method === 'GET' && m) {
+          if (o.pending) return { status: 200, body: { state: 'PENDING' } };
           return o.reject
             ? { status: 200, body: { state: 'FAILED', code: 'LIMIT_REACHED' } }
             : { status: 200, body: { state: 'DONE', reward_ref: `R-${m[1]}` } };
+        }
         return { status: 404, body: {} };
       };
       return { transport, issuedCount: () => tickets.size };
@@ -313,8 +330,28 @@ describe.each(
     const casino = profile!.fake();
     const a = entry.create(cfg(casino.transport));
     const r = await a.issueReward(REQUEST, 'redeem:r1');
-    expect(['issued', 'pending']).toContain(r.kind);
+    expect(IssueResult.safeParse(r).success).toBe(true);
+    // a synchronous casino answers `issued`; only an async casino may answer `pending`
+    expect(profile!.async ? ['issued', 'pending'] : ['issued']).toContain(r.kind);
     await a.issueReward(REQUEST, 'redeem:r1'); // same key again
+    expect(casino.issuedCount()).toBe(1);
+  });
+
+  it('INV-ADAPTER-PENDING: an async ticket that is still PENDING is `pending` on issue and on status, never rejected or issued', async () => {
+    if (!profile!.async) {
+      // casino A is synchronous: a successful issue is `issued` and `pending` is never returned
+      const a = entry.create(cfg(profile!.fake().transport));
+      expect((await a.issueReward(REQUEST, 'redeem:p0')).kind).toBe('issued');
+      expect((await a.getRewardStatus('redeem:p0', REQUEST)).kind).toBe('issued');
+      return;
+    }
+    const casino = profile!.fake({ pending: true });
+    const a = entry.create(cfg(casino.transport));
+    const issued = await a.issueReward(REQUEST, 'redeem:p1');
+    expect(issued).toEqual({ kind: 'pending', external_ref: expect.any(String) }); // the ticket
+    const status = await a.getRewardStatus('redeem:p1', REQUEST);
+    expect(RewardStatus.safeParse(status).success).toBe(true);
+    expect(status.kind).toBe('pending');
     expect(casino.issuedCount()).toBe(1);
   });
 
@@ -325,9 +362,34 @@ describe.each(
     expect(r).toEqual({ kind: 'unknown' });
     expect(casino.issuedCount()).toBe(1);
     const status = await a.getRewardStatus('redeem:r2', REQUEST);
+    expect(RewardStatus.safeParse(status).success).toBe(true);
     expect(status.kind).toBe('issued');
-    expect((status as { reference: string }).reference).toEqual(expect.any(String));
+    expect((status as { external_ref: string }).external_ref).toEqual(expect.any(String));
     expect(casino.issuedCount()).toBe(1);
+  });
+
+  it('INV-ADAPTER-STATUS-UNKNOWN: a status lookup that hangs, throws or gets a 5xx is `unknown`, never a throw, not_found or rejected', async () => {
+    const hang: Transport = () => new Promise(() => undefined);
+    const boom: Transport = async () => {
+      throw new Error('ECONNRESET');
+    };
+    const fiveHundred: Transport = async () => ({ status: 500, body: {} });
+    const bad502: Transport = async () => ({ status: 502, body: 'bad gateway' });
+    for (const [name, transport] of [
+      ['hang', hang],
+      ['throw', boom],
+      ['500', fiveHundred],
+      ['502', bad502],
+    ] as const) {
+      const a = entry.create(cfg(transport, { timeoutMs: 20 }));
+      let status: RewardStatus | undefined;
+      await expect(
+        (async () => {
+          status = await a.getRewardStatus('redeem:u1', REQUEST);
+        })(),
+      ).resolves.toBeUndefined();
+      expect([name, status]).toEqual([name, { kind: 'unknown' }]);
+    }
   });
 
   it('INV-ADAPTER-TIMEOUT-UNKNOWN: a hung casino is `unknown`, never a rejection', async () => {
@@ -352,7 +414,8 @@ describe.each(
     const r = await a.issueReward(REQUEST, 'redeem:r4');
     const s = r.kind === 'rejected' ? r : await a.getRewardStatus('redeem:r4', REQUEST);
     expect(s.kind).toBe('rejected');
-    expect((s as { code: string }).code).toEqual(expect.any(String));
+    expect((s as { reason: string }).reason).toEqual(expect.any(String));
+    expect(RewardStatus.safeParse(s).success).toBe(true);
   });
 
   it('INV-ADAPTER-STATUS-UNKNOWN-KEY: a native-lookup adapter reports not_found for a key it never sent', async () => {

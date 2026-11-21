@@ -1,7 +1,7 @@
 import 'reflect-metadata';
-import { ConflictException, NotFoundException } from '@nestjs/common';
+import { ConflictException, NotFoundException, UnprocessableEntityException } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
-import { parseEvent, type EventEnvelope } from '@ex-mio/contracts';
+import { PublicWheel, parseEvent, type EventEnvelope } from '@ex-mio/contracts';
 import { Db } from '@ex-mio/service-kit';
 import { runWithTenant } from '@ex-mio/tenancy';
 import {
@@ -10,6 +10,7 @@ import {
   SpinsRepository,
   WheelsRepository,
   type RewardTableVersion,
+  type SeedProvider,
   type SpinCredit,
   type SpinRecord,
 } from '../model/repositories';
@@ -28,6 +29,18 @@ import { selectSegment } from './wheel'; // RED: module missing
  *  - insert the spin and publish in two transactions                     -> INV-SPIN-ATOMIC.
  *  - skip findByOperation (replay consumes a second credit)              -> INV-SPIN-REPLAY.
  *  - publish no event for a `nothing` segment                            -> INV-SPIN-EVENT (payments needs the spin).
+ *  - call a payments HTTP credit endpoint from the spin path             -> INV-SPIN-NO-CREDIT-CALL (D-1:
+ *    payments owns coins and consumes spin.completed; engagement only writes the outbox row).
+ *  - consume the credit and insert the spin without the UNIQUE/idempotency serialisation
+ *    -> INV-SPIN-REPLAY-PARALLEL (the mock Db rolls a failed transaction back, like Postgres).
+ *  - same key with another credit_id returns the old spin instead of 422  -> INV-SPIN-REPLAY-BODY.
+ *  - return the table as stored from SpinService.wheel                   -> INV-WHEEL-PUBLIC-NO-WEIGHTS (service).
+ *  - recompute (or store) with the current seed instead of the seed of the stored version
+ *                                                                        -> INV-SPIN-RECOMPUTE-AFTER-ROTATION.
+ *
+ * The in-memory consume() is atomic by construction (no await between find and set), so this file
+ * cannot see a read-then-write race; that race, the one-row limit and ownership with a dropped
+ * `user_id` are pinned in SQL by tests/compose/src/ingest.compose.test.ts.
  */
 
 const T = '0190a1b2-c3d4-4e5f-8a6b-000000000001';
@@ -45,6 +58,12 @@ const TABLE: RewardTableVersion = {
   ],
 };
 
+/** The mock transaction handle: a number and an undo log applied when the transaction throws. */
+interface Tx {
+  n: number;
+  undo: Array<() => void>;
+}
+
 describe('SpinService', () => {
   let service: SpinService;
   let credits: Map<string, SpinCredit>;
@@ -53,6 +72,9 @@ describe('SpinService', () => {
   let txs: unknown[];
   let consumeInputs: Array<{ userId: string; creditId?: string }>;
   let table: RewardTableVersion;
+  let currentSeedVersion: number;
+  let seedsPort: SeedProvider;
+  const SEED_BY_VERSION: Record<number, string> = { 1: 'seed-v1', 2: 'seed-v2' };
 
   beforeEach(async () => {
     credits = new Map();
@@ -61,9 +83,10 @@ describe('SpinService', () => {
     txs = [];
     consumeInputs = [];
     table = TABLE;
+    currentSeedVersion = 2;
     const creditsRepo = {
       // the atomic conditional update: first caller flips it, everyone else gets undefined
-      async consume(_tx: unknown, input: { userId: string; creditId?: string }) {
+      async consume(tx: unknown, input: { userId: string; creditId?: string }) {
         consumeInputs.push(input);
         const hit = [...credits.values()].find(
           (c) =>
@@ -73,6 +96,7 @@ describe('SpinService', () => {
         );
         if (!hit) return undefined;
         hit.status = 'used';
+        (tx as Tx).undo.push(() => void (hit.status = 'available'));
         return { ...hit };
       },
       async findOwn(_tx: unknown, input: { userId: string; creditId: string }) {
@@ -84,8 +108,14 @@ describe('SpinService', () => {
       async findByOperation(_tx: unknown, i: { userId: string; operationId: string }) {
         return spins.get(`${i.userId}|${i.operationId}`);
       },
-      async insert(_tx: unknown, s: SpinRecord) {
+      async insert(tx: unknown, s: SpinRecord) {
+        // models UNIQUE (tenant_id, user_id, operation_id): a second insert is a unique violation
+        if (spins.has(`${s.userId}|${s.operationId}`))
+          throw Object.assign(new Error('duplicate key value violates unique constraint'), {
+            code: '23505',
+          });
         spins.set(`${s.userId}|${s.operationId}`, s);
+        (tx as Tx).undo.push(() => void spins.delete(`${s.userId}|${s.operationId}`));
       },
     };
     const mod = await Test.createTestingModule({
@@ -94,10 +124,19 @@ describe('SpinService', () => {
         {
           provide: Db,
           useValue: {
+            // a transaction that throws is rolled back: its own credit updates, spin rows and
+            // outbox rows revert (an undo log per transaction; other transactions are untouched)
             tenantTx: async (fn: (tx: unknown) => unknown) => {
-              const tx = { n: txs.length + 1 };
+              const tx: Tx = { n: txs.length + 1, undo: [] };
               txs.push(tx);
-              return fn(tx);
+              try {
+                return await fn(tx);
+              } catch (e) {
+                tx.undo.reverse().forEach((u) => u());
+                for (let i = published.length - 1; i >= 0; i--)
+                  if (published[i]!.tx === tx) published.splice(i, 1);
+                throw e;
+              }
             },
             publish: async (tx: unknown, event: EventEnvelope) =>
               void published.push({ tx, event }),
@@ -106,10 +145,24 @@ describe('SpinService', () => {
         { provide: SpinCreditsRepository, useValue: creditsRepo },
         { provide: SpinsRepository, useValue: spinsRepo },
         { provide: WheelsRepository, useValue: { activeTable: async () => table } },
-        { provide: SEEDS, useValue: { current: () => ({ version: 2, seed: 'seed-v2' }) } },
+        {
+          provide: SEEDS,
+          useValue: {
+            current: () => ({
+              version: currentSeedVersion,
+              seed: SEED_BY_VERSION[currentSeedVersion],
+            }),
+            seed: (_tenantId: string, version: number) => {
+              const s = SEED_BY_VERSION[version];
+              if (!s) throw new Error(`no seed v${version}`);
+              return s;
+            },
+          },
+        },
       ],
     }).compile();
     service = mod.get(SpinService);
+    seedsPort = mod.get<SeedProvider>(SEEDS);
   });
 
   const asPlayer = <R>(user: string, fn: () => Promise<R>) =>
@@ -151,6 +204,17 @@ describe('SpinService', () => {
     ).rejects.toBeInstanceOf(NotFoundException);
     expect(credits.get(credit(9))?.status).toBe('available');
     expect(spins.size).toBe(0);
+    expect(consumeInputs.length).toBeGreaterThan(0); // `every` over an empty list is vacuously true
+    expect(consumeInputs.every((i) => i.userId === A)).toBe(true);
+  });
+
+  it("INV-SPIN-OWNERSHIP: without a credit id the player consumes only their own credit, never another player's", async () => {
+    addCredit(credit(9), B);
+    await expect(asPlayer(A, () => service.spin({ idempotencyKey: 'k1' }))).rejects.toBeInstanceOf(
+      ConflictException,
+    );
+    expect(credits.get(credit(9))?.status).toBe('available');
+    expect(consumeInputs.length).toBeGreaterThan(0);
     expect(consumeInputs.every((i) => i.userId === A)).toBe(true);
   });
 
@@ -183,7 +247,7 @@ describe('SpinService', () => {
     expect(published.every((p) => p.tx === txs[0])).toBe(true);
   });
 
-  it('INV-SPIN-EVENT: spin.completed carries spin_id, the player and the reward coins (payments keys on spin_id)', async () => {
+  it('INV-SPIN-EVENT: spin.completed carries spin_id, the player, the reward coins and the table version (payments keys on spin_id)', async () => {
     addCredit(credit(1), A);
     const res = await asPlayer(A, () => service.spin({ idempotencyKey: 'k1' }));
     const ev = parseEvent(published[0]!.event);
@@ -193,7 +257,22 @@ describe('SpinService', () => {
       spin_id: res.spin_id,
       player_id: A,
       reward_coins: res.reward_coins,
+      table_version: 6,
     });
+  });
+
+  it('INV-SPIN-NO-CREDIT-CALL: the spin path makes no HTTP call; coins come from payments consuming spin.completed (D-1)', async () => {
+    const fetchSpy = jest.spyOn(globalThis, 'fetch').mockImplementation(async () => {
+      throw new Error('the spin path must not call payments over HTTP');
+    });
+    try {
+      addCredit(credit(1), A);
+      await asPlayer(A, () => service.spin({ idempotencyKey: 'k1' }));
+      expect(fetchSpy).not.toHaveBeenCalled();
+      expect(published.map((p) => p.event.type)).toEqual(['engagement.spin.completed']);
+    } finally {
+      fetchSpy.mockRestore();
+    }
   });
 
   it('INV-SPIN-NOTHING: a `nothing` segment still completes the spin with 0 coins', async () => {
@@ -222,5 +301,93 @@ describe('SpinService', () => {
     const b = await asPlayer(B, () => service.spin({ idempotencyKey: 'same' }));
     expect(b.spin_id).not.toBe(a.spin_id);
     expect(spins.size).toBe(2);
+  });
+
+  it('INV-SPIN-REPLAY-PARALLEL: 20 parallel requests with one key and two credits give one spin and one used credit; the others replay it or get 409', async () => {
+    addCredit(credit(1), A);
+    addCredit(credit(2), A);
+    const results = await Promise.allSettled(
+      Array.from({ length: 20 }, () => asPlayer(A, () => service.spin({ idempotencyKey: 'same' }))),
+    );
+    const ok = results.filter(
+      (r): r is PromiseFulfilledResult<Awaited<ReturnType<SpinService['spin']>>> =>
+        r.status === 'fulfilled',
+    );
+    const failed = results.filter((r): r is PromiseRejectedResult => r.status === 'rejected');
+    expect(ok.length).toBeGreaterThan(0);
+    expect(new Set(ok.map((r) => r.value.spin_id)).size).toBe(1);
+    expect(failed.every((f) => f.reason instanceof ConflictException)).toBe(true); // in progress: retryable
+    expect(spins.size).toBe(1);
+    expect([...credits.values()].filter((c) => c.status === 'used')).toHaveLength(1);
+    expect(published.filter((p) => p.event.type === 'engagement.spin.completed')).toHaveLength(1);
+    // a later replay returns the stored result
+    const later = await asPlayer(A, () => service.spin({ idempotencyKey: 'same' }));
+    expect(later.spin_id).toBe(ok[0]!.value.spin_id);
+    expect(spins.size).toBe(1);
+  });
+
+  it('INV-SPIN-REPLAY-BODY: the same key with a different credit_id is 422 and changes nothing', async () => {
+    addCredit(credit(1), A);
+    addCredit(credit(2), A);
+    const first = await asPlayer(A, () =>
+      service.spin({ idempotencyKey: 'same', creditId: credit(1) }),
+    );
+    await expect(
+      asPlayer(A, () => service.spin({ idempotencyKey: 'same', creditId: credit(2) })),
+    ).rejects.toBeInstanceOf(UnprocessableEntityException);
+    expect(credits.get(credit(2))?.status).toBe('available');
+    expect(spins.size).toBe(1);
+    const again = await asPlayer(A, () =>
+      service.spin({ idempotencyKey: 'same', creditId: credit(1) }),
+    );
+    expect(again).toEqual(first);
+  });
+
+  it('INV-WHEEL-PUBLIC-NO-WEIGHTS (service): SpinService.wheel returns labels only, built from the stored table, and 404 for an unknown wheel', async () => {
+    const view = await asPlayer(A, () => service.wheel(WHEEL));
+    expect(PublicWheel.safeParse(view).success).toBe(true);
+    expect(view.wheel_id).toBe(WHEEL);
+    expect(view.segments.map((s) => s.label)).toEqual(['Win', 'Nothing']);
+    expect(JSON.stringify(view)).not.toMatch(/weight|seed|version|reward|amount/i);
+    table = undefined as unknown as RewardTableVersion;
+    await expect(asPlayer(A, () => service.wheel(WHEEL))).rejects.toBeInstanceOf(NotFoundException);
+  });
+
+  it('INV-SPIN-RECOMPUTE-AFTER-ROTATION: a spin stored under seed v1 is recomputed from seed v1 after the current seed moved to v2', async () => {
+    currentSeedVersion = 1;
+    addCredit(credit(1), A);
+    const old = await asPlayer(A, () => service.spin({ idempotencyKey: 'old' }));
+    const stored = spins.get(`${A}|old`)!;
+    expect(stored.seedVersion).toBe(1);
+    currentSeedVersion = 2; // rotation
+    addCredit(credit(2), A);
+    const fresh = await asPlayer(A, () => service.spin({ idempotencyKey: 'new' }));
+    expect(spins.get(`${A}|new`)!.seedVersion).toBe(2);
+    expect(spins.get(`${A}|old`)).toEqual(stored); // the old record is untouched by the rotation
+
+    const seeds = seedsPort;
+    const byVersion = selectSegment({
+      seed: seeds.seed(T, stored.seedVersion), // by the STORED version, not current()
+      seedVersion: stored.seedVersion,
+      spinId: old.spin_id,
+      table: TABLE,
+    });
+    expect(byVersion.hmac).toBe(stored.hmac);
+    expect(byVersion.segmentIndex).toBe(stored.segmentIndex);
+    const withCurrent = selectSegment({
+      seed: seeds.current(T).seed,
+      seedVersion: 2,
+      spinId: old.spin_id,
+      table: TABLE,
+    });
+    expect(withCurrent.hmac).not.toBe(stored.hmac); // the current seed would NOT reproduce it
+    expect(spins.get(`${A}|new`)!.hmac).toBe(
+      selectSegment({
+        seed: SEED_BY_VERSION[2]!,
+        seedVersion: 2,
+        spinId: fresh.spin_id,
+        table: TABLE,
+      }).hmac,
+    );
   });
 });

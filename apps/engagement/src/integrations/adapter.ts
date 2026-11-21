@@ -1,4 +1,4 @@
-import type { CanonicalDepositEvent } from '@ex-mio/contracts';
+import type { CanonicalDepositEvent, CasinoRewardPort } from '@ex-mio/contracts';
 
 // STAGE A STUB: types only, no behaviour. Specified in docs/specs/engagement-ingest.md section 3.
 
@@ -28,37 +28,19 @@ export type ParseResult =
   | { kind: 'ignored' } // a well-formed event we do not act on (unknown type, status not successful)
   | { kind: 'rejected'; reason: 'malformed_json' | 'schema_invalid' };
 
-export interface RewardRequest {
-  external_player_id: string;
-  reward: { type: string; amount_minor: number; currency: string };
-}
+// The reward side (RewardRequest, IssueResult, RewardStatus, CasinoRewardPort) is the single port in
+// packages/contracts/src/casino-adapter.ts (decision D-2). Re-exported here for the adapters' imports.
+export type { IssueResult, RewardRequest, RewardStatus } from '@ex-mio/contracts';
 
-export type IssueResult =
-  | { kind: 'issued'; reference: string }
-  | { kind: 'rejected'; code: string } // final business rejection
-  | { kind: 'pending'; reference: string } // accepted, not yet final (async casino)
-  | { kind: 'unknown' }; // timeout or transport failure: the reward may or may not exist
-
-export type RewardStatus =
-  | { kind: 'issued'; reference: string }
-  | { kind: 'rejected'; code: string }
-  | { kind: 'pending' }
-  | { kind: 'not_found' };
-
-export interface CasinoAdapter {
+export interface CasinoAdapter extends CasinoRewardPort {
   /** Pure. `now` is injected so the window is testable. Never throws. */
   verifySignature(raw: string, headers: Headers, secret: string, now: Date): SignatureVerdict;
   /** Pure. Called only after a signature verified. Never throws. */
   parseEvent(raw: string, headers: Headers): ParseResult;
-  /** Never throws: timeout and transport errors are `{kind:'unknown'}`. */
-  issueReward(request: RewardRequest, idempotencyKey: string): Promise<IssueResult>;
-  /**
-   * Looks up by OUR key, never by the casino's reference alone. `request` is the frozen request
-   * the key was first used with: an `idempotent_replay` adapter re-sends it with the same key
-   * (the casino returns the original result and issues nothing new); a `native_lookup` adapter
-   * ignores it and returns `not_found` for a key the casino has never seen.
-   */
-  getRewardStatus(idempotencyKey: string, request: RewardRequest): Promise<RewardStatus>;
+  // issueReward and getRewardStatus come from CasinoRewardPort. Neither throws: timeout and
+  // transport errors are `{kind:'unknown'}`, for the status lookup as well. An `idempotent_replay`
+  // adapter re-sends the frozen request with the same key; a `native_lookup` adapter ignores it and
+  // returns `not_found` for a key the casino has never seen.
 }
 
 export interface AdapterConfig {

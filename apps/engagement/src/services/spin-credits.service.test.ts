@@ -25,6 +25,9 @@ import { SpinCreditsService } from './spin-credits.service'; // RED: module miss
  *  - publish spin.granted for rows the repository did NOT insert -> INV-CRED-ONCE.
  *  - take user_id from the event / external id instead of the directory -> INV-CRED-PLAYER-MAPPED.
  *  - publish with a second transaction -> INV-CRED-ATOMIC.
+ *  - pass `{}` (or another player's counts) to evaluateRules instead of priorGrantCounts(tx, user)
+ *    -> INV-CRED-CAP-WIRED. The cap is best effort under concurrency (two deposits of one player
+ *    processed in parallel can both pass it; spec section 6): only the sequential case is pinned.
  */
 
 const T = '0190a1b2-c3d4-4e5f-8a6b-7c8d9e0f1a2b';
@@ -68,9 +71,12 @@ describe('SpinCreditsService.onDepositConfirmed', () => {
   const grantTx: unknown[] = [];
   const published: Array<{ tx: unknown; event: EventEnvelope }> = [];
   const resolveOrCreate = jest.fn(async () => USER);
+  let priorCounts: Record<string, number>;
+  const priorGrantCounts = jest.fn(async (_tx: unknown, _userId: string) => priorCounts);
   let rules: StoredRule[];
 
   beforeEach(async () => {
+    priorCounts = {};
     stored.clear();
     grantTx.length = 0;
     published.length = 0;
@@ -102,7 +108,7 @@ describe('SpinCreditsService.onDepositConfirmed', () => {
         },
         {
           provide: RulesRepository,
-          useValue: { listRules: async () => rules, priorGrantCounts: async () => ({}) },
+          useValue: { listRules: async () => rules, priorGrantCounts },
         },
         { provide: SpinCreditsRepository, useValue: credits },
         { provide: PLAYER_DIRECTORY, useValue: { resolveOrCreate } },
@@ -139,6 +145,23 @@ describe('SpinCreditsService.onDepositConfirmed', () => {
     await service.onDepositConfirmed(TX as never, depositEvent(999));
     expect(stored.size).toBe(0);
     expect(published).toHaveLength(0);
+  });
+
+  it('INV-CRED-CAP-WIRED: the per-player grant counts of the resolved player reach the rules engine, so a capped rule grants nothing', async () => {
+    rules = [
+      {
+        ...rule(3),
+        definition: { ...rule(3).definition, max_grants_per_player: 1 },
+      },
+    ];
+    priorCounts = { 'rule-1': 1 }; // the player already got this rule once
+    await service.onDepositConfirmed(TX as never, depositEvent());
+    expect(priorGrantCounts).toHaveBeenCalledWith(TX, USER); // keyed by the identity-resolved player
+    expect(stored.size).toBe(0);
+    expect(published).toHaveLength(0);
+    priorCounts = {};
+    await service.onDepositConfirmed(TX as never, depositEvent());
+    expect(stored.size).toBe(3); // below the cap it grants
   });
 
   it('INV-CRED-ATOMIC: credits and spin.granted are written with the same transaction handle', async () => {

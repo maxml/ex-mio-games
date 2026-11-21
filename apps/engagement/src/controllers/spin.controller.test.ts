@@ -13,7 +13,10 @@ import { SpinService } from '../services/spin.service'; // RED: module missing
  * Mutations:
  *  - drop `.strict()` / use the loose parse on the body         -> INV-SPIN-NO-CHOICE.
  *  - read the user id from the body or a query param            -> INV-SPIN-PRINCIPAL-ONLY.
- *  - return the table as stored from GET /v1/wheel              -> INV-WHEEL-PUBLIC-NO-WEIGHTS.
+ *  - return the service result without parsing it with PublicWheel from GET /v1/wheel
+ *    (the service mock returns a weight-bearing object in the second wheel test)
+ *                                                               -> INV-WHEEL-PUBLIC-NO-WEIGHTS.
+ *    SpinService.wheel itself is pinned in services/spin.service.test.ts.
  */
 
 const T = '0190a1b2-c3d4-4e5f-8a6b-000000000001';
@@ -93,5 +96,21 @@ describe('spin controller', () => {
     expect(res.statusCode).toBe(200);
     expect(PublicWheel.safeParse(res.json()).success).toBe(true);
     expect(res.body).not.toMatch(/weight|seed|version/i);
+  });
+
+  it('INV-WHEEL-PUBLIC-NO-WEIGHTS: the controller parses what the service returns with PublicWheel; a weight-bearing object never reaches the client', async () => {
+    // the service (wrongly) returns the stored table: weights, version and all
+    wheel.mockResolvedValueOnce({
+      wheel_id: WHEEL,
+      version: 3,
+      seed: 'server-seed',
+      segments: [
+        { label: 'Win', weight: 1, reward: { type: 'coins', amount: 25 } },
+        { label: 'Nothing', weight: 999, reward: { type: 'nothing' } },
+      ],
+    } as never);
+    const res = await app.inject({ method: 'GET', url: `/v1/wheel/${WHEEL}`, headers });
+    expect(res.statusCode).toBe(500); // the output schema is strict: a leak is a server error
+    expect(res.body).not.toMatch(/weight|seed|version|999|server-seed/i);
   });
 });

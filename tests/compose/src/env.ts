@@ -14,9 +14,14 @@ export const urls = {
 
 export const PLATFORM_TOKEN = 'dev-platform-token-0000';
 
-/** A pg client logged in as one of the per-service roles (or the admin, for catalog queries). */
+/**
+ * A pg client logged in as one of the per-service roles (or the admin, for catalog queries).
+ * `database` defaults to the service's own database, or `postgres` for the admin; pass it to look
+ * at a service's catalog as the admin.
+ */
 export async function pgAs(
   role: 'identity' | 'engagement' | 'payments' | 'postgres',
+  database?: 'identity' | 'engagement' | 'payments' | 'postgres',
 ): Promise<Client> {
   const password = role === 'postgres' ? 'postgres-dev' : `${role}-dev`;
   const client = new Client({
@@ -24,7 +29,7 @@ export async function pgAs(
     port: Number(port('POSTGRES_PORT', 54329)),
     user: role,
     password,
-    database: role === 'postgres' ? 'postgres' : role,
+    database: database ?? (role === 'postgres' ? 'postgres' : role),
   });
   await client.connect();
   return client;

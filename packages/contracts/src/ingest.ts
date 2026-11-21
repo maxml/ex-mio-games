@@ -30,7 +30,7 @@ export const DepositConfirmedV1 = z.object({
   source: z.string().min(1),
   external_event_id: z.string().min(1),
   external_player_id: z.string().min(1),
-  amount_minor: z.number().int().positive(),
+  amount_minor: z.number().int().positive().safe(),
   currency: Currency,
   occurred_at: z.string().datetime(),
 });

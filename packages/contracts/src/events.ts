@@ -43,6 +43,8 @@ export const SpinCompletedV1 = z.object({
   spin_id: Uuid,
   player_id: Uuid,
   reward_coins: z.number().int().nonnegative(),
+  /** Reward table version the spin was drawn from (D-1). Optional so older producers still parse. */
+  table_version: z.number().int().positive().optional(),
 });
 
 export const RedemptionRequestedV1 = z.object({

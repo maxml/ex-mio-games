@@ -21,6 +21,12 @@ import { probabilities, selectSegment, toPublicWheel } from './wheel'; // RED: m
  *  - off-by-one in the cumulative comparison (>= for >)                 -> INV-WHEEL-DISTRIBUTION.
  *  - drop the table validation in selectSegment                         -> INV-WHEEL-REJECTS-BAD-TABLE.
  *  - toPublicWheel returns the segments as stored                       -> INV-WHEEL-PUBLIC-NO-WEIGHTS.
+ *  - recompute with another seed than the stored version's              -> INV-SPIN-RECOMPUTE-AFTER-ROTATION
+ *    (the service-level twin, with the SEEDS.seed(tenant, version) port, is in spin.service.test.ts).
+ *
+ * `WHEEL_DIST_N` sets the sample of the distribution test: default 1,000,000 (MIO-063); a loaded
+ * machine may use 200,000 (binomial sd <= 0.11 pp against the 0.5 pp bound). The oracle test, not
+ * this one, is what catches `% total`: the distribution test catches only gross bias.
  */
 
 const W = '0190a1b2-c3d4-4e5f-8a6b-7c8d9e0f1a2c';
@@ -46,6 +52,16 @@ function oracle(seed: string, spinId: string, weights: number[]): { hmac: string
     if (cum > pick) return { hmac, index: i };
   }
   throw new Error('unreachable');
+}
+
+/** Sample size of the distribution test: 1,000,000 unless WHEEL_DIST_N says otherwise (>= 200,000). */
+function distN(): number {
+  const raw = process.env.WHEEL_DIST_N;
+  if (raw === undefined || raw === '') return 1_000_000;
+  const n = Number(raw);
+  if (!Number.isInteger(n) || n < 200_000)
+    throw new Error(`WHEEL_DIST_N must be an integer >= 200000, got "${raw}"`);
+  return n;
 }
 
 const TABLE = table([
@@ -88,9 +104,11 @@ describe('wheel', () => {
     expect(r.hmac).toMatch(/^[0-9a-f]{64}$/);
   });
 
-  it('INV-WHEEL-DISTRIBUTION: over 1,000,000 spins each segment is within 0.5 pp of its weight share', () => {
+  it('INV-WHEEL-DISTRIBUTION: over WHEEL_DIST_N (default 1,000,000) spins each segment is within 0.5 pp of its weight share', () => {
     const counts = [0, 0, 0, 0];
-    const N = 1_000_000;
+    // MIO-063 asks for 1,000,000; WHEEL_DIST_N (positive integer, at least 200,000) lowers it on a
+    // loaded machine. Deterministic either way (fixed seed, ids spin-0..). Default = 1,000,000.
+    const N = distN();
     for (let i = 0; i < N; i++) {
       counts[
         selectSegment({ seed: 'dist-seed', seedVersion: 1, spinId: `spin-${i}`, table: TABLE })
@@ -102,6 +120,34 @@ describe('wheel', () => {
       expect(Math.abs((counts[i]! / N - w / total) * 100)).toBeLessThan(0.5);
     });
   }, 120_000);
+
+  it('INV-SPIN-RECOMPUTE-AFTER-ROTATION: the outcome is reproduced from the seed of the stored version, and the current seed would not reproduce it', () => {
+    const SEEDS_BY_VERSION = new Map([
+      [1, 'rotation-seed-v1'],
+      [2, 'rotation-seed-v2'],
+    ]);
+    const stored = selectSegment({
+      seed: SEEDS_BY_VERSION.get(1)!,
+      seedVersion: 1,
+      spinId: 'spin-before-rotation',
+      table: TABLE,
+    });
+    // after the rotation the current version is 2; an audit looks the seed up by the STORED version
+    const recomputed = selectSegment({
+      seed: SEEDS_BY_VERSION.get(stored.seedVersion)!,
+      seedVersion: stored.seedVersion,
+      spinId: 'spin-before-rotation',
+      table: TABLE,
+    });
+    expect(recomputed).toEqual(stored);
+    const withCurrent = selectSegment({
+      seed: SEEDS_BY_VERSION.get(2)!,
+      seedVersion: 2,
+      spinId: 'spin-before-rotation',
+      table: TABLE,
+    });
+    expect(withCurrent.hmac).not.toBe(stored.hmac);
+  });
 
   it('INV-WHEEL-WEIGHTS-SUM: probabilities are weight / total and sum to 1', () => {
     const p = probabilities(TABLE);
