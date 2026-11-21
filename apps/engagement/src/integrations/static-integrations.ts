@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { TenantIntegration as TenantIntegrationSchema } from '@ex-mio/contracts';
 import type { Transport } from './adapter';
-import type { PlayerDirectoryPort, TenantIntegration, TenantIntegrationPort } from './ports';
+import type { TenantIntegration, TenantIntegrationPort } from './ports';
 
 /**
  * Development stand-in for the identity service's integration credentials (spec section 10): the
@@ -21,13 +21,6 @@ export function staticTenantIntegrations(raw: string | undefined): TenantIntegra
     lookupById: async (id) => byId.get(id),
   };
 }
-
-/** Until identity's player mapping client is wired (epic L1), resolving a player fails loudly. */
-export const unconfiguredPlayerDirectory: PlayerDirectoryPort = {
-  resolveOrCreate: async () => {
-    throw new Error('PLAYER_DIRECTORY is not configured: the identity client is not wired yet');
-  },
-};
 
 /** The outbound transport of the casino adapters: one JSON request, the parsed body back. */
 export const fetchTransport: Transport = async (req) => {

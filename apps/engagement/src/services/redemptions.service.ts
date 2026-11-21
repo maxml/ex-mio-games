@@ -1,6 +1,12 @@
 import { Inject, Injectable } from '@nestjs/common';
 import type { RedemptionState } from '@ex-mio/contracts';
-import type { Operator, RedemptionRecord, RedemptionStore, Scope } from '../redemptions/ports';
+import type {
+  Operator,
+  OwnRedemptionLister,
+  RedemptionRecord,
+  RedemptionStore,
+  Scope,
+} from '../redemptions/ports';
 import { SagaError } from '../redemptions/saga-error';
 import { REDEMPTION_SAGA, REDEMPTION_STORE } from '../redemptions/tokens';
 import { RedemptionSagaService } from './redemption-saga.service';
@@ -10,7 +16,7 @@ import { RedemptionSagaService } from './redemption-saga.service';
 export class RedemptionsService {
   constructor(
     @Inject(REDEMPTION_SAGA) private readonly saga: RedemptionSagaService,
-    @Inject(REDEMPTION_STORE) private readonly store: RedemptionStore,
+    @Inject(REDEMPTION_STORE) private readonly store: RedemptionStore & OwnRedemptionLister,
   ) {}
 
   /**
@@ -37,6 +43,11 @@ export class RedemptionsService {
 
   getOwn(scope: Scope, id: string): Promise<RedemptionRecord | null> {
     return this.store.getOwn(scope, id);
+  }
+
+  /** W-5: the caller's own redemptions (tenant, player and sandbox flag from the token). */
+  listOwn(scope: Scope): Promise<RedemptionRecord[]> {
+    return this.store.listOwn(scope);
   }
 
   getForOperator(tenantId: string, id: string): Promise<RedemptionRecord | null> {

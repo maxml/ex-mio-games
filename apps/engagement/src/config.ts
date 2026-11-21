@@ -9,9 +9,13 @@ const Env = BaseEnv.extend({
   INGEST_STATIC_TENANTS: z.string().optional(),
   /** Wheel seeds by version, JSON `{"1": "seed"}`. Required in production, never logged. */
   WHEEL_SEEDS: z.string().optional(),
-  // The payments reserve (redemption saga). The dev token matches the payments dev default.
+  // Identity: JWKS, tenant status, the player mapping and this service's integration credentials.
+  IDENTITY_URL: z.string().url(),
+  // This service's client-credentials secret (D-4): it mints the service tokens for identity and
+  // payments. No default: a secret never falls back to a value in the source.
+  SERVICE_CLIENT_SECRET: z.string().min(16),
+  // The payments reserve (redemption saga), called with a service token.
   PAYMENTS_URL: z.string().url().default('http://localhost:4003'),
-  PAYMENTS_SERVICE_TOKEN: z.string().min(1).default('dev-service-token-engagement'),
   // Redemption sweeper period in ms; 0 turns it off.
   SWEEPER_INTERVAL_MS: z.coerce.number().int().nonnegative().default(5000),
 }).superRefine((env, ctx) => {
@@ -21,6 +25,13 @@ const Env = BaseEnv.extend({
       code: z.ZodIssueCode.custom,
       path: ['REDIS_URL'],
       message: 'production REDIS_URL must use rediss://',
+    });
+  }
+  if (env.NODE_ENV === 'production' && env.INGEST_STATIC_TENANTS) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['INGEST_STATIC_TENANTS'],
+      message: 'INGEST_STATIC_TENANTS is a development stand-in: production reads identity',
     });
   }
   if (env.NODE_ENV === 'production' && !env.WHEEL_SEEDS) {

@@ -3,7 +3,6 @@ import {
   InternalResolvePlayerResponse,
   PlayerLinkResponse,
   TenantIntegration as TenantIntegrationSchema,
-  type CasinoPlayerPort,
   type ServiceName,
 } from '@ex-mio/contracts';
 import type { PlayerDirectoryPort, TenantIntegration, TenantIntegrationPort } from './ports';
@@ -13,7 +12,7 @@ import type { PlayerDirectoryPort, TenantIntegration, TenantIntegrationPort } fr
  * with `aud=identity`, caller allow-list `svc:engagement`). Engagement's side of three contracts:
  *  - X-1: `resolveOrCreate` turns the casino's player id into the internal player id (ingest, before
  *    the outbox write); identity is the only writer of the player mapping.
- *  - X-8: `externalPlayerId` is the reverse, read per order by the reward-request builder (D-20); a 404
+ *  - X-8: `playerLink` is the reverse, read per order by the reward-request builder (D-20); a 404
  *    after an erasure is `undefined`, never a guess.
  *  - X-7: the tenant's casino integration (secrets, hash key, environment) by slug or by tenant id.
  * Every failure that is not a documented 404 THROWS: callers treat it as transport, never as "absent".
@@ -78,9 +77,7 @@ export function internalUrl(
   return `${base.replace(/\/$/, '')}${path}`;
 }
 
-export class IdentityHttpClient
-  implements PlayerDirectoryPort, CasinoPlayerPort, TenantIntegrationPort
-{
+export class IdentityHttpClient implements PlayerDirectoryPort, TenantIntegrationPort {
   private readonly fetchImpl: typeof fetch;
   private readonly timeoutMs: number;
 
@@ -119,10 +116,7 @@ export class IdentityHttpClient
     return InternalResolvePlayerResponse.parse(await res.json()).user_id;
   }
 
-  async externalPlayerId(
-    tenantId: string,
-    userId: string,
-  ): Promise<{ platform: string; external_player_id: string } | undefined> {
+  async playerLink(tenantId: string, userId: string): Promise<PlayerLinkResponse | undefined> {
     const res = await this.call(
       'GET',
       internalUrl(this.identityUrl, INTERNAL_ROUTES.playerLink, { tenantId, userId }),

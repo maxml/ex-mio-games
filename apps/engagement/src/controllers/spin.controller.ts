@@ -13,6 +13,7 @@ import type { ZodType, ZodTypeDef } from 'zod';
 import { z } from 'zod';
 import { MySpinsResponse, PublicWheel, SpinRequest, SpinResponse, Uuid } from '@ex-mio/contracts';
 import { SpinService } from '../services/spin.service';
+import { sandboxClaim } from './principal';
 
 /** The engagement error contract answers a schema failure with 422, not the 400 of `parseInput`. */
 function parse422<T>(schema: ZodType<T, ZodTypeDef, unknown>, value: unknown): T {
@@ -42,6 +43,7 @@ export class SpinController {
   async spin(
     @Body() body: unknown,
     @Headers('idempotency-key') key: string | undefined,
+    @Headers('authorization') authorization: string | undefined,
   ): Promise<SpinResponse> {
     const request = parse422(SpinRequest, body ?? {});
     const idempotencyKey = IdempotencyKey.safeParse(key);
@@ -49,8 +51,16 @@ export class SpinController {
     const result = await this.spins.spin({
       idempotencyKey: idempotencyKey.data,
       ...(request.credit_id !== undefined ? { creditId: request.credit_id } : {}),
+      // X-3 / D-13: the environment is the verified token's `sbx` claim; never a body or a header.
+      ...(sandboxClaim(authorization) ? { sandbox: true } : {}),
     });
     return SpinResponse.parse(result);
+  }
+
+  /** W-2: the widget does not know the wheel id; the tenant's active wheel has a route of its own. */
+  @Get('wheel')
+  async activeWheel(): Promise<PublicWheel> {
+    return PublicWheel.parse(await this.spins.wheel());
   }
 
   @Get('wheel/:wheelId')

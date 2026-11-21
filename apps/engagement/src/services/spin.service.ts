@@ -41,6 +41,8 @@ const UNIQUE_VIOLATION = '23505';
 export interface SpinInput {
   idempotencyKey: string;
   creditId?: string;
+  /** From the verified token's `sbx` claim (the controller); never from a body or a header. */
+  sandbox?: boolean;
 }
 
 const toResponse = (s: SpinRecord): SpinResponse => ({
@@ -137,12 +139,17 @@ export class SpinService {
       rewardCoins,
     };
     await this.spins.insert(tx, record);
+    // X-3 / D-13: a spin is a sandbox spin when the token came through a sandbox credential or the
+    // credit itself was granted from a sandbox deposit. Payments then credits the sandbox wallet and
+    // meters nothing (X-2). The flag is on the envelope, never in the payload.
+    const sandbox = input.sandbox === true || credit.sandbox === true;
     // Also for a `nothing` segment (0 coins): payments and metering key on the spin.
     await this.db.publish(
       tx,
       createEvent({
         type: 'engagement.spin.completed',
         tenantId,
+        ...(sandbox ? { sandbox: true } : {}),
         payload: {
           spin_id: spinId,
           player_id: userId,
@@ -161,9 +168,15 @@ export class SpinService {
     return { available };
   }
 
-  /** `GET /v1/wheel/:wheelId`: labels only, built from the stored table. */
-  async wheel(wheelId: string): Promise<PublicWheel> {
-    const table = await this.db.tenantTx((tx) => this.wheels.activeTable(tx, wheelId));
+  /**
+   * `GET /v1/wheel/:wheelId` and `GET /v1/wheel` (W-2, the tenant's active wheel when no id is
+   * given): labels only, built from the stored table.
+   */
+  async wheel(wheelId?: string): Promise<PublicWheel> {
+    const table = await this.db.tenantTx(async (tx) => {
+      const id = wheelId ?? (await this.wheels.activeWheelId(tx));
+      return id === undefined ? undefined : this.wheels.activeTable(tx, id);
+    });
     if (!table) throw new NotFoundException('wheel not found');
     return toPublicWheel(table);
   }

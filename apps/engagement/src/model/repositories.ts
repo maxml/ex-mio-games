@@ -98,6 +98,8 @@ export abstract class SpinCreditsRepository {
 export abstract class WheelsRepository {
   /** The latest published, immutable version of the wheel's reward table. */
   abstract activeTable(tx: Tx, wheelId: string): Promise<RewardTableVersion | undefined>;
+  /** W-2: the tenant's active wheel: the wheel of its most recently published reward table. */
+  abstract activeWheelId(tx: Tx): Promise<string | undefined>;
 }
 
 export abstract class SpinsRepository {

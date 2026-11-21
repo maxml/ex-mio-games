@@ -8,9 +8,16 @@ export type PairSetup = () => Promise<[StoreHarness, StoreHarness]>;
 // may only dedupe per (tenant, consumer, event id).
 const FIXED_EVENT_ID = '0190a1b2-c3d4-7e5f-8a6b-7c8d9e1f00aa';
 
+// Player ids are UUIDs (the event contract and payments validate them, X-4); the readable labels of
+// this file ('p-f2') are mapped to a stable UUID so the order's events stay valid envelopes.
+const uuidOfLabel = (label: string): string => {
+  const hex = Buffer.from(label).toString('hex').padEnd(12, '0').slice(0, 12);
+  return `0190a1b2-c3d4-7e5f-8a6b-${hex}`;
+};
+
 const scopeOf = (h: StoreHarness, playerId: string, sandbox = false): Scope => ({
   tenantId: h.tenantId,
-  playerId,
+  playerId: uuidOfLabel(playerId),
   sandbox,
 });
 

@@ -32,6 +32,15 @@ import {
 export const SAGA_CONSUMER = 'engagement.redemption-saga';
 
 const keyOf = (id: string): string => `redeem:${id}`;
+
+/** History causes of an ISSUING entry that was followed by a casino call (see `wasAsked`). */
+const ISSUE_ATTEMPT = 'issue_attempt';
+const RETRY_SAME_KEY = 'retry_same_key';
+/** The casino was sent (or may have been sent) the request at least once. */
+const wasAsked = (r: RedemptionRecord): boolean =>
+  r.history.some(
+    (h) => h.to === 'ISSUING' && (h.cause === ISSUE_ATTEMPT || h.cause === RETRY_SAME_KEY),
+  );
 const isIllegal = (err: unknown): boolean =>
   err instanceof Error && err.name === 'IllegalTransitionError';
 
@@ -166,19 +175,18 @@ export class RedemptionSagaService implements RedemptionSaga {
   }
 
   /**
-   * The port of the order's tenant and ENVIRONMENT (X-6, D-12). `undefined` from the registry is
-   * NEEDS_REVIEW `no_adapter` with the coins held (never the production adapter as a fallback); a
-   * REJECTED promise (identity down) is transport: the same attempt is rescheduled, never a review
-   * and never a refund. `'moved'` means the step is over for this pass.
+   * The port of the order's tenant and ENVIRONMENT (X-6, D-12). `undefined` is "no adapter" (the
+   * caller sends the order to review, coins held; the production adapter is never a fallback for a
+   * sandbox order). A REJECTED promise (identity down) is transport: the same attempt is rescheduled,
+   * never a review and never a refund; `'moved'` means the step is over for this pass.
    */
   private async portFor(
     r: RedemptionRecord,
     from: RedemptionRecord['state'],
     now: Date,
-  ): Promise<ResolvedRewardPort | 'moved'> {
-    let resolved: ResolvedRewardPort | undefined;
+  ): Promise<ResolvedRewardPort | undefined | 'moved'> {
     try {
-      resolved = await this.deps.ports.forTenant(r.tenantId, { sandbox: r.sandbox });
+      return await this.deps.ports.forTenant(r.tenantId, { sandbox: r.sandbox });
     } catch {
       await this.deps.store.reschedule(
         r.tenantId,
@@ -188,11 +196,6 @@ export class RedemptionSagaService implements RedemptionSaga {
       );
       return 'moved';
     }
-    if (!resolved) {
-      await this.toReview(r, from, 'no_adapter');
-      return 'moved';
-    }
-    return resolved;
   }
 
   /** RESERVED -> ISSUING (committed, attempt counted, lease, request frozen) BEFORE the adapter is called. */
@@ -218,20 +221,48 @@ export class RedemptionSagaService implements RedemptionSaga {
       );
       return true;
     }
-    if (!request) {
-      await this.toReview(r, 'RESERVED', 'player_unmapped');
-      return true;
-    }
+    if (!resolved) return this.blocked(r, 'no_adapter', request);
+    if (!request) return this.blocked(r, 'player_unmapped');
     const won = await this.apply(r, {
       expectFrom: ['RESERVED'],
       to: 'ISSUING',
-      cause: 'issue_attempt',
+      cause: ISSUE_ATTEMPT,
       attemptsIncrement: true,
       rewardRequest: request,
       nextAttemptAt: new Date(now.getTime() + ISSUING_LEASE_MS),
     });
     if (!won.applied) return false; // another sweeper holds this attempt
     await this.callAdapter(won.redemption, request, resolved, now);
+    return true;
+  }
+
+  /**
+   * An order that cannot be issued at all (`no_adapter`, `player_unmapped`) goes to review with its
+   * coins held and the casino never called. The state table has no RESERVED -> NEEDS_REVIEW pair, so
+   * the order takes the legal road RESERVED -> ISSUING -> UNKNOWN -> NEEDS_REVIEW with causes that
+   * say nothing was sent (`issue_blocked`): no attempt is counted, and `wasAsked` does not count it.
+   */
+  private async blocked(
+    r: RedemptionRecord,
+    reason: 'no_adapter' | 'player_unmapped',
+    request?: RewardRequest,
+  ): Promise<boolean> {
+    const entered = await this.apply(r, {
+      expectFrom: ['RESERVED'],
+      to: 'ISSUING',
+      cause: `issue_blocked:${reason}`,
+      ...(request ? { rewardRequest: request } : {}),
+      nextAttemptAt: null,
+    });
+    if (!entered.applied) return false;
+    const unknown = await this.apply(entered.redemption, {
+      expectFrom: ['ISSUING'],
+      to: 'UNKNOWN',
+      cause: `issue_blocked:${reason}`,
+      nextAttemptAt: null,
+    });
+    if (!unknown.applied) return true;
+    await this.toReview(unknown.redemption, 'UNKNOWN', reason);
     return true;
   }
 
@@ -308,6 +339,7 @@ export class RedemptionSagaService implements RedemptionSaga {
     if (!request) return (await this.toReview(r, 'UNKNOWN', 'request_missing')).applied;
     const resolved = await this.portFor(r, 'UNKNOWN', now);
     if (resolved === 'moved') return true;
+    if (!resolved) return (await this.toReview(r, 'UNKNOWN', 'no_adapter')).applied;
     const status = await this.lookup(resolved, r, request);
     switch (status.kind) {
       case 'issued':
@@ -360,7 +392,7 @@ export class RedemptionSagaService implements RedemptionSaga {
     const won = await this.apply(r, {
       expectFrom: ['UNKNOWN'],
       to: 'ISSUING',
-      cause: 'retry_same_key',
+      cause: RETRY_SAME_KEY,
       attemptsIncrement: true,
       nextAttemptAt: new Date(now.getTime() + ISSUING_LEASE_MS),
     });
@@ -458,7 +490,7 @@ export class RedemptionSagaService implements RedemptionSaga {
     // Payments holds nothing under this id and the casino was never asked (no ISSUING row in the
     // whole history): the refused reserve never made a hold, so there is nothing to give back,
     // and the stock unit and limit slot are returned now, once, by the store.
-    if (reply.code === 'reserve_not_found' && !r.history.some((h) => h.to === 'ISSUING'))
+    if (reply.code === 'reserve_not_found' && !wasAsked(r))
       return (
         await this.apply(r, {
           expectFrom: ['REJECTED'],
@@ -581,7 +613,7 @@ export class RedemptionSagaService implements RedemptionSaga {
     const origin = [...r.history].reverse().find((h) => h.to === 'NEEDS_REVIEW')?.from ?? null;
     // F1 (L4 review): "the casino was never asked" is a property of the WHOLE history (no ISSUING
     // row), not of the latest review entry, so it survives a second round of review.
-    const neverAsked = !r.history.some((h) => h.to === 'ISSUING');
+    const neverAsked = !wasAsked(r);
     const audit = `${input.operator.id}: ${input.reason}`;
     const now = this.deps.clock.now();
 

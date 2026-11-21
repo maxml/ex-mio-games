@@ -3,9 +3,9 @@ import { Test } from '@nestjs/testing';
 import { FastifyAdapter, type NestFastifyApplication } from '@nestjs/platform-fastify';
 import { createEvent } from '@ex-mio/contracts';
 import { HealthModule } from '@ex-mio/service-kit';
-import { TenancyModule } from '@ex-mio/tenancy';
 import { ProjectionsController } from './controllers/projections.controller';
 import { ProjectionsService } from './services/projections.service';
+import { authModule, bearer, playerToken } from './testing/auth.fixture';
 
 const TENANT = '0190a1b2-c3d4-4e5f-8a6b-7c8d9e0f1a2b';
 const getOwn = jest.fn(async () => ({
@@ -20,7 +20,8 @@ describe('engagement HTTP layer', () => {
 
   beforeAll(async () => {
     const mod = await Test.createTestingModule({
-      imports: [TenancyModule.forRoot(), HealthModule.register({ useFactory: () => ({}) })],
+      // The one auth entry point (D-4): the tenant comes from a verified token, never a header.
+      imports: [authModule(), HealthModule.register({ useFactory: () => ({}) })],
       controllers: [ProjectionsController],
       providers: [{ provide: ProjectionsService, useValue: { getOwn } }],
     }).compile();
@@ -42,11 +43,11 @@ describe('engagement HTTP layer', () => {
     expect(getOwn).not.toHaveBeenCalled();
   });
 
-  it('serves the projection for a valid tenant header', async () => {
+  it('serves the projection for a verified token of the tenant', async () => {
     const res = await app.inject({
       method: 'GET',
       url: '/v1/tenant-projection',
-      headers: { 'x-tenant-id': TENANT },
+      headers: bearer(playerToken(TENANT, '0190a1b2-c3d4-7e5f-8a6b-7c8d9e0f0001')),
     });
     expect(res.statusCode).toBe(200);
     expect(res.json().applied_count).toBe(1);

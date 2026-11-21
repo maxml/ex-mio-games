@@ -188,6 +188,17 @@ export class PgSpinCreditsRepository extends SpinCreditsRepository {
 
 @Injectable()
 export class PgWheelsRepository extends WheelsRepository {
+  async activeWheelId(tx: Tx): Promise<string | undefined> {
+    const rows = rowsOf(
+      await tx.query(
+        `SELECT wheel_id FROM reward_tables
+          WHERE tenant_id = $1 ORDER BY created_at DESC, version DESC LIMIT 1`,
+        [tenantId()],
+      ),
+    );
+    return rows[0]?.wheel_id as string | undefined;
+  }
+
   async activeTable(tx: Tx, wheelId: string): Promise<RewardTableVersion | undefined> {
     const rows = rowsOf(
       await tx.query(

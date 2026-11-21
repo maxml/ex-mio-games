@@ -160,6 +160,7 @@ export class IngestionService {
     for (const secret of integration.webhook_secrets) {
       // F6: an empty secret is no key (anyone can sign with it); an empty list verifies nothing.
       if (secret === '') continue;
+      // F6: an empty secret is no key (anyone can sign with it); an empty list verifies nothing.
       const verdict = adapter.verifySignature(raw, headers, secret, now);
       if (verdict === 'valid') return 'valid';
       if (verdict === 'stale') best = 'stale';

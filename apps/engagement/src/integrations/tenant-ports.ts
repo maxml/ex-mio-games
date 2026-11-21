@@ -51,6 +51,25 @@ export function createTenantCasinoPorts(deps: {
 }
 
 /**
+ * The casino player port, backed by identity's reverse link route (X-8). Identity is the only
+ * writer and reader of the mapping; engagement keeps no copy. A 404 (never linked, or erased) is
+ * `undefined`; an outage is an ERROR, never "no mapping" (the saga would read that as
+ * `player_unmapped` instead of transport).
+ */
+export function createCasinoPlayerPort(deps: {
+  identity: {
+    playerLink(
+      tenantId: string,
+      userId: string,
+    ): Promise<{ platform: string; external_player_id: string } | undefined>;
+  };
+}): CasinoPlayerPort {
+  return {
+    externalPlayerId: (tenantId, userId) => deps.identity.playerLink(tenantId, userId),
+  };
+}
+
+/**
  * Builds the frozen reward request of an order. The casino player id is the identity player mapping's
  * (the only place the raw id lives, MIO-107); no mapping row gives `undefined`, never a guess.
  */

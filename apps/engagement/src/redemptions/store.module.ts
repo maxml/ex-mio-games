@@ -1,5 +1,5 @@
 import { Module, type DynamicModule } from '@nestjs/common';
-import type { CasinoRewardPort } from '@ex-mio/contracts';
+import type { CasinoRewardPorts, RewardRequestBuilder } from '@ex-mio/contracts';
 import { Db } from '@ex-mio/service-kit';
 import { RedemptionsController } from '../controllers/redemptions.controller';
 import { StoreItemsController } from '../controllers/store-items.controller';
@@ -10,29 +10,25 @@ import { RedemptionsService } from '../services/redemptions.service';
 import { StoreItemsService } from '../services/store-items.service';
 import { HttpCoinsClient } from './http-coins.client';
 import type { CoinsPort, RedemptionStore } from './ports';
-import { buildRewardRequest } from './reward-request';
 import { RedemptionSweeper, SWEEPER_INTERVAL_MS } from './sweeper';
-import { CASINO_ADAPTERS, COINS_PORT, REDEMPTION_SAGA, REDEMPTION_STORE } from './tokens';
-
-export type CasinoAdapters = (tenantId: string, sandbox: boolean) => CasinoRewardPort;
+import { COINS_PORT, REDEMPTION_SAGA, REDEMPTION_STORE } from './tokens';
 
 export interface StoreModuleOptions {
   paymentsUrl: string;
-  serviceToken: string;
+  /** A fresh service token with `aud=payments` (identity client credentials, D-4, D-14). */
+  paymentsToken: () => Promise<string>;
   /** Sweep every N ms; 0 turns the sweeper off. */
   sweeperIntervalMs: number;
   /**
-   * The casino adapters (sandbox and production), provided by the integrations module. Without
-   * them every issue call answers `unknown`: nothing is ever issued or released, orders end in
-   * NEEDS_REVIEW with their coins held.
+   * The REAL L3 adapter registry per tenant and environment (D-12, D-20): the same
+   * `CasinoRewardPorts` the ingest side builds from the tenant's integration credentials. There is
+   * no default and no "unconfigured" stand-in: an order for a tenant without an adapter ends in
+   * NEEDS_REVIEW `no_adapter` with its coins held, decided by the saga from `undefined`.
    */
-  casinoAdapters?: CasinoAdapters;
+  ports: CasinoRewardPorts;
+  /** Builds the casino request from identity's player link (D-20), never from the user id. */
+  requests: RewardRequestBuilder;
 }
-
-const unconfigured: CasinoRewardPort = {
-  issueReward: async () => ({ kind: 'unknown' }),
-  getRewardStatus: async () => ({ kind: 'unknown' }),
-};
 
 @Module({})
 export class StoreModule {
@@ -57,29 +53,24 @@ export class StoreModule {
           useFactory: (): CoinsPort =>
             new HttpCoinsClient({
               baseUrl: options.paymentsUrl,
-              serviceId: 'engagement',
-              serviceToken: options.serviceToken,
+              serviceToken: options.paymentsToken,
             }),
         },
         {
-          provide: CASINO_ADAPTERS,
-          useValue: options.casinoAdapters ?? ((): CasinoRewardPort => unconfigured),
-        },
-        {
           provide: REDEMPTION_SAGA,
-          inject: [REDEMPTION_STORE, COINS_PORT, CASINO_ADAPTERS],
-          useFactory: (store: RedemptionStore, coins: CoinsPort, adapters: CasinoAdapters) =>
+          inject: [REDEMPTION_STORE, COINS_PORT],
+          useFactory: (store: RedemptionStore, coins: CoinsPort) =>
             new RedemptionSagaService({
               store,
               coins,
-              adapterFor: adapters,
-              rewardRequest: buildRewardRequest,
+              ports: options.ports,
+              requests: options.requests,
               clock: { now: () => new Date() },
               random: Math.random,
             }),
         },
       ],
-      exports: [REDEMPTION_SAGA, REDEMPTION_STORE, CASINO_ADAPTERS],
+      exports: [REDEMPTION_SAGA, REDEMPTION_STORE],
     };
   }
 }
