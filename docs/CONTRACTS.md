@@ -62,6 +62,27 @@ payload }`; `tenant_id` is mandatory; the payload schema is registered per (type
   transaction.
 - **pinned:** `packages/idempotency/src/idempotency.test.ts`; `tests/compose/src/tenancy.compose.test.ts`
 
+## Redemption saga: hold commands and events
+
+- **provider:** `packages/contracts` (`src/store.ts`), semantics in `docs/specs/engagement-store.md` ·
+  **consumers:** `engagement` (sends commands, consumes hold events), `payments` (consumes commands, publishes
+  hold events)
+- **spec:** commands `engagement.hold.place|capture|release|refund` carry `operation_id` (`hold:{id}`,
+  `capture:{id}`, `release:{id}`, `refund:{id}`), `redemption_id`, `player_id`, `sandbox`; payments answers with
+  `payments.hold.placed|rejected|captured|released|refunded|command_rejected`. Each command is idempotent by
+  `operation_id`; a conflicting command (capture after release, release after capture) is answered with
+  `command_rejected`, never applied.
+- **pinned:** `packages/contracts/src/store.contracts.test.ts`; `apps/engagement/src/services/redemption-saga.test.ts`
+
+## Casino reward adapter port
+
+- **provider:** `packages/contracts` (`RewardAdapter`) implemented by the integrations module ·
+  **consumers:** `engagement` (redemption saga)
+- **spec:** `issueReward` and `getRewardStatus` take OUR idempotency key `redeem:{redemption_id}`, identical on every
+  attempt; the adapter classifies (`issued`, `rejected` only for codes on its final list, `unknown` for everything
+  else, including timeouts); `getRewardStatus` answers `issued`, `rejected`, `not_found` or `unknown`.
+- **pinned:** `apps/engagement/src/services/redemption-saga.test.ts` (saga side); adapter side: epic ingest
+
 ## Health endpoints
 
 - **provider:** `packages/service-kit` (`src/health.ts`) · **consumers:** compose, the deploy plane

@@ -1,5 +1,21 @@
 import { z } from 'zod';
 import { Uuid, Uuidv7, uuidv7 } from './ids';
+import {
+  CaptureHoldV1,
+  CaptureRefundedV1,
+  HoldCapturedV1,
+  HoldCommandRejectedV1,
+  HoldPlacedV1,
+  HoldRejectedV1,
+  HoldReleasedV1,
+  PlaceHoldV1,
+  RedemptionIssuedV1,
+  RedemptionNeedsReviewV1,
+  RedemptionRejectedV1,
+  RedemptionStatusChangedV1,
+  RefundCaptureV1,
+  ReleaseHoldV1,
+} from './store';
 
 /**
  * The event envelope every bus message carries. `tenant_id` is mandatory: there
@@ -56,6 +72,21 @@ export const EVENT_SCHEMAS = {
   'payments.coins.credited': { 1: CoinsCreditedV1 },
   'engagement.spin.completed': { 1: SpinCompletedV1 },
   'engagement.redemption.requested': { 1: RedemptionRequestedV1 },
+  // redemption saga (spec: docs/specs/engagement-store.md)
+  'engagement.redemption.status_changed': { 1: RedemptionStatusChangedV1 },
+  'engagement.redemption.issued': { 1: RedemptionIssuedV1 },
+  'engagement.redemption.rejected': { 1: RedemptionRejectedV1 },
+  'engagement.redemption.needs_review': { 1: RedemptionNeedsReviewV1 },
+  'engagement.hold.place': { 1: PlaceHoldV1 },
+  'engagement.hold.capture': { 1: CaptureHoldV1 },
+  'engagement.hold.release': { 1: ReleaseHoldV1 },
+  'engagement.hold.refund': { 1: RefundCaptureV1 },
+  'payments.hold.placed': { 1: HoldPlacedV1 },
+  'payments.hold.rejected': { 1: HoldRejectedV1 },
+  'payments.hold.captured': { 1: HoldCapturedV1 },
+  'payments.hold.released': { 1: HoldReleasedV1 },
+  'payments.hold.refunded': { 1: CaptureRefundedV1 },
+  'payments.hold.command_rejected': { 1: HoldCommandRejectedV1 },
 } as const;
 
 export type EventType = keyof typeof EVENT_SCHEMAS;

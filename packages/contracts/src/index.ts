@@ -3,4 +3,5 @@ export * from './health';
 export * from './http';
 export * from './ids';
 export * from './realtime';
+export * from './store';
 export * from './telemetry';

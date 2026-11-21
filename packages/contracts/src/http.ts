@@ -6,6 +6,8 @@ import { Uuid } from './ids';
 
 export const ErrorBody = z.object({
   message: z.string(),
+  /** Stable machine-readable code (e.g. `out_of_stock`); absent on generic framework errors. */
+  code: z.string().optional(),
   issues: z.array(z.unknown()).optional(),
 });
 export type ErrorBody = z.infer<typeof ErrorBody>;
