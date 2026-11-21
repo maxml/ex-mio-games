@@ -2,8 +2,8 @@
 
 > Status: accepted — the FSD skeleton, module boundaries, state stack, and the
 > reference slices are in the baseline `apps/web` with passing tests.
-> Date: 2026-06-30.
-> Deciders: template maintainers + Claude (Opus 4.8).
+> Date: 2026-06-30 (carried over from the monorepo starter; updated 2026-11-21).
+> Deciders: maintainers.
 > Confidence: HIGH — the structure below is what `apps/web` actually ships
 > (`src/layers/{app,views,widgets,features,entities,shared}`, ESLint
 > `import/no-restricted-paths` + Steiger boundaries, TanStack Query + Zustand +
@@ -189,6 +189,4 @@ without changing the skeleton:
 - Feature-Sliced Design — feature-sliced.design ; the Steiger FSD linter.
 - Bulletproof React — github.com/alan2207/bulletproof-react.
 - Next.js App Router project structure & Route Handlers — nextjs.org/docs.
-- Related decisions in this starter: the real-time / WebSocket ADR (0003), the
-  baseline-auth ADR (0004), and the Nx/pnpm tooling ADR (002) — some are
-  starter-internal and may not ship to a generated project.
+- Related: [ADR-0002](0002-realtime-websocket-client.md) (realtime client).
