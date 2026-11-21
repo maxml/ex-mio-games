@@ -256,7 +256,31 @@ describe('identity contracts (pinned vocabularies)', () => {
 
   // D-22 (reviewer, identity epic review). Mutation: `aud: Audience` only (no array), or an array
   // allowed for any role, or an empty array.
-  it('D-22 a player session carries an aud array (engagement, payments, realtime); other tokens keep one audience', () => {
+  // int/all review, D-23: the session array is [identity, engagement, payments]. `realtime` is never
+  // in a session: the claim schema (the choke point every verifier parses through) refuses an array
+  // that holds it; a ticket carries `aud: 'realtime'` as a single string.
+  // Mutation: the array's members are `Audience` (realtime included) instead of the session list.
+  it('D-23 a player session aud array is drawn from identity, engagement, payments; an array with realtime is refused, the ticket string is not', () => {
+    const base = {
+      iss: TOKEN_ISSUER,
+      sub: U1,
+      tid: U2,
+      roles: ['player'],
+      iat: 1,
+      exp: 2,
+      jti: 'abcdefgh',
+    };
+    expect(
+      AccessTokenClaims.safeParse({ ...base, aud: ['identity', 'engagement', 'payments'] }).success,
+    ).toBe(true);
+    expect(
+      AccessTokenClaims.safeParse({ ...base, aud: ['engagement', 'payments', 'realtime'] }).success,
+    ).toBe(false);
+    expect(AccessTokenClaims.safeParse({ ...base, aud: ['realtime'] }).success).toBe(false);
+    expect(AccessTokenClaims.safeParse({ ...base, aud: 'realtime' }).success).toBe(true); // the ticket
+  });
+
+  it('D-22 a player session carries an aud array (D-23: identity, engagement, payments); other tokens keep one audience', () => {
     const claims = {
       iss: TOKEN_ISSUER,
       sub: U1,
@@ -267,7 +291,8 @@ describe('identity contracts (pinned vocabularies)', () => {
       exp: 2,
       jti: 'abcdefgh',
     };
-    const player = { ...claims, roles: ['player'], aud: ['engagement', 'payments', 'realtime'] };
+    // D-23 fixture: the session array is [identity, engagement, payments] (was [..., realtime])
+    const player = { ...claims, roles: ['player'], aud: ['identity', 'engagement', 'payments'] };
     expect(AccessTokenClaims.safeParse(player).success).toBe(true);
     expect(AccessTokenClaims.safeParse({ ...player, aud: [] }).success).toBe(false);
     expect(AccessTokenClaims.safeParse({ ...player, aud: ['engagement', 'other'] }).success).toBe(
@@ -390,19 +415,38 @@ describe('identity contracts (service call policy, D-14)', () => {
     expect(all.filter((r) => /credit|mint|adjust|grant/i.test(r))).toEqual([]);
   });
 
-  it('engagement and payments may call identity for the tenant status; only engagement may resolve players and read integrations', () => {
+  // int/all review, D-23: the realtime gateway (hosted by engagement; owner question in the review)
+  // redeems one-time tickets through identity. Only that host may: payments may not.
+  // Mutation: list the redeem route for payments too, or forget it for the gateway host.
+  it('engagement and payments may call identity for the tenant status; only engagement may resolve players, read integrations and redeem realtime tickets', () => {
     expect([...(SERVICE_CALL_POLICY.engagement.identity ?? [])].sort()).toEqual(
       [
         'GET /internal/v1/integrations/by-slug/:slug',
         'GET /internal/v1/tenants/:tenantId/integration',
         'GET /internal/v1/tenants/:tenantId/players/:userId/link',
         'GET /internal/v1/tenants/:tenantId/status',
+        'POST /internal/v1/realtime-tickets/redeem',
         'POST /internal/v1/tenants/:tenantId/players/resolve',
       ].sort(),
     );
     expect(SERVICE_CALL_POLICY.payments).toEqual({
       identity: ['GET /internal/v1/tenants/:tenantId/status'],
     });
+  });
+
+  // D-23: the redeem route's contract. Tenant-less (the tenant is the ticket's own `tid`), body is
+  // the ticket alone. Mutation: a body that also takes a tenant or a subject.
+  it('D-23 the realtime ticket redeem route and its strict body are in the contract', () => {
+    expect((INTERNAL_ROUTES as Record<string, string>).realtimeTicketRedeem).toBe(
+      '/internal/v1/realtime-tickets/redeem',
+    );
+    const Req = (identityContracts as Record<string, unknown>).RealtimeTicketRedeemRequest as
+      | { safeParse: (v: unknown) => { success: boolean } }
+      | undefined;
+    expect(Req).toBeDefined();
+    expect(Req?.safeParse({ ticket: 'x'.repeat(40) }).success).toBe(true);
+    expect(Req?.safeParse({ ticket: 'x'.repeat(40), tenant_id: U1 }).success).toBe(false);
+    expect(Req?.safeParse({}).success).toBe(false);
   });
 
   it('every entry is METHOD plus an internal route template, never a prefix or a wildcard', () => {

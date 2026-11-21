@@ -83,11 +83,15 @@ describe('INV-DB: identity schema enforces the invariants even if the applicatio
   });
 
   // Mutation: make the unique key (email) instead of (tenant_id, email).
+  // int/all review: the first block used to insert tenant B while running inside tenant A. The
+  // foundation `tenants_tenant_isolation` policy (TenantRowScope) refuses that, correctly: a call
+  // inside a tenant cannot create another tenant. B was never used in that block, so the setup line
+  // is dropped; the property (email unique per tenant, free across tenants) is unchanged.
+  // INV-DB-TENANTS-SCOPE below pins the policy itself.
   it('INV-DB-2 the same email is unique within a tenant and free in another tenant', async () => {
     const [a, b] = [uuidv7(), uuidv7()];
     await inTx(a, async (c) => {
       await insertTenant(c, a, 'operator', `a-${a}`);
-      await insertTenant(c, b, 'operator', `b-${b}`);
       await insertUser(c, a, uuidv7(), 'dup@x.test');
       await expect(insertUser(c, a, uuidv7(), 'dup@x.test')).rejects.toMatchObject({
         code: '23505',
@@ -101,6 +105,45 @@ describe('INV-DB: identity schema enforces the invariants even if the applicatio
       await c.query(`SELECT set_config('app.tenant_id', $1, true)`, [b]);
       await expect(insertUser(c, b, uuidv7(), 'dup@x.test')).resolves.toBeDefined();
     });
+  });
+
+  // int/all review of the foundation policy (0335cea, TenantRowScope). `tenants` is the registry:
+  // login resolves a host or slug to a tenant BEFORE any tenant is known, so a call with no tenant
+  // context must see every row (it did before the policy, which had no RLS at all). Inside a tenant
+  // the policy narrows reads AND writes to the own row. It has no FORCE, which is only safe while
+  // the runtime role does not own the table (the owner bypasses a non-forced policy).
+  // Mutations: drop the policy or disable RLS (A sees B, A updates B); make identity_app the owner
+  // of `tenants`; write the policy USING-only (no WITH CHECK: A inserts B).
+  it('INV-DB-TENANTS-SCOPE inside tenant A the runtime role sees, updates and creates only A; with no tenant it sees the registry', async () => {
+    const [a, b] = [uuidv7(), uuidv7()];
+    await inTx(null, async (c) => {
+      await insertTenant(c, a, 'operator', `a-${a}`);
+      await insertTenant(c, b, 'operator', `b-${b}`);
+      // no tenant context: the registry (both rows) is visible, as host resolution needs
+      const all = await c.query(`SELECT id FROM tenants WHERE id = ANY($1::uuid[])`, [[a, b]]);
+      expect(all.rows.map((r) => r.id).sort()).toEqual([a, b].sort());
+
+      await c.query(`SELECT set_config('app.tenant_id', $1, true)`, [a]);
+      const seen = await c.query(`SELECT id FROM tenants`);
+      expect(seen.rows.map((r) => r.id)).toEqual([a]);
+      const upd = await c.query(`UPDATE tenants SET status = 'suspended' WHERE id = $1`, [b]);
+      expect(upd.rowCount).toBe(0);
+      await c.query('SAVEPOINT s1');
+      await expect(insertTenant(c, uuidv7(), 'operator', `c-${uuidv7()}`)).rejects.toThrow(
+        /row-level security/,
+      );
+      await c.query('ROLLBACK TO s1');
+    });
+    const admin = await pgAs('postgres', 'identity');
+    try {
+      const { rows } = await admin.query(
+        `SELECT pg_get_userbyid(relowner) AS owner, relrowsecurity AS rls FROM pg_class
+          WHERE relname = 'tenants' AND relnamespace = 'public'::regnamespace`,
+      );
+      expect(rows[0]).toEqual({ owner: 'identity_owner', rls: true });
+    } finally {
+      await admin.end();
+    }
   });
 
   // Mutation: drop either UNIQUE on player_links (backlog MIO-044 mapping contract).
@@ -497,9 +540,9 @@ describe('INV-STACK-5 service-to-service tokens over the real stack (D-4)', () =
   it('a service token is refused on the user routes of engagement and payments', async () => {
     const forPayments = await serviceToken('engagement', 'payments');
     expect(forPayments.status).toBe(200);
-    expect(
-      (await get(PAYMENTS_USER_ROUTE, bearer(forPayments.json.access_token))).status,
-    ).toBe(401);
+    expect((await get(PAYMENTS_USER_ROUTE, bearer(forPayments.json.access_token))).status).toBe(
+      401,
+    );
     const forEngagement = await serviceToken('payments', 'engagement');
     expect(
       (
@@ -556,12 +599,9 @@ describe('INV-STACK-5 service-to-service tokens over the real stack (D-4)', () =
   it('an operator token on /%69nternal/v1/... is never served by identity', async () => {
     const a = await operator('identity');
     const b = await operator('identity');
-    const res = await call(
-      'GET',
-      urls.identity,
-      `/%69nternal/v1/tenants/${b.tenantId}/status`,
-      { headers: bearer(a.token) },
-    );
+    const res = await call('GET', urls.identity, `/%69nternal/v1/tenants/${b.tenantId}/status`, {
+      headers: bearer(a.token),
+    });
     expect([401, 404]).toContain(res.status);
   });
 });
@@ -588,7 +628,10 @@ describe('INV-STACK-8 acting requests in other services reach the operator audit
     expect(forPayments.status).toBe(200);
     await eventually(async () =>
       (
-        await get(`${urls.engagement}/v1/tenant-projection`, bearer(forEngagement.json.access_token))
+        await get(
+          `${urls.engagement}/v1/tenant-projection`,
+          bearer(forEngagement.json.access_token),
+        )
       ).status === 200
         ? true
         : undefined,
@@ -669,7 +712,9 @@ describe('INV-STACK-6 launch and player mapping hold under real concurrency (F16
     );
     expect(results.filter((r) => r.status === 200)).toHaveLength(1);
     // F14 / N7: the winning response is the contract shape L5 builds against
-    expect(LaunchResponse.parse(results.find((r) => r.status === 200)?.json).tenant_id).toBeDefined();
+    expect(
+      LaunchResponse.parse(results.find((r) => r.status === 200)?.json).tenant_id,
+    ).toBeDefined();
     const rest = results.filter((r) => r.status !== 200);
     expect(rest.map((r) => r.status)).toEqual([401, 401, 401, 401]);
     for (const r of rest) expect(r.json).toMatchObject({ code: 'LAUNCH_TOKEN_REPLAYED' });

@@ -154,13 +154,18 @@ describe('INV-TOK: every service trusts only tokens our key signed', () => {
   // D-22 (reviewer, identity epic review): one player session from one launch exchange is valid for
   // every audience the player needs. Mutation: the verifier keeps `claims.aud !== audience` (an array
   // never equals a string), or accepts any array without checking membership.
+  // int/all review: fixture moved to D-23 (session aud = identity, engagement, payments; realtime
+  // only in a ticket). A session that somehow names realtime is refused by the realtime verifier.
   it('INV-TOK-3b D-22 a player token whose aud ARRAY includes the verifier audience is accepted; one that lacks it is not', async () => {
-    const player = good({ roles: ['player'], aud: ['engagement', 'payments', 'realtime'] });
-    for (const audience of ['engagement', 'payments', 'realtime']) {
+    const player = good({ roles: ['player'], aud: ['identity', 'engagement', 'payments'] });
+    for (const audience of ['identity', 'engagement', 'payments']) {
       await expect(verifier(audience)(player)).resolves.toMatchObject({ sub: USER, tid: T_A });
     }
-    await rejected(verifier('identity')(player), 'TOKEN_INVALID');
+    await rejected(verifier('realtime')(player), 'TOKEN_INVALID');
     await rejected(verifier('web')(player), 'TOKEN_INVALID');
+    // D-23: an array that names realtime is not a session identity mints; the verifier refuses it
+    const smuggled = good({ roles: ['player'], aud: ['engagement', 'payments', 'realtime'] });
+    await rejected(verifier('realtime')(smuggled), 'TOKEN_INVALID');
   });
 
   // D-22 keeps every other token single-audience (D-4: an operator or acting token is valid for one

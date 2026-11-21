@@ -6,6 +6,7 @@ import {
   type CanActivate,
   Controller,
   type ExceptionFilter,
+  ForbiddenException,
   Get,
   Module,
   NotFoundException,
@@ -77,6 +78,12 @@ class PassTwo implements CanActivate {
     return true;
   }
 }
+/** int/all review, D-24: a LATER guard (after the entry point) that refuses, like ActingCoinGuard. */
+class DenyGuard implements CanActivate {
+  canActivate(): boolean {
+    throw new ForbiddenException({ code: 'probe_denied' });
+  }
+}
 @Catch()
 class SwallowFilter implements ExceptionFilter {
   catch(_e: unknown, host: ArgumentsHost) {
@@ -103,6 +110,20 @@ class Probe {
   guarded() {
     ran.n++;
     return { ok: true };
+  }
+
+  @UseGuards(DenyGuard)
+  @Get('v1/denied')
+  denied() {
+    ran.n++;
+    return { LEAK: true };
+  }
+
+  /** The handler itself refuses (a business rule, not a guard): D-24 says the decision is allowed. */
+  @Get('v1/forbidden-by-handler')
+  forbiddenByHandler() {
+    ran.n++;
+    throw new ForbiddenException({ code: 'business_rule' });
   }
 
   @UseFilters(SwallowFilter)
@@ -787,7 +808,10 @@ describe('INV-AUTH-9 every acting request is audited by the entry point of every
   });
 
   // Mutation: emit only on success.
-  it('an acting request whose handler throws 404 writes exactly one refused event', async () => {
+  // int/all review, D-24 amendment: the decision is the AUTHORIZATION outcome. Every guard let this
+  // request through, so it is `allowed`, and the real status (404) is recorded beside it. The frozen
+  // version pinned `refused` for any status >= 400, which D-24 reverses.
+  it('an acting request whose handler throws 404 writes exactly one allowed event carrying status 404 (D-24)', async () => {
     const b = await boot();
     const res = await b.inject({
       method: 'GET',
@@ -798,10 +822,37 @@ describe('INV-AUTH-9 every acting request is audited by the entry point of every
     const events = actingEvents(b);
     expect(events).toHaveLength(1);
     expect(ActingRequestAuditedV1.parse(events[0]?.payload)).toMatchObject({
-      decision: 'refused',
+      decision: 'allowed',
       status: 404,
       route: 'GET /v1/missing',
     });
+  });
+
+  // D-24: `refused` means a guard refused, whichever guard (the entry point or a later one such as
+  // payments' ActingCoinGuard or engagement's acting ban). A handler's own 403 is still `allowed`.
+  // Mutations: derive the decision from the status code (handler 403 -> refused), or only from the
+  // entry point's own checks (a later guard's 403 -> allowed).
+  it('D-24 a later guard that refuses writes refused/403 and the handler never runs; a handler that answers 403 itself writes allowed/403', async () => {
+    const b = await boot();
+    const denied = await b.inject({
+      method: 'GET',
+      url: '/v1/denied',
+      headers: bearer(actingToken()),
+    });
+    expect(denied.statusCode).toBe(403);
+    expect(ran.n).toBe(0);
+    const byHandler = await b.inject({
+      method: 'GET',
+      url: '/v1/forbidden-by-handler',
+      headers: bearer(actingToken()),
+    });
+    expect(byHandler.statusCode).toBe(403);
+    expect(ran.n).toBe(1);
+    const events = actingEvents(b).map((e) => ActingRequestAuditedV1.parse(e.payload));
+    expect(events.map((e) => [e.route, e.decision, e.status])).toEqual([
+      ['GET /v1/denied', 'refused', 403],
+      ['GET /v1/forbidden-by-handler', 'allowed', 403],
+    ]);
   });
 
   // Mutation: audit before verification, or audit every request.
@@ -862,8 +913,9 @@ describe('INV-AUTH-9 every acting request is audited by the entry point of every
     expect(boom.statusCode).toBe(500);
     const events = actingEvents(b);
     expect(events).toHaveLength(2);
+    // int/all review, D-24 amendment: no guard refused, so `allowed`, with the real status 500
     expect(ActingRequestAuditedV1.parse(events[1]?.payload)).toMatchObject({
-      decision: 'refused',
+      decision: 'allowed',
       status: 500,
       route: 'GET /v1/boom',
     });

@@ -71,7 +71,9 @@ describe('bonus store (engagement) against real Postgres', () => {
       { operatorToken: operatorPaymentsA },
     );
     const res = await Promise.all(players.map((p) => redeem(p, item.id, `key-${uuidv7()}`)));
-    const bodies = await Promise.all(res.map(async (r) => ({ s: r.status, b: await r.json() })));
+    const bodies = await Promise.all(
+      res.map(async (r) => ({ s: r.status, b: (await r.json()) as { code?: string } })),
+    );
     expect(bodies.filter((x) => x.s === 202)).toHaveLength(7);
     for (const x of bodies.filter((y) => y.s !== 202)) {
       expect(x.s).toBe(409);
@@ -109,7 +111,7 @@ describe('bonus store (engagement) against real Postgres', () => {
     expect((await redeem(p1, i1.id, key)).status).toBe(202);
     const res = await redeem(p1, i2.id, key);
     expect(res.status).toBe(422);
-    expect((await res.json()).code).toBe('idempotency_key_reused');
+    expect(((await res.json()) as { code?: string }).code).toBe('idempotency_key_reused');
   });
 
   // Mutation: look up by id alone, or drop the RLS policy on redemptions.

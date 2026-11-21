@@ -409,6 +409,46 @@ describe('spin: the atomic consume', () => {
     expect(MySpinsResponse.parse(await (await mine(other)).json())).toEqual({ available: 0 });
     expect((await fetch(`${urls.engagement}/v1/me/spins`)).status).toBe(401);
   });
+
+  // int/all review, D-13 / X-2: "a sandbox flag cannot remove a paid operation from the bill".
+  // A player launched through a sandbox credential is the SAME identity user as through the
+  // production one (identity resolves the player by tenant, platform and casino id). Today
+  // `consume` ignores the credit's environment, and the spin is flagged sandbox when the TOKEN is
+  // sandbox, so a production credit (from a production deposit) is spent by a sandbox spin: the
+  // coins go to the sandbox wallet and the spin is not metered. Credits are per environment, like
+  // wallets: a sandbox token neither sees nor spends a production credit (and vice versa).
+  // Mutation: drop the environment condition from the consume query (or from countAvailable).
+  it('INV-SPIN-ENV-DB: a sandbox token neither counts nor spends a production credit of the same player; no sandbox spin.completed consumes it', async () => {
+    const { tenant, player } = await setup();
+    const prod = await player();
+    const sbx = await tenant.sandboxPlayer(prod.externalPlayerId);
+    expect(sbx.userId).toBe(prod.userId); // precondition: one identity user, two environments
+    const creditId = randomUUID();
+    await seed(prod.tenantId, [{ id: creditId, user: prod.userId }]); // a production credit
+    const mine = (p: PlayerSession) =>
+      fetch(`${urls.engagement}/v1/me/spins`, { headers: p.headers });
+    expect(MySpinsResponse.parse(await (await mine(prod)).json())).toEqual({ available: 1 });
+    expect(MySpinsResponse.parse(await (await mine(sbx)).json())).toEqual({ available: 0 });
+
+    const res = await spin(sbx, randomUUID());
+    expect(res.status).toBe(409);
+    expect((await conflictCodes([res]))[0]).toBe('no_credit');
+    expect(await creditStates(prod)).toEqual({ available: 1 });
+    const sandboxSpins = await asTenant(
+      prod.tenantId,
+      async (db) =>
+        (
+          await db.query(
+            `SELECT count(*)::int AS n FROM outbox WHERE type = 'engagement.spin.completed'
+              AND envelope->'payload'->>'player_id' = $1 AND (envelope->>'sandbox')::boolean IS TRUE`,
+            [prod.userId],
+          )
+        ).rows[0].n as number,
+    );
+    expect(sandboxSpins).toBe(0);
+    // the production token still spends it, as a production spin
+    expect((await spin(prod, randomUUID())).status).toBe(201);
+  });
 });
 
 describe('ingest: atomic inbound row and outbox row', () => {

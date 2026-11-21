@@ -2,8 +2,19 @@ import { execFile } from 'node:child_process';
 import { resolve } from 'node:path';
 import { promisify } from 'node:util';
 import { connect } from 'amqplib';
-import { Credit, TenantProjection, uuidv7 } from '@ex-mio/contracts';
-import { eventually, pgAs, PLATFORM_TOKEN, rabbitApi, urls } from './env';
+import { TenantProjection, uuidv7 } from '@ex-mio/contracts';
+import { eventually, pgAs, rabbitApi, urls } from './env';
+import { newTenant } from './player-session';
+import { seedCoins } from './seed-coins';
+
+/*
+ * D-24 (int/all review): these tests used the removed `POST /v1/tenants` (platform header) and the
+ * removed payments `POST /v1/credits`. They now use today's real routes: operator signup for a tenant
+ * (identity -> broker -> engagement), and a player redemption for an event nobody consumes
+ * (`engagement.redemption.requested`, written by engagement's outbox in the redemption transaction).
+ * The properties are the same: the relay and the consumer recover after the broker drops every
+ * connection; an unroutable outbox row backs off per row instead of being republished in a loop.
+ */
 
 const sh = promisify(execFile);
 const repoRoot = resolve(__dirname, '../../..');
@@ -38,49 +49,74 @@ describe('broker connection loss (F-BUS-2)', () => {
       return codes.every((c) => c === 200) ? true : undefined;
     }, 60_000);
 
-    // And the relay and the consumer work again: identity -> broker -> engagement.
-    const slug = `recover-${uuidv7().slice(-12)}`;
-    const res = await fetch(`${urls.identity}/v1/tenants`, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json', 'x-platform-admin-token': PLATFORM_TOKEN },
-      body: JSON.stringify({ name: `Recover ${slug}`, slug }),
-    });
-    expect(res.status).toBe(201);
-    const tenant = (await res.json()) as { id: string };
+    // And the relay and the consumer work again: identity -> broker -> engagement. The tenant comes
+    // from a real operator signup (D-24); the projection is read with the operator's own token.
+    const tenant = await newTenant();
+    const operator = await tenant.operatorHeaders('engagement');
     const projection = await eventually(async () => {
-      const r = await fetch(`${urls.engagement}/v1/tenant-projection`, {
-        headers: { 'x-tenant-id': tenant.id },
-      });
+      const r = await fetch(`${urls.engagement}/v1/tenant-projection`, { headers: operator });
       return r.status === 200 ? TenantProjection.parse(await r.json()) : undefined;
     }, 30_000);
-    expect(projection).toMatchObject({ tenant_id: tenant.id, applied_count: 1 });
+    expect(projection).toMatchObject({ tenant_id: tenant.tenantId, applied_count: 1 });
   }, 120_000);
 });
 
 describe('outbox: an event nobody consumes yet (F-BUS-1)', () => {
+  const UNCONSUMED = 'engagement.redemption.requested';
+
   it('is retried with a growing delay per row, not republished in a loop', async () => {
-    const tenant = uuidv7();
-    const res = await fetch(`${urls.payments}/v1/credits`, {
+    // Precondition, checked rather than assumed: no queue is bound to the event (a topic binding
+    // with a wildcard counts). If a consumer appears one day, this says so instead of going vacuous.
+    const bindings = (await (
+      await rabbitApi('/exchanges/%2F/mio.events/bindings/source')
+    ).json()) as { routing_key: string }[];
+    const matches = (pattern: string) =>
+      new RegExp(
+        `^${pattern.replace(/\./g, '\\.').replace(/\*/g, '[^.]+').replace(/#/g, '.*')}$`,
+      ).test(UNCONSUMED);
+    expect(bindings.length).toBeGreaterThan(0);
+    expect(bindings.filter((b) => matches(b.routing_key))).toEqual([]);
+
+    // A real redemption: operator item, a funded player (D-1 seeding), the player redeems.
+    const tenant = await newTenant();
+    const operator = await tenant.operatorHeaders('engagement');
+    const item = await fetch(`${urls.engagement}/v1/store/items`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', ...operator },
+      body: JSON.stringify({
+        name: 'Spins',
+        price: 10,
+        stock: 5,
+        reward: { type: 'free_spins', params: { count: 10 } },
+      }),
+    });
+    expect(item.status).toBe(201);
+    const { id: itemId } = (await item.json()) as { id: string };
+    const player = await tenant.player();
+    await seedCoins(tenant.tenantId, player.userId, 100, {
+      operatorToken: await tenant.operatorToken('payments'),
+    });
+    const redeemed = await fetch(`${urls.engagement}/v1/redemptions`, {
       method: 'POST',
       headers: {
         'content-type': 'application/json',
-        'x-tenant-id': tenant,
-        'x-principal-id': 'op-1',
+        ...player.headers,
         'idempotency-key': `key-${uuidv7()}`,
       },
-      body: JSON.stringify({ player_id: uuidv7(), amount: 3 }),
+      body: JSON.stringify({ item_id: itemId }),
     });
-    expect(res.status).toBe(201);
-    const credit = Credit.parse(await res.json());
-    const db = await pgAs('payments_app');
+    expect(redeemed.status).toBe(202);
+    const { id: redemptionId } = (await redeemed.json()) as { id: string };
+
+    const db = await pgAs('engagement_app');
     try {
       const row = () =>
         db.query(
           `SELECT o.attempts, o.published_at, o.parked_at, o.next_attempt_at > now() AS delayed
-             FROM outbox o WHERE o.envelope->'payload'->>'credit_id' = $1`,
-          [credit.id],
+             FROM outbox o WHERE o.type = $1 AND o.envelope->'payload'->>'redemption_id' = $2`,
+          [UNCONSUMED, redemptionId],
         );
-      // payments.coins.credited has no consumer: the broker returns it, the row backs off.
+      // nobody is bound to it: the broker returns it, the row backs off.
       const first = await eventually(async () => {
         const { rows } = await row();
         return rows[0]?.attempts >= 1 ? rows[0] : undefined;

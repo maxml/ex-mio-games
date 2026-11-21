@@ -4,7 +4,7 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { act } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { MioApiProvider, createIsolatedMockApi } from '@/layers/shared/api';
-import { ThemeProvider } from '@/layers/shared/ui';
+import { THEMES, ThemeProvider } from '@/layers/shared/ui';
 import { PlayerWidgetView } from './player-widget';
 
 beforeEach(() => {
@@ -124,7 +124,11 @@ describe('probe: embed theme', () => {
         </MioApiProvider>
       </QueryClientProvider>,
     );
-    expect(document.documentElement.style.getPropertyValue('--bg')).toBe('#f2f7f5');
+    // D-22: the expected value is the theme's own token, not a hex literal (the colour gate
+    // scans test files too). A missing token must not make this pass against an empty value.
+    const northbetBg = THEMES.find((t) => t.id === 'northbet')?.tokens.bg;
+    expect(northbetBg).toMatch(/\S/);
+    expect(document.documentElement.style.getPropertyValue('--bg')).toBe(northbetBg);
     unmount();
     render(
       <QueryClientProvider client={client}>
