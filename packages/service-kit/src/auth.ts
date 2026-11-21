@@ -162,7 +162,11 @@ export function createTokenVerifier(
     const parsed = AccessTokenClaims.safeParse(payload);
     if (!parsed.success) throw new TokenRejectedError('TOKEN_INVALID', 'claims');
     const claims = parsed.data;
-    if (claims.aud !== options.audience) throw new TokenRejectedError('TOKEN_INVALID', 'audience');
+    // A single audience must equal this service; a player session's array must contain it (D-22).
+    const audiences: readonly string[] = Array.isArray(claims.aud) ? claims.aud : [claims.aud];
+    if (!audiences.includes(options.audience)) {
+      throw new TokenRejectedError('TOKEN_INVALID', 'audience');
+    }
     // `act` exists only on a platform_admin token (a forged acting claim on an operator token).
     if (claims.act && !claims.roles.includes('platform_admin')) {
       throw new TokenRejectedError('TOKEN_INVALID', 'act without platform_admin');

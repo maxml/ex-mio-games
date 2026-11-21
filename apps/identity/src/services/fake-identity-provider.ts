@@ -59,15 +59,6 @@ export class FakeIdentityProvider implements IdentityProvider {
     return { uid: found.uid };
   }
 
-  async exchangeLaunchToken(
-    providerTenantId: string,
-    input: { userId: string; platform: string; externalPlayerId: string; existingUid?: string },
-  ) {
-    this.enter('exchangeLaunchToken', providerTenantId, input.platform, input.externalPlayerId);
-    // D-21: a player has no provider account. Same as the real adapters: a local subject, no account.
-    return { uid: input.existingUid ?? `player:${input.userId}` };
-  }
-
   async revokeSessions(providerTenantId: string, uid: string): Promise<void> {
     this.enter('revokeSessions', providerTenantId, uid);
   }

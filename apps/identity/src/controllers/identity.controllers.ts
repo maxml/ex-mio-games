@@ -3,10 +3,13 @@ import { z } from 'zod';
 import {
   InternalResolvePlayerRequest,
   InviteStaffRequest,
+  IssueCredentialRequest,
   LaunchRequest,
   LoginRequest,
   OperatorSignupRequest,
   PLATFORM_TENANT_ID,
+  RealtimeTicketRequest,
+  RotateRequest,
   ServiceTokenRequest,
   StartActingRequest,
   Uuid,
@@ -18,6 +21,7 @@ import {
   type LaunchResponse,
   type PlayerLinkResponse,
   type PlayerLookup,
+  type RealtimeTicketResponse,
   type SignupResponse,
   type StaffMember,
   type TenantIntegration,
@@ -35,7 +39,7 @@ import { PlayersService } from '../services/players.service';
 import { SessionsService } from '../services/sessions.service';
 import { StaffService, type StaffUser } from '../services/staff.service';
 import { TenantsService } from '../services/tenants.service';
-import { RequirePermission } from './permissions';
+import { AuthenticatedSelf, RequirePermission } from './permissions';
 
 /** The caller as a Subject, from the auth context the entry point established (never a header). */
 function subject(): Subject {
@@ -59,18 +63,7 @@ const UserIdParam = z.object({ userId: Uuid });
 const TenantIdParam = z.object({ tenantId: Uuid });
 const TenantUserParam = z.object({ tenantId: Uuid, userId: Uuid });
 const SlugParam = z.object({ slug: z.string().trim().min(1).max(48) });
-const IssueCredentialRequest = z.object({ platform: z.string().trim().min(1).max(64) }).strict();
 const RotateParams = z.object({ keyId: z.string().min(1).max(200) });
-const RotateRequest = z
-  .object({
-    grace_seconds: z
-      .number()
-      .int()
-      .min(0)
-      .max(30 * 24 * 3600)
-      .default(0),
-  })
-  .strict();
 
 @Controller('v1/auth')
 export class AuthController {
@@ -108,6 +101,15 @@ export class AuthController {
   @HttpCode(200)
   serviceToken(@Body() body: unknown): TokenResponse {
     return this.sessions.issueServiceToken(parseInput(ServiceTokenRequest, body));
+  }
+
+  /** D-10, D-22: the caller's own session becomes a one-time socket ticket (aud realtime, <= 60 s). */
+  @AuthenticatedSelf()
+  @Post('realtime-ticket')
+  @HttpCode(200)
+  realtimeTicket(@Body() body: unknown): RealtimeTicketResponse {
+    parseInput(RealtimeTicketRequest, body ?? {});
+    return this.sessions.issueRealtimeTicket(subject());
   }
 
   @RequirePermission('acting.start')
@@ -201,7 +203,8 @@ export class CredentialsController {
   @RequirePermission('credentials.rotate')
   @Post()
   issue(@Body() body: unknown): Promise<CredentialIssued> {
-    return this.credentials.issueFor(subject(), parseInput(IssueCredentialRequest, body).platform);
+    const { platform, environment } = parseInput(IssueCredentialRequest, body);
+    return this.credentials.issueFor(subject(), platform, environment);
   }
 
   @RequirePermission('credentials.rotate')

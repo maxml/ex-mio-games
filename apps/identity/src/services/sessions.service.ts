@@ -10,6 +10,7 @@ import {
   ACCESS_TTL_MAX_SECONDS,
   ACTING_TTL_MAX_SECONDS,
   PLATFORM_TENANT_ID,
+  REALTIME_TICKET_TTL_SECONDS,
   SERVICE_CALL_POLICY,
   SERVICE_TOKEN_SCOPE,
   SERVICE_TOKEN_TTL_MAX_SECONDS,
@@ -17,13 +18,16 @@ import {
   type Audience,
   type JwksResponse,
   type LoginRequest,
+  type RealtimeTicketRedeemResponse,
+  type RealtimeTicketResponse,
   type ServiceName,
   type ServiceTokenRequest,
   type StartActingRequest,
   type TokenResponse,
   type Role,
 } from '@ex-mio/contracts';
-import { IdentityError, ProviderError } from '../errors';
+import { createTokenVerifier, TokenRejectedError } from '@ex-mio/service-kit';
+import { IdentityError, ProviderError, UniqueViolationError } from '../errors';
 import type { Clock, Repos, SigningKeyRow, UnitOfWork } from '../model/ports';
 import type { Subject } from './access.service';
 import { AuditService } from './audit.service';
@@ -135,7 +139,8 @@ export class SessionsService {
     sub: string;
     tid: string;
     roles: Role[];
-    aud: Audience;
+    /** One audience, or (a player session only, D-22) the array of audiences it is valid for. */
+    aud: Audience | readonly Audience[];
     act?: { tenant_id: string; reason: string };
     /** X-3: set only by the launch flow, from the credential's environment; never from a caller. */
     sbx?: true;
@@ -235,6 +240,69 @@ export class SessionsService {
       act: { tenant_id: target.id, reason },
       ttl: ACTING_TTL_MAX_SECONDS,
     });
+  }
+
+  // ---- realtime ticket (D-10, D-22, D-23) ----------------------------------------------------
+
+  /**
+   * Turns the caller's session into a one-time socket ticket: `aud` is `realtime` only, the
+   * lifetime is at most 60 s and the `jti` is what `redeemRealtimeTicket` consumes. An acting
+   * session has no realtime use, so it gets none.
+   */
+  issueRealtimeTicket(subject: Subject): RealtimeTicketResponse {
+    if (subject.acting) {
+      throw new IdentityError('ACTING_FORBIDDEN', 'an acting session cannot open a socket');
+    }
+    const t = this.issueUserToken({
+      sub: subject.userId,
+      tid: subject.tenantId,
+      roles: subject.roles,
+      aud: 'realtime',
+      ttl: REALTIME_TICKET_TTL_SECONDS,
+    });
+    return { ticket: t.access_token, expires_in: t.expires_in };
+  }
+
+  /**
+   * The one place a realtime host turns a ticket into a principal. The ticket must be ours, for
+   * `realtime` alone, live and at most 60 s long (a 15-minute session is not a ticket), and its
+   * `jti` is recorded here: the unique key makes a second redeem fail, whichever call is second.
+   */
+  async redeemRealtimeTicket(ticket: string): Promise<RealtimeTicketRedeemResponse> {
+    const verify = createTokenVerifier({
+      audience: 'realtime',
+      jwks: async () => this.jwks(),
+      nowSeconds: () => this.clock.now(),
+    });
+    let claims;
+    try {
+      claims = await verify(ticket);
+    } catch (err) {
+      if (err instanceof TokenRejectedError) throw new IdentityError(err.code, err.message);
+      throw err;
+    }
+    if (claims.aud !== 'realtime' || claims.exp - claims.iat > REALTIME_TICKET_TTL_SECONDS) {
+      throw new IdentityError('TOKEN_INVALID', 'not a realtime ticket');
+    }
+    const tid = claims.tid.toLowerCase();
+    const tenant = await this.tenants.get(tid).catch(() => {
+      throw new IdentityError('TOKEN_INVALID', 'not a realtime ticket');
+    });
+    if (tenant.status !== 'active') {
+      throw new IdentityError('TENANT_SUSPENDED', 'tenant is suspended');
+    }
+    try {
+      // the jti row is the consumption record; its expiry is the ticket's
+      await this.uow.run(tid, (tx) =>
+        this.repos.jti.insert(tx, tid, `rt:${claims.jti}`, claims.exp),
+      );
+    } catch (err) {
+      if (err instanceof UniqueViolationError) {
+        throw new IdentityError('REALTIME_TICKET_REPLAYED', 'ticket already used');
+      }
+      throw err;
+    }
+    return { sub: claims.sub, tid, roles: claims.roles };
   }
 
   // ---- service tokens (D-4, D-14) --------------------------------------------------------------

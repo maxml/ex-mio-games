@@ -93,17 +93,6 @@ export class FirebaseEmulatorProvider implements IdentityProvider {
     }
   }
 
-  async exchangeLaunchToken(
-    providerTenantId: string,
-    input: { userId: string; platform: string; externalPlayerId: string; existingUid?: string },
-  ) {
-    // D-21: a player is identified by the casino launch token only and gets our own JWT. No account
-    // is created in the provider (the emulator refuses anonymous sign-up in a tenant anyway), so
-    // this is a local subject and makes no network call.
-    void providerTenantId;
-    return { uid: input.existingUid ?? `player:${input.userId}` };
-  }
-
   async revokeSessions(providerTenantId: string, uid: string): Promise<void> {
     await this.call(
       `/v1/projects/${this.project}/accounts:update`,

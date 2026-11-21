@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import { runWithTenant } from '@ex-mio/tenancy';
 import { parseEvent, uuidv7, type AuditEntry, type EventEnvelope } from '@ex-mio/contracts';
 import type { AuditRow, Clock, Repos, Tx, UnitOfWork } from '../model/ports';
 
@@ -39,21 +40,26 @@ export class AuditService {
     action: string;
     reason: string;
   }): Promise<void> {
-    await this.uow.run(entry.tenantId, (tx) =>
-      this.repos.audit.insert(tx, {
-        tenant_id: entry.tenantId,
-        id: uuidv7(),
-        occurred_at: new Date(this.clock.now() * 1000).toISOString(),
-        actor_user_id: entry.actorUserId,
-        actor_tenant_id: entry.actorTenantId,
-        acting_tenant_id: entry.actingTenantId,
-        action: entry.action,
-        reason: entry.reason,
-        service: null,
-        route: null,
-        decision: null,
-        caller_service: null,
-      }),
+    // acting.start runs in the platform admin's own tenant context while the row belongs to the
+    // target tenant. This write is the one place that deliberately enters the target tenant, so it
+    // opens that context for this single transaction instead of switching mid-flow (F9).
+    await runWithTenant({ tenantId: entry.tenantId, principalId: entry.actorUserId }, () =>
+      this.uow.run(entry.tenantId, (tx) =>
+        this.repos.audit.insert(tx, {
+          tenant_id: entry.tenantId,
+          id: uuidv7(),
+          occurred_at: new Date(this.clock.now() * 1000).toISOString(),
+          actor_user_id: entry.actorUserId,
+          actor_tenant_id: entry.actorTenantId,
+          acting_tenant_id: entry.actingTenantId,
+          action: entry.action,
+          reason: entry.reason,
+          service: null,
+          route: null,
+          decision: null,
+          caller_service: null,
+        }),
+      ),
     );
   }
 

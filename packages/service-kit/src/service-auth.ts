@@ -69,6 +69,8 @@ export const SERVICE_AUTH_RUNTIME = Symbol('SERVICE_AUTH_RUNTIME');
 export type AuditPort = ((event: EventEnvelope) => Promise<void>) & {
   /** Called after the response with the same event object, final `decision` and `status` set. */
   finalize?: (event: EventEnvelope) => Promise<void>;
+  /** Writes an event whose outcome is already final (a guard refusal), with no intent. */
+  publishFinal?: (event: EventEnvelope) => Promise<void>;
   /** Ports that hold events back until finalize (the outbox default) are swept on a timer. */
   sweep?: (olderThanSeconds?: number) => Promise<number>;
 };
@@ -443,7 +445,9 @@ export class ServiceAuthGuard implements CanActivate {
   /** A refusal made by this guard: the outcome is known, write it once, final. */
   private async writeFinal(event: EventEnvelope): Promise<void> {
     try {
-      await this.auditPort()(event);
+      const port = this.auditPort();
+      // A two-step port must not take a refusal as an intent: nothing would finalize it (F1).
+      await (port.publishFinal ?? port)(event);
     } catch {
       throw fail(503, 'AUDIT_UNAVAILABLE', 'audit unavailable');
     }
@@ -472,8 +476,22 @@ export class ServiceAuthGuard implements CanActivate {
       payload.decision = reply.statusCode < 400 ? 'allowed' : 'refused';
       void port.finalize?.(event).catch(logAuditFinalizeFailure);
     };
+    // 'close' without a finished response means the client went away before the outcome was known
+    // (the status is still the default 200): record that as aborted, never as allowed (F7).
+    const aborted = (): void => {
+      if (done) return;
+      done = true;
+      const payload = event.payload as { decision: string; status: number };
+      payload.status = 500;
+      payload.decision = 'aborted';
+      void port.finalize?.(event).catch(logAuditFinalizeFailure);
+    };
     reply.raw.once('finish', finish);
-    reply.raw.once('close', finish);
+    reply.raw.once('close', () => {
+      const raw = reply.raw as { writableFinished?: boolean };
+      if (raw.writableFinished === false) aborted();
+      else finish();
+    });
   }
 }
 

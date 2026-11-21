@@ -52,6 +52,8 @@ export class AuditIntentGoneError extends Error {
 
 export type OutboxAuditPort = ((event: EventEnvelope) => Promise<void>) & {
   finalize: (event: EventEnvelope) => Promise<void>;
+  /** Publish an event whose outcome is already known (a guard refusal) once, final, no intent. */
+  publishFinal: (event: EventEnvelope) => Promise<void>;
   /** Publish intents older than `olderThanSeconds` as aborted; returns how many. */
   sweep: (olderThanSeconds?: number) => Promise<number>;
 };
@@ -73,6 +75,14 @@ export function createOutboxAuditPort(getDb: () => Db): OutboxAuditPort {
       ]),
     );
   }) as OutboxAuditPort;
+
+  // A refusal made by the entry point itself has a known outcome and never ran a handler: it goes
+  // straight to the outbox, final, with no intent (F1). The intent path is reachable only from the
+  // port call; this is the other way in, and it has no provisional state to leave behind.
+  port.publishFinal = async (event) => {
+    const db = getDb();
+    await db.platformTx((tx: Tx) => db.publish(tx, event));
+  };
 
   port.finalize = async (event) => {
     const db = getDb();

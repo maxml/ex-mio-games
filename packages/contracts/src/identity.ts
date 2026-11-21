@@ -17,10 +17,28 @@ export type TenantStatus = z.infer<typeof TenantStatus>;
 export const Role = z.enum(['platform_admin', 'operator_admin', 'operator_staff', 'player']);
 export type Role = z.infer<typeof Role>;
 
-/** Service audiences a token can be minted for. A token is valid for exactly one. */
-export const SERVICE_AUDIENCES = ['identity', 'engagement', 'payments', 'web'] as const;
+/**
+ * Audiences a token can be minted for. A token has exactly one, except a player session, which
+ * carries `PLAYER_SESSION_AUDIENCES` (D-22, D-23). `realtime` exists only on the one-time socket
+ * ticket (D-10): login, acting and launch bodies cannot ask for it (`RequestedAudience`).
+ */
+export const SERVICE_AUDIENCES = ['identity', 'engagement', 'payments', 'realtime', 'web'] as const;
 export const Audience = z.enum(SERVICE_AUDIENCES);
 export type Audience = z.infer<typeof Audience>;
+
+/** What a login, acting or launch body may ask for: every audience except `realtime`. */
+export const REQUESTABLE_AUDIENCES = ['identity', 'engagement', 'payments', 'web'] as const;
+export const RequestedAudience = z.enum(REQUESTABLE_AUDIENCES);
+export type RequestedAudience = z.infer<typeof RequestedAudience>;
+
+/**
+ * D-23: the `aud` array of a player session. It includes `identity` so the player can call the
+ * ticket route with it, and never `realtime`: only the ticket carries that.
+ */
+export const PLAYER_SESSION_AUDIENCES = ['identity', 'engagement', 'payments'] as const;
+
+/** D-10, D-22: a socket ticket lives at most this long and is redeemed once. */
+export const REALTIME_TICKET_TTL_SECONDS = 60;
 
 /**
  * The platform tenant has a fixed id, seeded by the identity migration. The token
@@ -112,6 +130,7 @@ export const IDENTITY_ERRORS = {
   LAUNCH_TOKEN_INVALID: 401,
   LAUNCH_TOKEN_EXPIRED: 401,
   LAUNCH_TOKEN_REPLAYED: 401,
+  REALTIME_TICKET_REPLAYED: 401,
   WEBHOOK_SIGNATURE_INVALID: 401,
   TENANT_UNRESOLVED: 400,
   VALIDATION_FAILED: 400,
@@ -163,7 +182,8 @@ export const AccessTokenClaims = z
     sub: Uuid,
     tid: Uuid,
     roles: z.array(Role).min(1),
-    aud: Audience,
+    /** One audience, or (a player session only, D-22) a non-empty array of known audiences. */
+    aud: z.union([Audience, z.array(Audience).min(1)]),
     iat: z.number().int(),
     exp: z.number().int(),
     jti: z.string().min(8),
@@ -176,6 +196,13 @@ export const AccessTokenClaims = z
     sbx: z.literal(true).optional(),
   })
   .superRefine((c, ctx) => {
+    if (Array.isArray(c.aud) && !(c.roles.length === 1 && c.roles[0] === 'player')) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['aud'],
+        message: 'an aud array is only for a player session',
+      });
+    }
     const isAdmin = c.roles.includes('platform_admin');
     const onPlatform = c.tid.toLowerCase() === PLATFORM_TENANT_ID;
     const onlyAdmin = c.roles.length === 1 && c.roles[0] === 'platform_admin';
@@ -376,12 +403,19 @@ export type OperatorSignupRequest = z.infer<typeof OperatorSignupRequest>;
 
 /** The tenant is NOT in this body: it comes from the Host (MIO-031). `.strict()` rejects a smuggled `tenant_id`. */
 export const LoginRequest = z
-  .object({ email: Email, password: z.string().min(1).max(200), audience: Audience.default('web') })
+  .object({
+    email: Email,
+    password: z.string().min(1).max(200),
+    audience: RequestedAudience.default('web'),
+  })
   .strict();
 export type LoginRequest = z.infer<typeof LoginRequest>;
 
 export const LaunchRequest = z
-  .object({ token: z.string().min(20).max(4096), audience: Audience.default('engagement') })
+  .object({
+    token: z.string().min(20).max(4096),
+    audience: RequestedAudience.default('engagement'),
+  })
   .strict();
 export type LaunchRequest = z.infer<typeof LaunchRequest>;
 
@@ -391,10 +425,48 @@ export const StartActingRequest = z
     /** D-15 Q-4: minimum 8, maximum 500, enforced here; the web epic follows. */
     reason: z.string().trim().min(8).max(500),
     /** The service the acting token is for (a token is valid for one audience); identity by default. */
-    audience: Audience.default('identity'),
+    audience: RequestedAudience.default('identity'),
   })
   .strict();
 export type StartActingRequest = z.infer<typeof StartActingRequest>;
+
+/** F6: the platform is required; the environment defaults to production and is never a client flag on a launch. */
+export const IssueCredentialRequest = z
+  .object({
+    platform: z.string().trim().min(1).max(64),
+    environment: IntegrationEnvironment.default('production'),
+  })
+  .strict();
+export type IssueCredentialRequest = z.infer<typeof IssueCredentialRequest>;
+
+export const RotateRequest = z
+  .object({
+    grace_seconds: z
+      .number()
+      .int()
+      .min(0)
+      .max(30 * 24 * 3600)
+      .default(0),
+  })
+  .strict();
+export type RotateRequest = z.infer<typeof RotateRequest>;
+
+/** D-10, D-22: `POST /v1/auth/realtime-ticket` takes an empty body and answers with this. */
+export const RealtimeTicketRequest = z.object({}).strict();
+export type RealtimeTicketRequest = z.infer<typeof RealtimeTicketRequest>;
+export const RealtimeTicketResponse = z
+  .object({
+    ticket: z.string().min(1),
+    expires_in: z.number().int().positive().max(REALTIME_TICKET_TTL_SECONDS),
+  })
+  .strict();
+export type RealtimeTicketResponse = z.infer<typeof RealtimeTicketResponse>;
+
+/** What `SessionsService.redeemRealtimeTicket` returns: the principal of a ticket, once (D-23). */
+export const RealtimeTicketRedeemResponse = z
+  .object({ sub: Uuid, tid: Uuid, roles: z.array(Role).min(1) })
+  .strict();
+export type RealtimeTicketRedeemResponse = z.infer<typeof RealtimeTicketRedeemResponse>;
 
 export const InviteStaffRequest = z
   .object({ email: Email, password: Password, role: z.enum(['operator_admin', 'operator_staff']) })
@@ -467,6 +539,8 @@ export const CredentialSummary = z
   .object({
     key_id: z.string(),
     platform: z.string(),
+    /** F6: an operator tells its sandbox keys from its production keys by this. */
+    environment: IntegrationEnvironment,
     status: z.enum(['active', 'retiring', 'revoked']),
     created_at: z.string().datetime(),
   })

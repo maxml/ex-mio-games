@@ -56,7 +56,6 @@ export function wireServices(d: WireDeps): Services {
     players,
     sessions,
     tenants,
-    d.provider,
   );
   return { tenants, audit, access, sessions, staff, credentials, players, launch };
 }

@@ -1,4 +1,5 @@
 import { PLATFORM_TENANT_ID, type EventEnvelope, type Role } from '@ex-mio/contracts';
+import { TenantMismatchError, tryTenantContext } from '@ex-mio/tenancy';
 import { UniqueViolationError } from '../errors';
 import type {
   AuditRow,
@@ -65,7 +66,13 @@ export class MemoryStore {
 
   uow(): UnitOfWork {
     return {
-      run: async (_tenantId, fn) => {
+      run: async (tenantId, fn) => {
+        // Same rule as withTenantTransaction: an explicit tenant that differs from the ambient one
+        // would move the rest of the flow to another tenant, so it is refused.
+        const ambient = tryTenantContext();
+        if (tenantId && ambient && ambient.tenantId.toLowerCase() !== tenantId.toLowerCase()) {
+          throw new TenantMismatchError();
+        }
         const tx: MemTx = { undo: [] };
         try {
           return await fn(tx);

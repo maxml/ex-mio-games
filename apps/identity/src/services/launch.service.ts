@@ -6,14 +6,14 @@ import {
   LAUNCH_TOKEN_AUDIENCE,
   LAUNCH_TOKEN_CLOCK_SKEW_SECONDS,
   LAUNCH_TOKEN_MAX_TTL_SECONDS,
-  type Audience,
+  PLAYER_SESSION_AUDIENCES,
+  type LaunchRequest,
   type LaunchResponse,
 } from '@ex-mio/contracts';
-import { IdentityError, ProviderError, UniqueViolationError } from '../errors';
+import { IdentityError, UniqueViolationError } from '../errors';
 import type { Clock, Repos, UnitOfWork } from '../model/ports';
 import { safeEqual } from './crypto';
 import { CredentialsService } from './credentials.service';
-import type { IdentityProvider } from './identity-provider';
 import { PlayersService } from './players.service';
 import { SessionsService } from './sessions.service';
 import { TenantsService } from './tenants.service';
@@ -33,7 +33,7 @@ const invalid = (why = 'launch token invalid') => new IdentityError('LAUNCH_TOKE
  * A casino-signed launch token becomes a player session only when every check passes, in this
  * order: header and key (tenant and platform come from the key), signature, claims, expiry and
  * lifetime, platform, tenant status, then the single-use `jti` (recorded only now), the player
- * link and the provider call. Anything that fails before the `jti` leaves no trace.
+ * link and the session (no provider call: players have no provider account, D-21). Anything that fails before the `jti` leaves no trace.
  */
 @Injectable()
 export class LaunchService {
@@ -45,10 +45,12 @@ export class LaunchService {
     private readonly players: PlayersService,
     private readonly sessions: SessionsService,
     private readonly tenants: TenantsService,
-    private readonly provider: IdentityProvider,
   ) {}
 
-  async exchange(input: { token: string; audience: Audience }): Promise<LaunchResponse> {
+  /** `audience` is accepted for compatibility; every player session carries the same audience array. */
+  async exchange(
+    input: Pick<LaunchRequest, 'token'> & { audience?: unknown },
+  ): Promise<LaunchResponse> {
     const parts = String(input.token ?? '').split('.');
     if (parts.length !== 3 || parts.some((p) => !p)) throw invalid();
     const [h, p, s] = parts as [string, string, string];
@@ -98,43 +100,13 @@ export class LaunchService {
     }
 
     const { user_id } = await this.players.resolveOrCreate(tenantId, key.row.platform, claims.pid);
-    const providerTenant = await this.tenants.providerTenantFor(tenantId);
-    try {
-      const existing = await this.uow.run(tenantId, (tx) =>
-        this.repos.users.providerUid(tx, tenantId, user_id),
-      );
-      const { uid } = await this.provider.exchangeLaunchToken(providerTenant, {
-        userId: user_id,
-        platform: key.row.platform,
-        externalPlayerId: claims.pid,
-        ...(existing ? { existingUid: existing } : {}),
-      });
-      if (!existing) {
-        await this.uow
-          .run(tenantId, (tx) =>
-            this.repos.users.insertProviderLink(tx, {
-              tenant_id: tenantId,
-              user_id,
-              provider: 'firebase',
-              provider_uid: uid,
-            }),
-          )
-          .catch((e) => {
-            if (!(e instanceof UniqueViolationError)) throw e;
-          });
-      }
-    } catch (err) {
-      if (err instanceof ProviderError) {
-        throw new IdentityError('PROVIDER_UNAVAILABLE', 'identity provider unavailable');
-      }
-      throw err;
-    }
-
+    // D-21: a player has no identity-provider account, so there is no provider call and no
+    // provider link here. The session is our own JWT, valid for every audience the player needs.
     const token = this.sessions.issueUserToken({
       sub: user_id,
       tid: tenantId,
       roles: ['player'],
-      aud: input.audience,
+      aud: PLAYER_SESSION_AUDIENCES,
       // X-3: the environment is the credential's, so a client can never ask for (or avoid) sandbox
       ...(key.row.environment === 'sandbox' ? { sbx: true as const } : {}),
     });

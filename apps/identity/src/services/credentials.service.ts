@@ -87,10 +87,14 @@ export class CredentialsService {
   }
 
   /** Issue on behalf of an operator admin (or an acting platform admin). */
-  async issueFor(subject: Subject, platform: string): Promise<CredentialIssued> {
+  async issueFor(
+    subject: Subject,
+    platform: string,
+    environment: IntegrationEnvironment = 'production',
+  ): Promise<CredentialIssued> {
     const tenantId = effectiveTenant(subject);
     await this.access.authorize(subject, 'credentials.rotate', { tenant_id: tenantId });
-    return this.issue(tenantId, platform);
+    return this.issue(tenantId, platform, { environment });
   }
 
   async list(subject: Subject): Promise<CredentialSummary[]> {
@@ -101,6 +105,7 @@ export class CredentialsService {
     return rows.map((r) => ({
       key_id: r.key_id,
       platform: r.platform,
+      environment: r.environment,
       status: this.statusOf(r, now),
       created_at: new Date(r.created_at * 1000).toISOString(),
     }));

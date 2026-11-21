@@ -15,14 +15,6 @@ export interface IdentityProvider {
     providerTenantId: string,
     input: { email: string; password: string },
   ): Promise<{ uid: string } | null>;
-  /**
-   * The provider-side subject of a player after a verified launch (D-21). Players have no provider
-   * account: this returns a local subject and creates nothing (staff and operators use the provider).
-   */
-  exchangeLaunchToken(
-    providerTenantId: string,
-    input: { userId: string; platform: string; externalPlayerId: string; existingUid?: string },
-  ): Promise<{ uid: string }>;
   revokeSessions(providerTenantId: string, uid: string): Promise<void>;
   deleteUser(providerTenantId: string, uid: string): Promise<void>;
 }

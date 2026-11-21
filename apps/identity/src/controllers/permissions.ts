@@ -17,6 +17,13 @@ export const PERMISSION_KEY = 'ex-mio:permission';
 export const RequirePermission = (action: Action): MethodDecorator & ClassDecorator =>
   SetMetadata(PERMISSION_KEY, action);
 
+/** Declared by a route that acts only on the caller's own session and so needs no role (D-22). */
+export const SELF_SESSION = 'session.self';
+
+/** Any authenticated caller, for their own session only; there is no tenant or object to authorize. */
+export const AuthenticatedSelf = (): MethodDecorator & ClassDecorator =>
+  SetMetadata(PERMISSION_KEY, SELF_SESSION);
+
 /**
  * Default deny: a route that declares neither a permission nor `@Public()` is refused, so a new
  * route cannot ship open by omission. `/internal/v1/` routes are service-token routes decided by
