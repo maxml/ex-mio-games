@@ -1,0 +1,39 @@
+{
+  "schema_version": 3,
+  "diagram_type": "lifecycle",
+  "meta": {
+    "title": "Redemption lifecycle",
+    "output": "lifecycle.html",
+    "quality_profile": "standard"
+  },
+  "mainPath": ["requested", "held", "issuing", "issued", "completed"],
+  "states": [
+    { "id": "requested", "type": "start", "label": "REQUESTED", "sublabel": "stock and limit reserved" },
+    { "id": "held", "type": "active", "label": "HELD", "sublabel": "coins held in payments" },
+    { "id": "issuing", "type": "active", "label": "ISSUING", "sublabel": "casino call in flight" },
+    { "id": "issued", "type": "active", "label": "ISSUED", "sublabel": "casino confirmed" },
+    { "id": "completed", "type": "success", "label": "COMPLETED", "sublabel": "hold captured" },
+    { "id": "rejected_funds", "type": "failure", "label": "REJECTED_FUNDS", "sublabel": "stock returned" },
+    { "id": "unknown", "type": "waiting", "label": "UNKNOWN", "sublabel": "ambiguous casino result" },
+    { "id": "failed", "type": "failure", "label": "FAILED", "sublabel": "hold released, stock returned" },
+    { "id": "needs_review", "type": "neutral", "label": "NEEDS_REVIEW", "sublabel": "past maximum age" },
+    { "id": "refunded", "type": "neutral", "label": "REFUNDED", "sublabel": "casino revoked the reward" }
+  ],
+  "transitions": [
+    { "id": "t1", "from": "requested", "to": "held", "label": "hold placed" },
+    { "id": "t2", "from": "held", "to": "issuing", "label": "issue requested" },
+    { "id": "t3", "from": "issuing", "to": "issued", "label": "casino ok" },
+    { "id": "t4", "from": "issued", "to": "completed", "label": "capture" },
+    { "id": "t5", "from": "requested", "to": "rejected_funds", "label": "insufficient coins", "variant": "security" },
+    { "id": "t6", "from": "issuing", "to": "unknown", "label": "timeout or lost reply", "variant": "dashed" },
+    { "id": "t7", "from": "unknown", "to": "issued", "label": "lookup finds reward", "variant": "emphasis" },
+    { "id": "t8", "from": "issuing", "to": "failed", "label": "final refusal", "variant": "security" },
+    { "id": "t9", "from": "unknown", "to": "needs_review", "label": "maximum age", "variant": "dashed" },
+    { "id": "t10", "from": "completed", "to": "refunded", "label": "revoked", "variant": "dashed" }
+  ],
+  "cards": [
+    { "dot": "amber", "title": "No release while unknown", "items": ["UNKNOWN never releases coins automatically", "a sweeper asks the casino by our key, with backoff", "after the maximum age the redemption goes to NEEDS_REVIEW"] },
+    { "dot": "rose", "title": "Compensation", "items": ["REJECTED_FUNDS and FAILED return stock and limit", "FAILED also releases the hold", "REFUNDED reverses a captured amount"] },
+    { "dot": "cyan", "title": "Late results", "items": ["a late success or late rejection after a terminal state is recorded", "it is reconciled, never applied blindly"] }
+  ]
+}
