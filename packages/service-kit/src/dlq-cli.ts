@@ -48,6 +48,10 @@ export async function runDlqCli(options: DlqCliOptions): Promise<number> {
     try {
       const channel = await connection.createConfirmChannel();
       const result = await replayDeadLetters(channel, options.service, { limit, dryRun });
+      // Closing the channel (and waiting for the broker's answer) makes sure the acks of
+      // the replayed messages were processed; closing only the connection can drop them
+      // and leave the original in the DLQ next to its replayed copy.
+      await channel.close();
       log(
         dryRun
           ? `${options.service}.dlq: ${result.depth} message(s) waiting`

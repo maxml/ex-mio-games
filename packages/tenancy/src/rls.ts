@@ -53,7 +53,7 @@ export async function ensureTenantKeys(queryRunner: QueryRunner, table: string):
   const t = ident(table);
   const keys: KeyRow[] = await queryRunner.query(
     `SELECT ic.relname AS index_name, i.indisprimary AS is_primary,
-            array_agg(a.attname ORDER BY k.ord) FILTER (WHERE a.attname IS NOT NULL) AS columns
+            array_agg(a.attname::text ORDER BY k.ord) FILTER (WHERE a.attname IS NOT NULL) AS columns
        FROM pg_index i
        JOIN pg_class ic ON ic.oid = i.indexrelid
        CROSS JOIN LATERAL unnest(i.indkey::int2[]) WITH ORDINALITY AS k(attnum, ord)

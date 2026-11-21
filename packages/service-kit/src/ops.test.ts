@@ -4,10 +4,11 @@ import { runDlqCli } from './dlq-cli';
 import { MIGRATION_LOCK_ID, runMigrationsCli } from './migrate';
 
 describe('grantAppRoleSql', () => {
-  it('revokes everything first, then grants exactly the listed privileges', () => {
+  it('gives CONNECT on this database, revokes everything first, then grants exactly the listed privileges', () => {
     expect(
       grantAppRoleSql(appRoleName('payments'), { coin_credits: ['SELECT', 'INSERT'] }),
     ).toEqual([
+      `DO $$ BEGIN EXECUTE format('GRANT CONNECT ON DATABASE %I TO %I', current_database(), 'payments_app'); END $$`,
       'REVOKE ALL ON "coin_credits" FROM "payments_app"',
       'GRANT SELECT, INSERT ON "coin_credits" TO "payments_app"',
     ]);

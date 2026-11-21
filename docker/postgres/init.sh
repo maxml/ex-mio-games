@@ -32,6 +32,19 @@ SQL
   # Nobody but the owner creates objects in the public schema.
   psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname "$svc" \
     -c 'REVOKE CREATE ON SCHEMA public FROM PUBLIC'
+  # GRANT by a role that holds no grant option is only a WARNING in Postgres, so the
+  # app role could still run it and look as if it had succeeded. An event trigger
+  # (superuser-only to create) turns that into a hard error for the app role.
+  psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname "$svc" <<'SQL'
+CREATE FUNCTION public.deny_app_role_acl() RETURNS event_trigger LANGUAGE plpgsql AS $$
+BEGIN
+  IF current_user = current_database() || '_app' THEN
+    RAISE EXCEPTION 'permission denied: role % may not run %', current_user, tg_tag;
+  END IF;
+END $$;
+CREATE EVENT TRIGGER deny_app_role_acl ON ddl_command_start
+  WHEN TAG IN ('GRANT', 'REVOKE') EXECUTE FUNCTION public.deny_app_role_acl();
+SQL
 }
 
 create_service_db identity "${IDENTITY_OWNER_DB_PASSWORD:-identity-owner-dev}" "${IDENTITY_APP_DB_PASSWORD:-identity-app-dev}"

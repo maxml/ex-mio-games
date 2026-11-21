@@ -22,7 +22,11 @@ function ident(name: string): string {
 export const appRoleName = (service: string): string => `${service}_app`;
 
 export function grantAppRoleSql(role: string, grants: AppGrants): string[] {
-  const statements: string[] = [];
+  // The database was created with CONNECT revoked from PUBLIC: the app role needs it
+  // back, on this database only. Whoever runs the migration owns the database.
+  const statements: string[] = [
+    `DO $$ BEGIN EXECUTE format('GRANT CONNECT ON DATABASE %I TO %I', current_database(), ${ident(role).replace(/"/g, "'")}); END $$`,
+  ];
   for (const [table, privileges] of Object.entries(grants)) {
     statements.push(`REVOKE ALL ON ${ident(table)} FROM ${ident(role)}`);
     if (privileges.length > 0) {
