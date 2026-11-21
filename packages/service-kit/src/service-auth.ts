@@ -105,6 +105,8 @@ export interface AuthContext {
   acting?: { tenantId: string; reason: string };
   /** Service mode: the calling service. */
   service?: string;
+  /** User mode: the token's `sbx` claim (X-3), the player's environment. Never read from a request value. */
+  sandbox?: boolean;
 }
 
 const REQUEST_AUTH = Symbol.for('ex-mio:auth-context');
@@ -338,6 +340,7 @@ export class ServiceAuthGuard implements CanActivate {
       principalId: claims.sub,
       roles: claims.roles,
       ...(acting ? { acting } : {}),
+      ...(claims.sbx ? { sandbox: true } : {}),
     };
     (req as unknown as Record<symbol, AuthContext>)[REQUEST_AUTH] = auth;
     setRequestTenant(req, { tenantId, principalId: claims.sub });
@@ -584,12 +587,18 @@ export class ServiceAuthModule {
         }
       }
     }
-    const runtime = new ServiceAuthRuntime(options);
+    new ServiceAuthRuntime(options); // fail fast on an unusable option set (unknown audience, bad policy)
     return {
       module: ServiceAuthModule,
       providers: [
         { provide: SERVICE_AUTH_OPTIONS, useValue: options },
-        { provide: SERVICE_AUTH_RUNTIME, useValue: runtime },
+        // Built from the OPTIONS provider, so a test that overrides `SERVICE_AUTH_OPTIONS` (fixture
+        // keys, tenant status, audit port, clock) changes what the real entry point uses.
+        {
+          provide: SERVICE_AUTH_RUNTIME,
+          useFactory: (resolved: ServiceAuthOptions) => new ServiceAuthRuntime(resolved),
+          inject: [SERVICE_AUTH_OPTIONS],
+        },
         { provide: APP_GUARD, useClass: ServiceAuthGuard },
         { provide: APP_INTERCEPTOR, useClass: ServiceAuthInterceptor },
         AuditSweeper,

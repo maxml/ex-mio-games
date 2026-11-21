@@ -71,12 +71,14 @@ export function coinRuleViolations(root: ModuleLike): string[] {
           Reflect.getMetadata('ex-mio:public', handler) === true &&
           Reflect.getMetadata(COIN_ACTION_KEY, handler) === undefined,
       );
-    if (!onlyPublic && !guards.includes(ActingCoinGuard)) bad.push(`${ctrl.name}: no ActingCoinGuard`);
+    if (!onlyPublic && !guards.includes(ActingCoinGuard))
+      bad.push(`${ctrl.name}: no ActingCoinGuard`);
     for (const { name, handler } of handlers) {
       const action = Reflect.getMetadata(COIN_ACTION_KEY, handler) as string | undefined;
       const noEffect = Reflect.getMetadata(NO_COIN_EFFECT_KEY, handler) === true;
       const isPublic = Reflect.getMetadata('ex-mio:public', handler) === true;
-      if (action === undefined && !noEffect && !isPublic) bad.push(`${ctrl.name}.${name}: undeclared`);
+      if (action === undefined && !noEffect && !isPublic)
+        bad.push(`${ctrl.name}.${name}: undeclared`);
       if (action !== undefined && !(ACTIONS as readonly string[]).includes(action)) {
         bad.push(`${ctrl.name}.${name}: unknown action ${action}`);
       }

@@ -31,10 +31,31 @@ const EXPECTED_GRANTS: Record<Service, Record<string, string[]>> = {
     inbox: ['INSERT', 'SELECT'],
     outbox: ['INSERT', 'SELECT', 'UPDATE'],
   },
+  // The ledger replaced `coin_credits`; column-level UPDATEs (balances.amount, reserves.state*) do not
+  // show in table_privileges and are pinned by apps/payments ledger.schema.pgtest.ts.
   payments: {
-    coin_credits: ['INSERT', 'SELECT'],
+    accounts: ['INSERT', 'SELECT'],
+    audit_intents: ['DELETE', 'INSERT', 'SELECT'], // 1732300002000-AuditIntents (D-23 / F4)
+    balances: ['INSERT', 'SELECT'],
+    billing_plans: ['SELECT'],
+    billing_webhook_events: ['INSERT', 'SELECT'],
     idempotency_keys: ['INSERT', 'SELECT'],
+    inbox: ['INSERT', 'SELECT'],
+    invoices: ['INSERT', 'SELECT'],
+    journal_transactions: ['INSERT', 'SELECT'],
+    ledger_entries: ['INSERT', 'SELECT'],
     outbox: ['INSERT', 'SELECT', 'UPDATE'],
+    payment_attempts: ['INSERT', 'SELECT', 'UPDATE'],
+    reconciliation_runs: ['INSERT', 'SELECT'],
+    reconciliation_tenants: ['INSERT', 'SELECT'],
+    reserves: ['INSERT', 'SELECT'],
+    subscriptions: ['INSERT', 'SELECT', 'UPDATE'],
+    usage_events: ['INSERT', 'SELECT'],
+    usage_meters: ['INSERT', 'SELECT', 'UPDATE'],
+    usage_players: ['INSERT', 'SELECT'],
+    usage_reports: ['INSERT', 'SELECT'],
+    wallet_owner_links: ['DELETE', 'INSERT', 'SELECT'],
+    wallets: ['INSERT', 'SELECT'],
   },
 };
 
@@ -50,7 +71,7 @@ const BUS_TABLES = ['outbox', 'inbox'];
 const RLS_TABLE: Record<Service, string> = {
   identity: 'users',
   engagement: 'tenant_projections',
-  payments: 'coin_credits',
+  payments: 'accounts', // the ledger replaced coin_credits; `accounts` is an RLS table with its policy
 };
 
 describe.each(SERVICES)('database roles: %s', (service) => {

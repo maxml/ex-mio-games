@@ -15,8 +15,10 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "start": "node dist/main.js",
     "migrate": "node dist/migrate.js",
+    "ledger:report": "node dist/ledger-report.js",
     "lint": "eslint src --max-warnings=0",
-    "test": "jest --passWithNoTests"
+    "test": "jest --passWithNoTests",
+    "test:db": "jest --testMatch '**/*.pgtest.ts' --runInBand"
   },
   "dependencies": {
     "@ex-mio/bus": "workspace:^1.0.0",
@@ -40,6 +42,7 @@
     "@nestjs/testing": "^11.1.9",
     "@types/jest": "^30.0.0",
     "@types/node": "24.13.3",
+    "@types/pg": "^8.11.10",
     "jest": "^30.0.2",
     "ts-jest": "^29.4.0",
     "tsx": "^4.19.1",

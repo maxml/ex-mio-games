@@ -178,9 +178,15 @@ services:
     environment:
       <<: *service-env
       PORT: '4003'
+      # Runtime role: not the table owner. The owner URL is given to the migrate step only.
       DATABASE_URL: postgresql://payments_app:payments-app-dev@postgres:5432/payments
+      # The one auth entry point reads keys and tenant status from identity (D-4).
       IDENTITY_URL: http://identity:4001
       SERVICE_CLIENT_SECRET: payments-dev-secret-00000
+      # The fake provider verifies webhooks with this secret; the source holds no default (D-20).
+      FAKE_PROVIDER_WEBHOOK_SECRET: dev-fake-provider-webhook-secret-0000
+      # Reconciliation and usage report run in the worker every hour; `node dist/ledger-report.js` runs one pass.
+      LEDGER_JOBS_INTERVAL_SECONDS: '3600'
     command:
       - sh
       - -c
