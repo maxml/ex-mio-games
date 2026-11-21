@@ -1,5 +1,5 @@
 import { trace, type Span } from '@opentelemetry/api';
-import { LogLevel, LogLine } from '@ex-mio/shared-types';
+import { LogLevel, LogLine } from '@ex-mio/contracts';
 import { createLogger } from './index';
 
 // A minimal pino destination sink: pino calls `write(line)` synchronously with
@@ -42,7 +42,7 @@ describe('@ex-mio/logger', () => {
     process.env = OLD_ENV;
   });
 
-  it('emits a line that PARSES against the shared-types LogLine schema (§3.1)', () => {
+  it('emits a line that PARSES against the contracts LogLine schema (§3.1)', () => {
     const { logger, lines } = captureLogger({ name: 'ex-mio-api' });
 
     logger.info('request completed');

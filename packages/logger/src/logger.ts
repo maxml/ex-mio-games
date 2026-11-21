@@ -13,7 +13,7 @@ export type AppLogger = pino.Logger;
 // runtime; it just conforms to the wire shape. The emitted keys are:
 //   ts       ISO-8601 UTC timestamp
 //   level    the pino level LABEL (trace|debug|info|warn|error|fatal) — matches
-//            the shared-types LogLevel enum, not a numeric level
+//            the contracts LogLevel enum, not a numeric level
 //   service  = service.name (§6)
 //   env      = deployment.environment (§6)
 //   version  = release (§6)
@@ -69,7 +69,7 @@ function resolveEnv(): string {
 }
 
 function resolveVersion(): string {
-  // Mirror the /healthz version fallback (see apps/api health.controller.ts):
+  // Mirror the /healthz version fallback (see service-kit health):
   // the deploy plane injects APP_VERSION (§6); fall back so `version` is always
   // a non-empty string, which the LogLine schema requires.
   return process.env.APP_VERSION ?? process.env.npm_package_version ?? '0.0.1';

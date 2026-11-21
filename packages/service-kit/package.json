@@ -1,0 +1,67 @@
+{
+  "name": "@ex-mio/service-kit",
+  "version": "1.0.0",
+  "private": true,
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
+  "nx": {
+    "tags": [
+      "type:lib",
+      "scope:shared"
+    ]
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "lint": "eslint src --max-warnings=0",
+    "test": "jest --passWithNoTests"
+  },
+  "dependencies": {
+    "@ex-mio/bus": "workspace:^1.0.0",
+    "@ex-mio/contracts": "workspace:^1.0.0",
+    "@ex-mio/idempotency": "workspace:^1.0.0",
+    "@ex-mio/logger": "workspace:^1.0.0",
+    "@ex-mio/tenancy": "workspace:^1.0.0",
+    "@nestjs/common": "^11.1.9",
+    "@nestjs/core": "^11.1.9",
+    "@nestjs/platform-fastify": "^11.1.9",
+    "amqplib": "~0.10.9",
+    "ioredis": "^5.4.1",
+    "pg": "^8.13.1",
+    "reflect-metadata": "^0.2.2",
+    "rxjs": "^7.8.2",
+    "typeorm": "^0.3.20",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@types/jest": "^30.0.0",
+    "@types/node": "24.13.3",
+    "jest": "^30.0.2",
+    "ts-jest": "^29.4.0",
+    "typescript": "^5.6.2",
+    "@types/amqplib": "~0.10.8"
+  },
+  "jest": {
+    "preset": "ts-jest",
+    "testEnvironment": "node",
+    "roots": [
+      "<rootDir>/src"
+    ],
+    "testMatch": [
+      "**/?(*.)+(spec|test).ts"
+    ],
+    "moduleNameMapper": {
+      "^@ex-mio/contracts$": "<rootDir>/../contracts/src",
+      "^@ex-mio/logger$": "<rootDir>/../logger/src",
+      "^@ex-mio/tenancy$": "<rootDir>/../tenancy/src",
+      "^@ex-mio/bus$": "<rootDir>/../bus/src",
+      "^@ex-mio/idempotency$": "<rootDir>/../idempotency/src"
+    },
+    "clearMocks": true
+  },
+  "author": "maxml",
+  "license": "MIT"
+}

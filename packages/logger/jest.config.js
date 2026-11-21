@@ -8,7 +8,7 @@ module.exports = {
   moduleNameMapper: {
     // Resolve the sibling workspace package to source so the log-line shape is
     // validated against the live LogLine schema without a prior build step.
-    '^@ex-mio/shared-types$': '<rootDir>/../shared-types/src',
+    '^@ex-mio/contracts$': '<rootDir>/../contracts/src',
   },
   testTimeout: 60000,
   clearMocks: true,
