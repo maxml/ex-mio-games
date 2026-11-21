@@ -99,6 +99,7 @@ export class MemoryStore implements RedemptionStore {
       if (
         r.tenantId === scope.tenantId &&
         r.playerId === scope.playerId &&
+        r.sandbox === scope.sandbox &&
         r.operationKey === input.operationKey
       ) {
         if (r.itemId !== input.itemId) throw new StoreRejection('idempotency_key_reused');
@@ -155,7 +156,7 @@ export class MemoryStore implements RedemptionStore {
     const rec = this.redemptions.get(redemptionId);
     if (!rec || rec.tenantId !== tenantId) throw new Error('redemption not found');
     const dedupeKey = change.dedupe
-      ? `${change.dedupe.consumer}\u001f${change.dedupe.eventId}`
+      ? `${tenantId}\u001f${change.dedupe.consumer}\u001f${change.dedupe.eventId}`
       : null;
     if (dedupeKey && this.inbox.has(dedupeKey))
       return { applied: false, redemption: structuredClone(rec) };

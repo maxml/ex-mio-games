@@ -177,12 +177,14 @@ export class PgRedemptionStore implements RedemptionStore {
     return this.inTenant(scope.tenantId, async (tx) => {
       // Same (tenant, player, key) calls queue here, so the loser sees the winner's committed row.
       await tx.query(`SELECT pg_advisory_xact_lock(hashtextextended($1, 0))`, [
-        ['order', scope.tenantId, scope.playerId, input.operationKey].join('\u001f'),
+        ['order', scope.tenantId, scope.playerId, String(scope.sandbox), input.operationKey].join(
+          '\u001f',
+        ),
       ]);
       const existing: { id: string; item_id: string }[] = await tx.query(
         `SELECT "id", "item_id" FROM "redemptions"
-         WHERE "tenant_id" = $1 AND "player_id" = $2 AND "operation_key" = $3`,
-        [scope.tenantId, scope.playerId, input.operationKey],
+         WHERE "tenant_id" = $1 AND "player_id" = $2 AND "sandbox" = $3 AND "operation_key" = $4`,
+        [scope.tenantId, scope.playerId, scope.sandbox, input.operationKey],
       );
       const have = existing[0];
       if (have) {
@@ -287,8 +289,9 @@ export class PgRedemptionStore implements RedemptionStore {
 
       if (change.dedupe) {
         const seen: unknown[] = await tx.query(
-          `SELECT 1 FROM "inbox" WHERE "consumer" = $1 AND "event_id" = $2`,
-          [change.dedupe.consumer, change.dedupe.eventId],
+          `SELECT 1 FROM "redemption_inbox"
+           WHERE "tenant_id" = $1 AND "consumer" = $2 AND "event_id" = $3`,
+          [tenantId, change.dedupe.consumer, change.dedupe.eventId],
         );
         if (seen.length > 0) return { applied: false, redemption: rec };
       }
@@ -350,9 +353,9 @@ export class PgRedemptionStore implements RedemptionStore {
 
       if (change.dedupe) {
         const fresh: unknown[] = await tx.query(
-          `INSERT INTO "inbox" ("consumer", "event_id", "tenant_id") VALUES ($1, $2, $3)
+          `INSERT INTO "redemption_inbox" ("tenant_id", "consumer", "event_id") VALUES ($1, $2, $3)
            ON CONFLICT DO NOTHING RETURNING "event_id"`,
-          [change.dedupe.consumer, change.dedupe.eventId, tenantId],
+          [tenantId, change.dedupe.consumer, change.dedupe.eventId],
         );
         if (fresh.length === 0) return { applied: false, redemption: rec };
       }

@@ -29,7 +29,7 @@ export class RedemptionsService {
       !result.created &&
       r.state === 'REQUESTED' &&
       r.nextAttemptAt !== null &&
-      r.nextAttemptAt.getTime() > Date.now()
+      r.nextAttemptAt.getTime() > this.saga.now().getTime()
     )
       throw new SagaError('idempotency_in_progress');
     return result;

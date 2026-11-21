@@ -41,6 +41,10 @@ const isIllegal = (err: unknown): boolean =>
 export class RedemptionSagaService implements RedemptionSaga {
   constructor(private readonly deps: SagaDeps) {}
 
+  now(): Date {
+    return this.deps.clock.now();
+  }
+
   // ---- the order and the inline reserve ------------------------------------------------------
 
   async redeem(
@@ -178,15 +182,29 @@ export class RedemptionSagaService implements RedemptionSaga {
       result = { kind: 'unknown' };
     }
     switch (result.kind) {
-      case 'issued':
-        await this.apply(r, {
+      case 'issued': {
+        const res = await this.apply(r, {
           expectFrom: ['ISSUING', 'UNKNOWN'],
           to: 'ISSUED',
           cause: 'casino_issued',
           casinoReference: result.external_ref,
           nextAttemptAt: now,
         });
+        // Late news (F6): the row was released while the call was in flight. Coins went back,
+        // the casino says it issued: a person decides, nothing moves by itself.
+        if (
+          !res.applied &&
+          (res.redemption.state === 'REJECTED' || res.redemption.state === 'RELEASED')
+        )
+          await this.apply(res.redemption, {
+            expectFrom: ['REJECTED', 'RELEASED'],
+            to: 'NEEDS_REVIEW',
+            cause: 'late_success_after_release',
+            failureReason: 'late_success_after_release',
+            nextAttemptAt: null,
+          });
         return;
+      }
       case 'rejected':
         await this.apply(r, {
           expectFrom: ['ISSUING', 'UNKNOWN'],
@@ -355,6 +373,19 @@ export class RedemptionSagaService implements RedemptionSaga {
           nextAttemptAt: null,
         })
       ).applied;
+    // Payments holds nothing under this id and the casino was never asked (no ISSUING row in the
+    // whole history): the refused reserve never made a hold, so there is nothing to give back,
+    // and the stock unit and limit slot are returned now, once, by the store.
+    if (reply.code === 'reserve_not_found' && !r.history.some((h) => h.to === 'ISSUING'))
+      return (
+        await this.apply(r, {
+          expectFrom: ['REJECTED'],
+          to: 'RELEASED',
+          cause: 'released_no_hold',
+          reservation: 'release',
+          nextAttemptAt: null,
+        })
+      ).applied;
     return (await this.toReview(r, 'REJECTED', 'release_refused')).applied;
   }
 
@@ -472,11 +503,17 @@ export class RedemptionSagaService implements RedemptionSaga {
     if (input.outcome === 'issued') {
       // A review entered from REQUESTED never reached the casino: nothing to confirm.
       if (origin === 'REQUESTED') throw new SagaError('illegal_transition');
+      // D-18: the operator's word alone never moves coins. A fresh lookup by our key must say
+      // `issued`; `unknown`, `pending` and the rest leave the row in review.
+      const status = await this.lookup(r, await this.deps.rewardRequest(r));
+      if (status.kind !== 'issued')
+        throw new SagaError('illegal_transition', 'issue_not_confirmed');
       return (
         await this.applyOrRefuse(r, {
           expectFrom: ['NEEDS_REVIEW'],
           to: 'ISSUED',
           cause: `operator_issued ${audit}`,
+          casinoReference: status.external_ref,
           nextAttemptAt: now,
         })
       ).redemption;
