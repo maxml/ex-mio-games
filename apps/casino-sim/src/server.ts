@@ -2,6 +2,7 @@ import { createHmac, timingSafeEqual } from 'node:crypto';
 import Fastify, { type FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import type { AppLogger } from '@ex-mio/logger';
+import { registerCasinos, type DeliverFn } from './casinos';
 
 /**
  * Two fake partner casinos with deliberately different integration styles, so
@@ -16,16 +17,13 @@ import type { AppLogger } from '@ex-mio/logger';
  * `slow` (answers after 1.5 s). Both casinos are idempotent on `reference`.
  */
 /** Outbound webhook delivery; injected so tests need no network. Default is `fetch` POST. */
-export type DeliverFn = (
-  url: string,
-  init: { headers: Record<string, string>; body: string },
-) => Promise<{ status: number }>;
+export type { DeliverFn };
 
 export interface SimOptions {
   logger?: AppLogger;
   keyA?: string;
   secretB?: string;
-  /** STAGE A STUB (type only): see docs/specs/engagement-ingest.md section 3. Not yet used. */
+  /** Outbound webhook delivery (docs/specs/engagement-ingest.md section 3). Default: fetch POST. */
   deliver?: DeliverFn;
   /** Serves /__faults, /__reset and /__issued. Default false: the control routes then do not exist. */
   faultsEnabled?: boolean;
@@ -115,6 +113,11 @@ export function buildServer(options: SimOptions = {}): FastifyInstance {
       seenB.set(reference, amount_cents);
     }
     return { result: { code: 0, balance_cents: balancesB.get(player_id) ?? 0 } };
+  });
+
+  registerCasinos(app, {
+    ...(options.deliver ? { deliver: options.deliver } : {}),
+    ...(options.faultsEnabled !== undefined ? { faultsEnabled: options.faultsEnabled } : {}),
   });
 
   // The instance may carry the app's pino logger type; callers only need the base type.
