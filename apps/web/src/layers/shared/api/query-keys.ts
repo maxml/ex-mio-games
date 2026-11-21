@@ -15,4 +15,16 @@ export const queryKeys = {
     all: ['users'] as const,
     list: () => [...queryKeys.users.all, 'list'] as const,
   },
+  player: {
+    all: ['player'] as const,
+    state: () => [...queryKeys.player.all, 'state'] as const,
+  },
+  operator: {
+    all: ['operator'] as const,
+    state: () => [...queryKeys.operator.all, 'state'] as const,
+  },
+  admin: {
+    all: ['admin'] as const,
+    overview: () => [...queryKeys.admin.all, 'overview'] as const,
+  },
 } as const;

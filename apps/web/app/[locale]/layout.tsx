@@ -1,7 +1,7 @@
 import type { Metadata, Viewport } from 'next';
 import { notFound } from 'next/navigation';
 import { hasLocale } from 'next-intl';
-import { getMessages, getTranslations, setRequestLocale } from 'next-intl/server';
+import { getMessages, setRequestLocale } from 'next-intl/server';
 import { Providers } from '@/layers/app/providers';
 import { routing } from '@/layers/shared/config';
 import '../globals.css';
@@ -42,7 +42,6 @@ export default async function LocaleLayout({
   // lookup. The request locale then propagates to child Server Components.
   setRequestLocale(locale);
 
-  const t = await getTranslations('header');
   // Hand the messages to the client providers — `NextIntlClientProvider` lives
   // inside the `'use client'` app-layer `Providers` and can't read the request
   // config itself.
@@ -50,10 +49,7 @@ export default async function LocaleLayout({
 
   return (
     <html lang={locale}>
-      <body className="min-h-screen bg-neutral-950 text-neutral-100 antialiased">
-        <header className="flex items-center justify-between border-b border-neutral-800 px-4 py-3">
-          <span className="text-sm font-medium">{t('brand')}</span>
-        </header>
+      <body className="min-h-screen bg-bg text-fg antialiased">
         {/* FSD `app` layer providers (i18n + TanStack Query + Devtools). */}
         <Providers locale={locale} messages={messages}>
           {children}

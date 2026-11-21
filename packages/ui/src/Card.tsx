@@ -1,56 +1,42 @@
-import { forwardRef, type HTMLAttributes } from 'react';
+import type { HTMLAttributes, ReactNode } from 'react';
 import { cn } from './cn';
 
-export const Card = forwardRef<HTMLDivElement, HTMLAttributes<HTMLDivElement>>(
-  ({ className, ...props }, ref) => (
-    <div
-      ref={ref}
+export interface CardProps extends Omit<HTMLAttributes<HTMLElement>, 'title'> {
+  title?: ReactNode;
+  description?: ReactNode;
+  /** Right side of the header: buttons, badges. */
+  actions?: ReactNode;
+  /** Remove body padding (for tables that run edge to edge). */
+  flush?: boolean;
+}
+
+export function Card({
+  title,
+  description,
+  actions,
+  flush,
+  className,
+  children,
+  ...rest
+}: CardProps) {
+  return (
+    <section
       className={cn(
-        'rounded-lg border border-border bg-card text-card-foreground shadow-sm',
+        'min-w-0 rounded-lg border border-border bg-surface text-fg shadow-card',
         className,
       )}
-      {...props}
-    />
-  ),
-);
-Card.displayName = 'Card';
-
-export const CardHeader = forwardRef<HTMLDivElement, HTMLAttributes<HTMLDivElement>>(
-  ({ className, ...props }, ref) => (
-    <div ref={ref} className={cn('flex flex-col gap-1.5 p-6', className)} {...props} />
-  ),
-);
-CardHeader.displayName = 'CardHeader';
-
-export const CardTitle = forwardRef<HTMLHeadingElement, HTMLAttributes<HTMLHeadingElement>>(
-  ({ className, ...props }, ref) => (
-    <h3
-      ref={ref}
-      className={cn('text-lg font-semibold leading-none tracking-tight', className)}
-      {...props}
-    />
-  ),
-);
-CardTitle.displayName = 'CardTitle';
-
-export const CardDescription = forwardRef<
-  HTMLParagraphElement,
-  HTMLAttributes<HTMLParagraphElement>
->(({ className, ...props }, ref) => (
-  <p ref={ref} className={cn('text-sm text-muted-foreground', className)} {...props} />
-));
-CardDescription.displayName = 'CardDescription';
-
-export const CardContent = forwardRef<HTMLDivElement, HTMLAttributes<HTMLDivElement>>(
-  ({ className, ...props }, ref) => (
-    <div ref={ref} className={cn('p-6 pt-0', className)} {...props} />
-  ),
-);
-CardContent.displayName = 'CardContent';
-
-export const CardFooter = forwardRef<HTMLDivElement, HTMLAttributes<HTMLDivElement>>(
-  ({ className, ...props }, ref) => (
-    <div ref={ref} className={cn('flex items-center p-6 pt-0', className)} {...props} />
-  ),
-);
-CardFooter.displayName = 'CardFooter';
+      {...rest}
+    >
+      {(title || actions) && (
+        <header className="flex flex-wrap items-start justify-between gap-3 border-b border-border px-5 py-4">
+          <div className="min-w-0">
+            {title && <h2 className="font-display text-base font-semibold">{title}</h2>}
+            {description && <p className="mt-0.5 text-sm text-fg-muted">{description}</p>}
+          </div>
+          {actions && <div className="flex flex-wrap items-center gap-2">{actions}</div>}
+        </header>
+      )}
+      <div className={flush ? '' : 'p-5'}>{children}</div>
+    </section>
+  );
+}

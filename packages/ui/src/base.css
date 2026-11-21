@@ -1,0 +1,25 @@
+/*
+ * Base rules every surface (apps/web, Storybook) shares. They read tokens only.
+ * Import after tokens.css and the Tailwind base layer.
+ */
+html,
+body {
+  background: var(--bg);
+  color: var(--fg);
+  font-family: var(--font-sans);
+}
+
+/* One visible focus style for every interactive element (keyboard users). */
+:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}

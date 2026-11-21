@@ -55,4 +55,41 @@ module.exports = {
     ],
     'import/no-restricted-paths': ['error', { zones }],
   },
+  overrides: [
+    {
+      // MIO-123: screens are built from `@ex-mio/ui`. Only layout and structure wrappers may be raw
+      // HTML (div, span, section, main, header, nav, ul/ol/li, dl, form, strong); every control, link,
+      // heading, paragraph, table, image, dialog and frame comes from the design system. A div that
+      // pretends to be a button (`role="button"`) is the same as a raw <button>. The shared layer is
+      // covered too; `shared/ui` is only the re-export of the design system.
+      files: [
+        'app/**/*.{ts,tsx}',
+        'src/layers/{app,views,widgets,features,entities}/**/*.{ts,tsx}',
+        'src/layers/shared/**/*.{ts,tsx}',
+      ],
+      excludedFiles: ['**/*.test.{ts,tsx}', 'src/layers/shared/ui/**'],
+      rules: {
+        'react/forbid-elements': [
+          'error',
+          {
+            forbid: [
+              'button', 'input', 'select', 'textarea', 'label', 'a', 'img', 'p',
+              'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'table', 'thead', 'tbody', 'tr', 'th', 'td',
+              'dialog', 'iframe',
+            ].map((element) => ({
+              element,
+              message: `Use the matching component from @ex-mio/ui instead of a raw <${element}>.`,
+            })),
+          },
+        ],
+        'no-restricted-syntax': [
+          'error',
+          {
+            selector: "JSXAttribute[name.name='role'][value.value='button']",
+            message: 'Use <Button> from @ex-mio/ui instead of an element with role="button".',
+          },
+        ],
+      },
+    },
+  ],
 };

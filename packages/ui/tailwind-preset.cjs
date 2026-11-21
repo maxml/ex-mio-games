@@ -1,33 +1,47 @@
 // Tailwind preset that maps the CSS-variable tokens (src/tokens.css) to utilities.
 // An app adds it with `presets: [require('@ex-mio/ui/tailwind-preset')]` and
 // includes this package's sources in `content`.
+//
+// Utilities read the variable at runtime (`var(--primary)`), so a tenant override on any
+// ancestor element re-themes everything below it without a rebuild. Because the values are
+// plain variables, colour opacity modifiers (`bg-primary/50`) are not available; add a token.
 const defaultTheme = require('tailwindcss/defaultTheme');
 
-const color = (name) => `hsl(var(--${name}) / <alpha-value>)`;
+const token = (name) => `var(--${name})`;
 
 /** @type {import('tailwindcss').Config} */
 module.exports = {
-  darkMode: 'class',
   theme: {
     extend: {
       colors: {
-        border: color('border'),
-        input: color('input'),
-        ring: color('ring'),
-        background: color('background'),
-        foreground: color('foreground'),
-        primary: { DEFAULT: color('primary'), foreground: color('primary-foreground') },
-        secondary: { DEFAULT: color('secondary'), foreground: color('secondary-foreground') },
-        muted: { DEFAULT: color('muted'), foreground: color('muted-foreground') },
-        destructive: { DEFAULT: color('destructive'), foreground: color('destructive-foreground') },
-        card: { DEFAULT: color('card'), foreground: color('card-foreground') },
+        bg: token('bg'),
+        surface: token('surface'),
+        'surface-2': token('surface-2'),
+        border: token('border'),
+        'input-border': token('input-border'),
+        fg: token('fg'),
+        'fg-muted': token('fg-muted'),
+        primary: token('primary'),
+        'primary-fg': token('primary-fg'),
+        accent: token('accent'),
+        'accent-fg': token('accent-fg'),
+        ring: token('ring'),
+        success: token('success'),
+        warning: token('warning'),
+        danger: token('danger'),
+        info: token('info'),
+        coin: token('coin'),
       },
       borderRadius: {
-        lg: 'var(--radius)',
-        md: 'calc(var(--radius) - 2px)',
-        sm: 'calc(var(--radius) - 4px)',
+        sm: token('radius-sm'),
+        md: token('radius-md'),
+        lg: token('radius-lg'),
       },
-      fontFamily: { sans: ['var(--font-sans)', ...defaultTheme.fontFamily.sans] },
+      fontFamily: {
+        sans: [token('font-sans'), ...defaultTheme.fontFamily.sans],
+        display: [token('font-display'), ...defaultTheme.fontFamily.sans],
+      },
+      boxShadow: { card: token('shadow-card') },
     },
   },
 };

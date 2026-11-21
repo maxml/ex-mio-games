@@ -26,6 +26,14 @@ version, never an edit. HTTP shapes change additively; a removal waits until no 
 - **spec:** zod schemas. Controllers parse every input with them; the web client validates every response.
 - **pinned:** `packages/contracts/src/*.contracts.test.ts`, `tests/compose`
 
+## Web read models (player widget, operator console, platform admin)
+
+- **provider:** `packages/contracts` (`src/web-api.ts`), provisional until the owning services publish
+  final shapes · **consumers:** `web` (typed API client, mock adapter, HTTP adapter)
+- **spec:** zod schemas. The widget never receives odds (segments carry labels only); the server picks the
+  spin segment and the client only animates to it; acting as a tenant needs a reason.
+- **pinned:** `packages/contracts/src/web-api.contracts.test.ts`, `apps/web/src/layers/shared/api/mio`
+
 ## Event envelope and event types
 
 - **provider:** `packages/contracts` (`src/events.ts`) · **consumers:** every service that publishes or

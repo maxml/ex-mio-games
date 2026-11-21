@@ -5,3 +5,4 @@
 export * from './ui-store';
 export * from './connection-store';
 export { cn } from '@ex-mio/ui';
+export { expectedPayout, rulesValid, sameWeights, spinsForDeposit, weightsValid } from './rules';

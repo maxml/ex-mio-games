@@ -1,7 +1,8 @@
-import { getTranslations } from 'next-intl/server';
+import { getLocale, getTranslations } from 'next-intl/server';
 import { ApiHealthStatus } from '@/layers/widgets/api-health';
 import { resolveApiBaseUrl, joinApiUrl } from '@/layers/shared/config';
 import { HealthCheck } from '@/layers/shared/types';
+import { Card, Heading, Link, Text } from '@/layers/shared/ui';
 
 type HealthState = { reachable: false } | { reachable: true; status: string };
 
@@ -39,25 +40,42 @@ export async function HomePage() {
   // `getTranslations` (no client provider needed); the active locale comes from
   // the parent `[locale]` layout.
   const t = await getTranslations('home');
+  const locale = await getLocale();
   const health = await fetchHealth();
 
   return (
-    <main className="mx-auto flex max-w-screen-md flex-col gap-4 px-4 py-6">
+    <div className="mx-auto flex max-w-screen-md flex-col gap-4 px-4 py-6">
       <header className="flex flex-col gap-1">
-        <h1 className="text-xl font-semibold sm:text-2xl">{t('title')}</h1>
-        <p className="text-sm text-neutral-400">{t('subtitle')}</p>
+        <Heading level={1}>{t('title')}</Heading>
+        <Text tone="muted">{t('subtitle')}</Text>
       </header>
 
-      <section className="rounded-lg border border-neutral-800 bg-neutral-900 p-4">
-        <h2 className="mb-2 text-base font-medium">{t('apiHealthTitle')}</h2>
-        <p className="text-sm text-neutral-400">
+      <Card title={t('apiHealthTitle')}>
+        <Text tone="muted">
           {health.reachable ? t('apiReachable', { status: health.status }) : t('apiUnreachable')}
-        </p>
-      </section>
+        </Text>
+      </Card>
 
       {/* Client island (ADR-0001 §4.1): this Server Component renders the first
           paint above, then delegates live polling to a `'use client'` widget. */}
       <ApiHealthStatus />
-    </main>
+
+      <Card
+        title="Screens"
+        description="Built only from the design system; data is mocked unless NEXT_PUBLIC_MIO_API=http."
+      >
+        <ul className="grid gap-2 text-sm">
+          <li>
+            <Link href={`/${locale}/embed/widget`}>Player widget (embeddable)</Link>
+          </li>
+          <li>
+            <Link href={`/${locale}/operator`}>Operator console</Link>
+          </li>
+          <li>
+            <Link href={`/${locale}/admin`}>Platform admin</Link>
+          </li>
+        </ul>
+      </Card>
+    </div>
   );
 }
