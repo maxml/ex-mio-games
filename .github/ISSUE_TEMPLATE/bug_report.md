@@ -1,6 +1,6 @@
 ---
 name: Bug report
-about: Report a defect in the starter
+about: Report a defect in ex-mio-games
 labels: bug
 ---
 

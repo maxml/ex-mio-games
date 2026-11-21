@@ -1,7 +1,1 @@
-# Starter-only product-independence gate. The script is stripped from generated
-# projects (tools/generators/**), so guard on its presence: a produced app skips
-# it, the starter enforces it.
-if [ -f tools/generators/scripts/check-product-independence.mjs ]; then
-  node tools/generators/scripts/check-product-independence.mjs || exit 1
-fi
 pnpm exec lint-staged

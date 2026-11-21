@@ -19,8 +19,8 @@ export default defineConfig([
     ignores: ['**/*.stories.@(ts|tsx)', '**/*.test.@(ts|tsx)'],
   },
   {
-    // ADR-0005 §7 mandates a `shared/types` segment that re-exports
-    // the starter's `shared-types` package. That name is "by contents", which trips
+    // ADR-0001 §7 mandates a `shared/types` segment that re-exports
+    // `@ex-mio/contracts`. That name is "by contents", which trips
     // steiger's `segments-by-purpose` heuristic — but the ADR is the source of
     // truth for this skeleton, so silence that one rule on the shared layer.
     files: ['apps/web/src/layers/shared/**'],

@@ -26,15 +26,29 @@ module.exports = {
             onlyDependOnLibsWithTags: ['type:lib', 'type:tool'],
           },
           {
+            sourceTag: 'type:test',
+            onlyDependOnLibsWithTags: ['type:lib'],
+          },
+          // Every deployable depends on shared packages only, never on another
+          // service: services talk over HTTP and the bus, not by importing code.
+          {
             sourceTag: 'scope:web',
             onlyDependOnLibsWithTags: ['scope:shared'],
           },
           {
-            sourceTag: 'scope:api',
-            onlyDependOnLibsWithTags: ['scope:shared', 'scope:auth'],
+            sourceTag: 'scope:identity',
+            onlyDependOnLibsWithTags: ['scope:shared'],
           },
           {
-            sourceTag: 'scope:auth',
+            sourceTag: 'scope:engagement',
+            onlyDependOnLibsWithTags: ['scope:shared'],
+          },
+          {
+            sourceTag: 'scope:payments',
+            onlyDependOnLibsWithTags: ['scope:shared'],
+          },
+          {
+            sourceTag: 'scope:casino-sim',
             onlyDependOnLibsWithTags: ['scope:shared'],
           },
           {

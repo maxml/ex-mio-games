@@ -20,7 +20,11 @@
       "cache": true
     },
     "lint": {
-      "inputs": ["default", "{workspaceRoot}/.eslintrc.cjs"],
+      "inputs": ["default", "{workspaceRoot}/.eslintrc.cjs", "{workspaceRoot}/.eslintrc.mvc.cjs"],
+      "cache": true
+    },
+    "typecheck": {
+      "dependsOn": ["^build"],
       "cache": true
     },
     "test": {

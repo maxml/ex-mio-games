@@ -1,52 +1,224 @@
+# Local stack: `docker compose up -d --wait` brings up everything, with no external
+# account. Every app runs in its own container, starts only after the things it
+# needs report healthy, and has its own database and database role.
+#
+# Host ports (override with env): postgres 55432, rabbitmq 55672 (+ management UI
+# 15672), redis 56379, firebase auth emulator 9099, web 3000, identity 4001,
+# engagement 4002, payments 4003, casino-sim 4004. The infrastructure ports are
+# not the defaults on purpose, so a database already running on the host does not
+# collide. All credentials below are local-development values.
+
+x-node-health: &node-health
+  interval: 5s
+  timeout: 3s
+  retries: 20
+  start_period: 20s
+
+x-service-env: &service-env
+  NODE_ENV: development
+  LOG_LEVEL: info
+  AMQP_URL: amqp://mio:mio-dev@rabbitmq:5672
+
 services:
   postgres:
-    image: postgres:16
+    image: postgres:16-alpine
     restart: unless-stopped
     environment:
-      POSTGRES_DB: ex_mio
-      POSTGRES_USER: starter
-      POSTGRES_PASSWORD: starter
-    ports:
-      - '${POSTGRES_PORT:-5432}:5432'
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres-dev}
+      IDENTITY_DB_PASSWORD: identity-dev
+      ENGAGEMENT_DB_PASSWORD: engagement-dev
+      PAYMENTS_DB_PASSWORD: payments-dev
     volumes:
       - postgres_data:/var/lib/postgresql/data
+      - ./docker/postgres/init.sh:/docker-entrypoint-initdb.d/10-init.sh:ro
+    ports:
+      - '${POSTGRES_PORT:-55432}:5432'
     healthcheck:
-      test: ['CMD-SHELL', 'pg_isready -U starter -d ex_mio']
+      test: ['CMD-SHELL', 'pg_isready -U postgres -d postgres']
       interval: 5s
       timeout: 3s
       retries: 20
 
-  cloudbeaver:
-    image: dbeaver/cloudbeaver:24.3
+  rabbitmq:
+    image: rabbitmq:3.13-management-alpine
     restart: unless-stopped
-    ports:
-      - '${CLOUDBEAVER_PORT:-8081}:8978'
+    environment:
+      RABBITMQ_DEFAULT_USER: mio
+      RABBITMQ_DEFAULT_PASS: mio-dev
     volumes:
-      - cloudbeaver_data:/opt/cloudbeaver/workspace
-    # On Linux, host.docker.internal is not defined by default. Map it to the
-    # host gateway so CloudBeaver reaches Postgres at host.docker.internal:5432
-    # (the host-published port) — the same address works on macOS/Windows too.
-    extra_hosts:
-      - 'host.docker.internal:host-gateway'
-    depends_on:
-      postgres:
-        condition: service_healthy
+      - rabbitmq_data:/var/lib/rabbitmq
+    ports:
+      - '${RABBITMQ_PORT:-55672}:5672'
+      - '${RABBITMQ_MANAGEMENT_PORT:-15672}:15672'
+    healthcheck:
+      test: ['CMD', 'rabbitmq-diagnostics', '-q', 'ping']
+      interval: 5s
+      timeout: 10s
+      retries: 20
+      start_period: 15s
 
   redis:
-    image: redis:7
+    image: redis:7-alpine
     restart: unless-stopped
-    command: ['redis-server', '--appendonly', 'yes', '--maxmemory-policy', 'noeviction']
-    ports:
-      - '${REDIS_PORT:-6379}:6379'
+    # Data survives a restart: append-only file, fsync once a second.
+    command: ['redis-server', '--appendonly', 'yes', '--appendfsync', 'everysec']
     volumes:
       - redis_data:/data
+    ports:
+      - '${REDIS_PORT:-56379}:6379'
     healthcheck:
       test: ['CMD', 'redis-cli', 'ping']
       interval: 5s
       timeout: 3s
       retries: 20
 
+  firebase-auth:
+    build:
+      context: ./docker/firebase-emulator
+    restart: unless-stopped
+    environment:
+      FIREBASE_PROJECT: demo-ex-mio
+    ports:
+      - '${FIREBASE_AUTH_PORT:-9099}:9099'
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - "fetch('http://127.0.0.1:9099/').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
+      interval: 5s
+      timeout: 3s
+      retries: 30
+      start_period: 20s
+
+  identity:
+    build:
+      context: .
+      dockerfile: apps/identity/Dockerfile
+    restart: unless-stopped
+    environment:
+      <<: *service-env
+      PORT: '4001'
+      DATABASE_URL: postgresql://identity:identity-dev@postgres:5432/identity
+      PLATFORM_ADMIN_TOKEN: dev-platform-token-0000
+    # Migrations run as their own step (node dist/migrate.js), then the server starts.
+    command: ['sh', '-c', 'node dist/migrate.js && exec node dist/main.js']
+    ports:
+      - '${IDENTITY_PORT:-4001}:4001'
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    healthcheck:
+      <<: *node-health
+      test:
+        - CMD
+        - node
+        - -e
+        - "fetch('http://127.0.0.1:4001/healthz/ready').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
+
+  engagement:
+    build:
+      context: .
+      dockerfile: apps/engagement/Dockerfile
+    restart: unless-stopped
+    environment:
+      <<: *service-env
+      PORT: '4002'
+      DATABASE_URL: postgresql://engagement:engagement-dev@postgres:5432/engagement
+      REDIS_URL: redis://redis:6379
+    command: ['sh', '-c', 'node dist/migrate.js && exec node dist/main.js']
+    ports:
+      - '${ENGAGEMENT_PORT:-4002}:4002'
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      <<: *node-health
+      test:
+        - CMD
+        - node
+        - -e
+        - "fetch('http://127.0.0.1:4002/healthz/ready').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
+
+  payments:
+    build:
+      context: .
+      dockerfile: apps/payments/Dockerfile
+    restart: unless-stopped
+    environment:
+      <<: *service-env
+      PORT: '4003'
+      DATABASE_URL: postgresql://payments:payments-dev@postgres:5432/payments
+    command: ['sh', '-c', 'node dist/migrate.js && exec node dist/main.js']
+    ports:
+      - '${PAYMENTS_PORT:-4003}:4003'
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    healthcheck:
+      <<: *node-health
+      test:
+        - CMD
+        - node
+        - -e
+        - "fetch('http://127.0.0.1:4003/healthz/ready').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
+
+  casino-sim:
+    build:
+      context: .
+      dockerfile: apps/casino-sim/Dockerfile
+    restart: unless-stopped
+    environment:
+      PORT: '4004'
+      LOG_LEVEL: info
+    ports:
+      - '${CASINO_SIM_PORT:-4004}:4004'
+    healthcheck:
+      <<: *node-health
+      test:
+        - CMD
+        - node
+        - -e
+        - "fetch('http://127.0.0.1:4004/healthz/ready').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
+
+  web:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+    restart: unless-stopped
+    environment:
+      PORT: '3000'
+      # Server-side calls to the identity service over the compose network.
+      API_URL: http://identity:4001
+    ports:
+      - '${WEB_PORT:-3000}:3000'
+    depends_on:
+      identity:
+        condition: service_healthy
+      engagement:
+        condition: service_healthy
+      payments:
+        condition: service_healthy
+      casino-sim:
+        condition: service_healthy
+    healthcheck:
+      <<: *node-health
+      test:
+        - CMD
+        - node
+        - -e
+        - "fetch('http://127.0.0.1:3000/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
+
 volumes:
   postgres_data:
-  cloudbeaver_data:
+  rabbitmq_data:
   redis_data:

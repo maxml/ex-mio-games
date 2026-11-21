@@ -1,4 +1,4 @@
-name: CI
+name: ci
 
 on:
   push:
@@ -10,53 +10,35 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
-# Deterministic least-privilege token. nrwl/nx-set-shas reads the last successful
-# run through the Actions API (needs actions:read); nothing here writes the repo.
+# Least privilege. nrwl/nx-set-shas reads the last successful run through the
+# Actions API (needs actions:read); nothing here writes to the repository.
 permissions:
   contents: read
   actions: read
 
+# Every action is pinned to a commit SHA (the tag is in the trailing comment).
 jobs:
-  ci:
+  check:
+    name: format, lint, typecheck, unit tests
     runs-on: ubuntu-latest
-
-    services:
-      postgres:
-        image: postgres:16
-        ports:
-          - 5432:5432
-        env:
-          POSTGRES_DB: ex_mio_ci
-          POSTGRES_USER: starter
-          POSTGRES_PASSWORD: starter
-        options: >-
-          --health-cmd "pg_isready -U starter -d ex_mio_ci"
-          --health-interval 5s
-          --health-timeout 3s
-          --health-retries 20
-
-    env:
-      DATABASE_URL: postgresql://starter:starter@localhost:5432/ex_mio_ci?sslmode=disable
-
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           fetch-depth: 0
 
-      - uses: nrwl/nx-set-shas@v5
+      - uses: nrwl/nx-set-shas@e602fada7ad5987b0f7b1905e7a99ea1c661514c # v5
 
-      # pnpm version comes from package.json "packageManager".
-      # action-setup@v6 errors if a version is also given here.
-      - uses: pnpm/action-setup@v6
+      # The pnpm version comes from package.json "packageManager".
+      - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6
 
-      - uses: actions/setup-node@v6
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         with:
           node-version-file: .nvmrc
           cache: pnpm
 
       - run: pnpm install --frozen-lockfile
 
-      - uses: actions/cache@v6
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
         with:
           path: .nx/cache
           key: nx-${{ runner.os }}-${{ github.sha }}
@@ -64,4 +46,39 @@ jobs:
 
       - run: pnpm nx format:check --base=$NX_BASE --head=$NX_HEAD
 
-      - run: pnpm nx affected -t lint build test
+      - run: pnpm nx affected -t lint --parallel=2
+
+      - run: pnpm nx affected -t typecheck --parallel=2
+
+      - run: pnpm nx affected -t test --parallel=2
+
+  compose:
+    name: stack comes up healthy, compose tests pass
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6
+
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      # No external account needed: the stack is self-contained.
+      - name: Start the stack and wait for every container to be healthy
+        run: docker compose up -d --build --wait --wait-timeout 600
+
+      - name: Compose tests (health, roles, tenancy, idempotency, bus)
+        run: pnpm test:compose
+
+      - name: Container logs on failure
+        if: failure()
+        run: docker compose logs --no-color --tail 200
+
+      - name: Stop and remove the stack
+        if: always()
+        run: docker compose down -v

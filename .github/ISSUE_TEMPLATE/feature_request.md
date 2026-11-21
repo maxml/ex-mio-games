@@ -1,6 +1,6 @@
 ---
 name: Feature request
-about: Suggest an improvement to the starter
+about: Suggest an improvement to ex-mio-games
 labels: enhancement
 ---
 

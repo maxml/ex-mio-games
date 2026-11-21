@@ -4,16 +4,17 @@
   "version": "0.1.0",
   "packageManager": "pnpm@9.12.0",
   "scripts": {
-    "dev": "pnpm nx run-many -t dev",
-    "stack:up": "node tools/scripts/dev-stack.mjs",
-    "stack:down": "node tools/scripts/dev-stack.mjs --down",
+    "stack:up": "docker compose up -d --wait",
+    "stack:down": "docker compose down -v",
     "build": "pnpm nx run-many -t build",
     "lint": "pnpm nx run-many -t lint",
     "lint:fsd": "steiger apps/web/src/layers",
+    "typecheck": "pnpm nx run-many -t typecheck",
     "test": "pnpm nx run-many -t test",
+    "test:compose": "pnpm --filter @ex-mio/compose-tests test:compose",
+    "storybook": "pnpm --filter @ex-mio/ui storybook",
     "format": "prettier --write \"**/*.{ts,tsx,js,jsx,cjs,mjs,json,md,yml,yaml,css}\"",
     "format:check": "prettier --check \"**/*.{ts,tsx,js,jsx,cjs,mjs,json,md,yml,yaml,css}\"",
-    "check:product": "node tools/generators/scripts/check-product-independence.mjs",
     "prepare": "husky || true"
   },
   "devDependencies": {
