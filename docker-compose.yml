@@ -155,8 +155,15 @@ services:
     environment:
       <<: *service-env
       PORT: '4003'
-      DATABASE_URL: postgresql://payments:payments-dev@postgres:5432/payments
-    command: ['sh', '-c', 'node dist/migrate.js && exec node dist/main.js']
+      # The service runs as the non-owner runtime role; only the migration step connects as the owner.
+      DATABASE_URL: postgresql://payments_app:payments_app-dev@postgres:5432/payments
+      MIGRATE_DATABASE_URL: postgresql://payments:payments-dev@postgres:5432/payments
+    command:
+      [
+        'sh',
+        '-c',
+        'DATABASE_URL="$$MIGRATE_DATABASE_URL" node dist/migrate.js && exec node dist/main.js',
+      ]
     ports:
       - '${PAYMENTS_PORT:-4003}:4003'
     depends_on:
