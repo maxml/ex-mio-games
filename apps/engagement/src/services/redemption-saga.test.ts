@@ -798,7 +798,16 @@ describe('I-REFUND and I-REVIEW: compensation of a captured spend, operator reso
   });
 
   it('I-REVIEW-2 operator resolves issued -> capture follows; not_issued (casino confirms, past the deadline) -> release follows; the reason is audited', async () => {
-    const a = await exhausted();
+    // D-18: `issued` needs a lookup that says `issued`. The casino did issue, the reply was lost,
+    // every lookup timed out until the row went to review; now the lookup answers `issued`.
+    const { w: aw, item: aitem } = setup();
+    aw.casino.sticky = 'timeout_effect';
+    aw.casino.statusTimeout = true;
+    const ar = await order(aw, aitem.id);
+    await aw.settle(10, 5 * HOUR);
+    expect(state(aw, ar.id)).toBe('NEEDS_REVIEW');
+    aw.casino.statusTimeout = false;
+    const a = { w: aw, r: ar };
     await a.w.saga.resolveReview(a.w.tenant, a.r.id, {
       outcome: 'issued',
       reason: 'verified in casino back office',
@@ -806,6 +815,7 @@ describe('I-REFUND and I-REVIEW: compensation of a captured spend, operator reso
     });
     await a.w.settle();
     expect(state(a.w, a.r.id)).toBe('COMPLETED');
+    expect(a.w.payments.effects.capture).toBe(1);
     expect(
       rec(a.w, a.r.id).history.some((h) => h.cause.includes('verified in casino back office')),
     ).toBe(true);

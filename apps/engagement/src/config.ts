@@ -9,6 +9,11 @@ const Env = BaseEnv.extend({
   INGEST_STATIC_TENANTS: z.string().optional(),
   /** Wheel seeds by version, JSON `{"1": "seed"}`. Required in production, never logged. */
   WHEEL_SEEDS: z.string().optional(),
+  // The payments reserve (redemption saga). The dev token matches the payments dev default.
+  PAYMENTS_URL: z.string().url().default('http://localhost:4003'),
+  PAYMENTS_SERVICE_TOKEN: z.string().min(1).default('dev-service-token-engagement'),
+  // Redemption sweeper period in ms; 0 turns it off.
+  SWEEPER_INTERVAL_MS: z.coerce.number().int().nonnegative().default(5000),
 }).superRefine((env, ctx) => {
   // Redis is optional; when configured in production it must use TLS.
   if (env.NODE_ENV === 'production' && env.REDIS_URL && !env.REDIS_URL.startsWith('rediss://')) {

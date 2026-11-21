@@ -31,6 +31,7 @@ import { createTenantCasinoPorts } from './integrations/tenant-ports';
 import { ModelModule } from './model/model.module';
 import { SEEDS } from './model/repositories';
 import { createSeedProvider, envSeedStore } from './model/seeds';
+import { StoreModule } from './redemptions/store.module';
 import { IngestionService } from './services/ingestion.service';
 import { ProjectionsService } from './services/projections.service';
 import { SpinCreditsService } from './services/spin-credits.service';
@@ -77,6 +78,11 @@ export function createAppModule(config: Config): DynamicModule {
       TenancyModule.forRoot(),
       ModelModule,
       ProjectionsModule,
+      StoreModule.register({
+        paymentsUrl: config.PAYMENTS_URL,
+        serviceToken: config.PAYMENTS_SERVICE_TOKEN,
+        sweeperIntervalMs: config.SWEEPER_INTERVAL_MS,
+      }),
       bus,
       HealthModule.register({
         imports: [ModelModule, bus],
