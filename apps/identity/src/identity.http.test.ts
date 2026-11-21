@@ -159,7 +159,7 @@ describe('INV-EDGE: tenant from the verified token only; deny by default', () =>
       url: '/v1/operators/signup',
       payload: {
         tenant_name: 'C',
-        slug: 'c',
+        slug: 'cc',
         email: 'c@c.test',
         password: PW,
         roles: ['platform_admin'],
@@ -444,11 +444,11 @@ describe('INV-EDGE-14 every response is the contract shape (F14)', () => {
     const signup = await w.app.inject({
       method: 'POST',
       url: '/v1/operators/signup',
-      payload: { tenant_name: 'C', slug: 'c', email: 'boss@c.test', password: PW },
+      payload: { tenant_name: 'C', slug: 'cc', email: 'boss@c.test', password: PW },
     });
     expect(signup.statusCode).toBe(201);
     const created = SignupResponse.parse(signup.json());
-    expect(created.tenant.slug).toBe('c');
+    expect(created.tenant.slug).toBe('cc');
     expect(created.user.email).toBe('boss@c.test');
     expect(JSON.stringify(signup.json())).not.toMatch(/password/i);
 
@@ -462,7 +462,11 @@ describe('INV-EDGE-14 every response is the contract shape (F14)', () => {
 
     const admin = await as(w, w.a.tenant.id, 'boss@a.test');
     const staff = await w.get(w, '/v1/staff', admin);
-    expect(StaffMember.array().parse(staff.json()).map((s) => s.email)).toEqual(['boss@a.test']);
+    expect(
+      StaffMember.array()
+        .parse(staff.json())
+        .map((s) => s.email),
+    ).toEqual(['boss@a.test']);
     const tenant = await w.get(w, `/v1/tenants/${w.a.tenant.id}`, admin);
     expect(TenantView.parse(tenant.json())).toMatchObject({ id: w.a.tenant.id, status: 'active' });
 
@@ -750,7 +754,10 @@ describe('INV-S2S: service-to-service tokens and internal endpoints (D-4, MIO-04
       headers: asPayments,
       payload: { platform: 'sim-casino', external_player_id: 'ext-1' },
     });
-    const events = w.k.outbox.events().filter((e) => e.type === 'audit.service_call').slice(before);
+    const events = w.k.outbox
+      .events()
+      .filter((e) => e.type === 'audit.service_call')
+      .slice(before);
     expect(events).toHaveLength(2);
     expect(events.map((e) => ServiceCallAuditedV1.parse(e.payload))).toMatchObject([
       {
@@ -823,7 +830,9 @@ describe('INV-S2S: service-to-service tokens and internal endpoints (D-4, MIO-04
     const bySlug = await get('/internal/v1/integrations/by-slug/a', eng);
     expect(TenantIntegration.parse(bySlug.json()).tenant_id).toBe(w.a.tenant.id);
     expect((await get('/internal/v1/integrations/by-slug/nope', eng)).statusCode).toBe(404);
-    expect((await get(`/internal/v1/tenants/${w.a.tenant.id}/integration`, {})).statusCode).toBe(401);
+    expect((await get(`/internal/v1/tenants/${w.a.tenant.id}/integration`, {})).statusCode).toBe(
+      401,
+    );
     const operator = { authorization: `Bearer ${await w.tokenFor(w.a.tenant.id, 'boss@a.test')}` };
     expect(
       (await get(`/internal/v1/tenants/${w.a.tenant.id}/integration`, operator)).statusCode,

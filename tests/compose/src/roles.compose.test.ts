@@ -8,7 +8,24 @@ import { pgAs, SERVICES, type Service } from './env';
  * BOTH places.
  */
 const EXPECTED_GRANTS: Record<Service, Record<string, string[]>> = {
-  identity: { tenants: ['INSERT', 'SELECT'], outbox: ['INSERT', 'SELECT', 'UPDATE'] },
+  // identity: AppRoleGrants (1732200001000) widened by IDENTITY_CORE_APP_GRANTS (1732300001000).
+  // Identity CONSUMES audit.acting_request / audit.service_call (D-11, D-14) through its inbox, so
+  // the app role needs the same inbox rights as every other consumer; without them no audit event
+  // ever reaches audit_log (review finding, identity epic).
+  identity: {
+    audit_intents: ['DELETE', 'INSERT', 'SELECT'],
+    audit_log: ['INSERT', 'SELECT'],
+    inbox: ['INSERT', 'SELECT'],
+    integration_credentials: ['INSERT', 'SELECT', 'UPDATE'],
+    launch_jti: ['DELETE', 'INSERT', 'SELECT'],
+    outbox: ['INSERT', 'SELECT', 'UPDATE'],
+    player_links: ['DELETE', 'INSERT', 'SELECT'],
+    provider_links: ['INSERT', 'SELECT'],
+    signing_keys: ['INSERT', 'SELECT', 'UPDATE'],
+    tenants: ['INSERT', 'SELECT', 'UPDATE'],
+    user_roles: ['INSERT', 'SELECT'],
+    users: ['INSERT', 'SELECT'],
+  },
   engagement: {
     tenant_projections: ['INSERT', 'SELECT', 'UPDATE'],
     inbox: ['INSERT', 'SELECT'],
@@ -23,6 +40,18 @@ const EXPECTED_GRANTS: Record<Service, Record<string, string[]>> = {
 
 /** The bus tables carry a tenant_id for diagnosis only and are read across tenants by design. */
 const BUS_TABLES = ['outbox', 'inbox'];
+
+/**
+ * A table WITH row-level security and a `<table>_tenant_isolation` policy, for the DDL case. Named
+ * per service, not "the first granted non-bus table": for identity that would be `tenants`, the
+ * registry, which has no RLS and no policy, so the RLS and DROP POLICY statements were not testing
+ * what they claim.
+ */
+const RLS_TABLE: Record<Service, string> = {
+  identity: 'users',
+  engagement: 'tenant_projections',
+  payments: 'coin_credits',
+};
 
 describe.each(SERVICES)('database roles: %s', (service) => {
   const app = `${service}_app` as const;
@@ -74,8 +103,18 @@ describe.each(SERVICES)('database roles: %s', (service) => {
   });
 
   it('the app role cannot run DDL: no ALTER, no switching RLS off, no DROP, no CREATE', async () => {
-    const tenantTable = Object.keys(EXPECTED_GRANTS[service]).find((t) => !BUS_TABLES.includes(t));
-    expect(tenantTable).toBeDefined();
+    const tenantTable = RLS_TABLE[service];
+    expect(Object.keys(EXPECTED_GRANTS[service])).toContain(tenantTable);
+    const { rows: rls } = await admin.query(
+      `SELECT c.relrowsecurity AS rls,
+              EXISTS (SELECT 1 FROM pg_policy p WHERE p.polrelid = c.oid
+                       AND p.polname = $1 || '_tenant_isolation') AS policy
+         FROM pg_class c WHERE c.oid = $2::regclass`,
+      [tenantTable, `"${tenantTable}"`],
+    );
+    // The statements below must hit a real RLS table with a real policy, or "permission denied"
+    // proves nothing about RLS.
+    expect(rls[0]).toEqual({ rls: true, policy: true });
     for (const sql of [
       `ALTER TABLE "${tenantTable}" NO FORCE ROW LEVEL SECURITY`,
       `ALTER TABLE "${tenantTable}" DISABLE ROW LEVEL SECURITY`,

@@ -353,9 +353,9 @@ describe('INV-AUTH: one entry point, tenant only from the verified claim (every 
     const b = await boot();
     const token = userToken();
     b.clock.now = NOW + ACCESS_TTL_MAX_SECONDS + ACCESS_TOKEN_CLOCK_SKEW_SECONDS - 1;
-    expect((await b.inject({ method: 'GET', url: '/v1/whoami', headers: bearer(token) })).statusCode).toBe(
-      200,
-    );
+    expect(
+      (await b.inject({ method: 'GET', url: '/v1/whoami', headers: bearer(token) })).statusCode,
+    ).toBe(200);
     expect(NOW + 929).toBe(b.clock.now);
     b.clock.now = NOW + 931;
     const res = await b.inject({ method: 'GET', url: '/v1/whoami', headers: bearer(token) });
@@ -789,7 +789,11 @@ describe('INV-AUTH-9 every acting request is audited by the entry point of every
   // Mutation: emit only on success.
   it('an acting request whose handler throws 404 writes exactly one refused event', async () => {
     const b = await boot();
-    const res = await b.inject({ method: 'GET', url: '/v1/missing', headers: bearer(actingToken()) });
+    const res = await b.inject({
+      method: 'GET',
+      url: '/v1/missing',
+      headers: bearer(actingToken()),
+    });
     expect(res.statusCode).toBe(404);
     const events = actingEvents(b);
     expect(events).toHaveLength(1);
@@ -834,7 +838,11 @@ describe('INV-AUTH-9 every acting request is audited by the entry point of every
   it('when the audit port fails the request fails closed: 503 AUDIT_UNAVAILABLE and the handler does not run', async () => {
     const b = await boot();
     b.audit.fail = true;
-    const res = await b.inject({ method: 'GET', url: '/v1/whoami', headers: bearer(actingToken()) });
+    const res = await b.inject({
+      method: 'GET',
+      url: '/v1/whoami',
+      headers: bearer(actingToken()),
+    });
     expect(res.statusCode).toBe(503);
     expect(res.json()).toMatchObject({ code: 'AUDIT_UNAVAILABLE' });
     expect(ran.n).toBe(0);
