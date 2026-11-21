@@ -7,6 +7,7 @@ Index only: where to go when you need to know something.
 | What the product is and the principles behind choices | [`../memory/projectBrief.md`](../memory/projectBrief.md)     |
 | The patterns the code follows                         | [`../memory/systemPatterns.md`](../memory/systemPatterns.md) |
 | Which boundaries and contracts apply                  | [`CONTRACTS.md`](CONTRACTS.md)                               |
+| What the bonus store and redemption saga must do      | [`specs/engagement-store.md`](specs/engagement-store.md)     |
 | Why a decision was made (the "why")                   | [`adrs/`](adrs)                                              |
 | How to write a new decision record                    | [`adrs/0000-template.md`](adrs/0000-template.md)             |
 | What the ingest, rules and wheel code must do         | [`specs/engagement-ingest.md`](specs/engagement-ingest.md)   |
