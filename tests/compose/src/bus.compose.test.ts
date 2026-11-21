@@ -29,7 +29,7 @@ describe('bus: identity -> RabbitMQ -> engagement', () => {
     expect(first).toMatchObject({ tenant_id: tenant.id, slug, applied_count: 1 });
 
     // 2. Take the very envelope identity published and deliver it to the broker twice more.
-    const identityDb = await pgAs('identity');
+    const identityDb = await pgAs('identity_app');
     const { rows } = await identityDb.query(
       `SELECT envelope, published_at FROM outbox WHERE tenant_id = $1`,
       [tenant.id],
@@ -60,7 +60,7 @@ describe('bus: identity -> RabbitMQ -> engagement', () => {
 
     // 4. ... and the effect still ran exactly once, with exactly one inbox row.
     expect((await projectionOf(tenant.id))?.applied_count).toBe(1);
-    const engagementDb = await pgAs('engagement');
+    const engagementDb = await pgAs('engagement_app');
     const inbox = await engagementDb.query(
       `SELECT count(*)::int AS n FROM inbox WHERE event_id = $1`,
       [envelope.event_id],

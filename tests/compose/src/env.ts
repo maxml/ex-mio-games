@@ -14,20 +14,36 @@ export const urls = {
 
 export const PLATFORM_TOKEN = 'dev-platform-token-0000';
 
-/** A pg client logged in as one of the per-service roles (or the admin, for catalog queries). */
-export async function pgAs(
-  role: 'identity' | 'engagement' | 'payments' | 'postgres',
-): Promise<Client> {
-  const password = role === 'postgres' ? 'postgres-dev' : `${role}-dev`;
+export const SERVICES = ['identity', 'engagement', 'payments'] as const;
+export type Service = (typeof SERVICES)[number];
+
+export type DbRole = `${Service}_app` | `${Service}_owner` | 'postgres';
+
+/**
+ * A pg client logged in as a per-service role: `<service>_app` (the runtime
+ * role the service itself uses) or `<service>_owner` (the migration role), or
+ * the admin for catalog queries. The service's database is the default.
+ */
+export async function pgAs(role: DbRole, database?: string): Promise<Client> {
+  const password = role === 'postgres' ? 'postgres-dev' : `${role.replace('_', '-')}-dev`;
   const client = new Client({
     host: 'localhost',
     port: Number(port('POSTGRES_PORT', 54329)),
     user: role,
     password,
-    database: role === 'postgres' ? 'postgres' : role,
+    database: database ?? (role === 'postgres' ? 'postgres' : role.replace(/_(app|owner)$/, '')),
   });
   await client.connect();
   return client;
+}
+
+/** Hits the RabbitMQ management API (port mapped by compose, same credentials as the broker). */
+export async function rabbitApi(path: string, init: RequestInit = {}): Promise<Response> {
+  const auth = Buffer.from('mio:mio-dev').toString('base64');
+  return fetch(`http://localhost:${port('RABBITMQ_MANAGEMENT_PORT', 15672)}/api${path}`, {
+    ...init,
+    headers: { authorization: `Basic ${auth}`, ...(init.headers ?? {}) },
+  });
 }
 
 export async function eventually<T>(

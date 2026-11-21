@@ -786,6 +786,18 @@ importers:
         specifier: workspace:^1.0.0
         version: link:../../packages/contracts
     devDependencies:
+      '@ex-mio/bus':
+        specifier: workspace:^1.0.0
+        version: link:../../packages/bus
+      '@ex-mio/idempotency':
+        specifier: workspace:^1.0.0
+        version: link:../../packages/idempotency
+      '@ex-mio/service-kit':
+        specifier: workspace:^1.0.0
+        version: link:../../packages/service-kit
+      '@ex-mio/tenancy':
+        specifier: workspace:^1.0.0
+        version: link:../../packages/tenancy
       '@types/amqplib':
         specifier: ~0.10.8
         version: 0.10.8
@@ -803,13 +815,16 @@ importers:
         version: 0.10.9
       jest:
         specifier: ^30.0.2
-        version: 30.3.0(@types/node@24.13.3)(babel-plugin-macros@3.1.0)(ts-node@10.9.1(@swc/core@1.15.33(@swc/helpers@0.5.21))(@types/node@24.13.3)(typescript@5.9.3))
+        version: 30.3.0(@types/node@24.13.3)(babel-plugin-macros@3.1.0)(ts-node@10.9.2(@swc/core@1.15.33(@swc/helpers@0.5.21))(@types/node@24.13.3)(typescript@5.9.3))
       pg:
         specifier: ^8.13.1
         version: 8.23.1
       ts-jest:
         specifier: ^29.4.0
-        version: 29.4.9(@babel/core@7.29.0)(@jest/transform@30.3.0)(@jest/types@30.3.0)(babel-jest@30.3.0(@babel/core@7.29.0))(esbuild@0.27.7)(jest-util@30.3.0)(jest@30.3.0(@types/node@24.13.3)(babel-plugin-macros@3.1.0)(ts-node@10.9.1(@swc/core@1.15.33(@swc/helpers@0.5.21))(@types/node@24.13.3)(typescript@5.9.3)))(typescript@5.9.3)
+        version: 29.4.9(@babel/core@7.29.0)(@jest/transform@30.3.0)(@jest/types@30.3.0)(babel-jest@30.3.0(@babel/core@7.29.0))(esbuild@0.27.7)(jest-util@30.3.0)(jest@30.3.0(@types/node@24.13.3)(babel-plugin-macros@3.1.0)(ts-node@10.9.2(@swc/core@1.15.33(@swc/helpers@0.5.21))(@types/node@24.13.3)(typescript@5.9.3)))(typescript@5.9.3)
+      typeorm:
+        specifier: ^0.3.20
+        version: 0.3.31(babel-plugin-macros@3.1.0)(ioredis@5.11.1)(pg@8.23.1)(ts-node@10.9.2(@swc/core@1.15.33(@swc/helpers@0.5.21))(@types/node@24.13.3)(typescript@5.9.3))
       typescript:
         specifier: ^5.6.2
         version: 5.9.3

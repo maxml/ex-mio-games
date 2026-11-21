@@ -19,6 +19,17 @@ const DRIVERS = [
   { name: 'amqplib', message: 'Broker access belongs in src/messaging via @ex-mio/bus.' },
 ];
 
+// A controller that holds a transaction handle can run SQL, whatever the layering says.
+const DB_ACCESS = [
+  {
+    name: '@ex-mio/service-kit',
+    importNames: ['Db', 'Tx', 'DATA_SOURCE', 'BusRuntime'],
+    message: 'Controllers call services; transactions belong to services and the model.',
+  },
+  { name: '@ex-mio/bus', message: 'Controllers call services, not the bus.' },
+  { name: '@ex-mio/idempotency', importNames: ['runIdempotent'], message: 'Use Db.idempotent in a service.' },
+];
+
 const DRIVER_PATTERNS = [
   { group: ['typeorm/*'], message: 'Database access belongs in src/model.' },
 ];
@@ -40,7 +51,7 @@ module.exports = {
         'no-restricted-imports': [
           'error',
           {
-            paths: DRIVERS,
+            paths: [...DRIVERS, ...DB_ACCESS],
             patterns: [
               ...DRIVER_PATTERNS,
               {
@@ -56,6 +67,14 @@ module.exports = {
       files: ['src/services/**/*.ts'],
       excludedFiles: ['**/*.test.ts'],
       rules: {
+        // SQL belongs in the model: a service gets a transaction and hands it to a repository.
+        'no-restricted-syntax': [
+          'error',
+          {
+            selector: "CallExpression[callee.property.name='query']",
+            message: 'Raw SQL belongs in src/model (a repository), not in a service.',
+          },
+        ],
         'no-restricted-imports': [
           'error',
           {

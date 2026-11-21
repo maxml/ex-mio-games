@@ -57,12 +57,12 @@ describe('tenant isolation and idempotency (payments)', () => {
     expect(a.some((c) => b.some((x) => x.id === c.id))).toBe(false);
   });
 
-  it('row-level security binds the service role itself: without a tenant set it reads nothing and writes nothing', async () => {
+  it('row-level security binds the runtime role: without a tenant set it reads nothing and writes nothing', async () => {
     const admin = await pgAs('postgres');
     const total = await (async () => {
-      const c = await pgAs('payments');
+      const c = await pgAs('payments_app');
       try {
-        // The service role connects; no `SET LOCAL app.tenant_id` has been issued.
+        // The runtime role connects; no `SET LOCAL app.tenant_id` has been issued.
         const rows = await c.query(`SELECT count(*)::int AS n FROM coin_credits`);
         await expect(
           c.query(

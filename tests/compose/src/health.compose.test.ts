@@ -38,9 +38,16 @@ describe('database roles', () => {
     try {
       const { rows } = await admin.query(
         `SELECT rolname, rolsuper, rolbypassrls, rolcreaterole, rolcreatedb FROM pg_roles
-         WHERE rolname IN ('identity', 'engagement', 'payments') ORDER BY rolname`,
+         WHERE rolname ~ '^(identity|engagement|payments)_(app|owner)$' ORDER BY rolname`,
       );
-      expect(rows.map((r) => r.rolname)).toEqual(['engagement', 'identity', 'payments']);
+      expect(rows.map((r) => r.rolname)).toEqual([
+        'engagement_app',
+        'engagement_owner',
+        'identity_app',
+        'identity_owner',
+        'payments_app',
+        'payments_owner',
+      ]);
       for (const r of rows) {
         expect([r.rolsuper, r.rolbypassrls, r.rolcreaterole, r.rolcreatedb]).toEqual([
           false,
@@ -61,8 +68,8 @@ describe('database roles', () => {
         const c = new Client({
           host: 'localhost',
           port: Number(process.env.POSTGRES_PORT ?? 54329),
-          user: 'identity',
-          password: 'identity-dev',
+          user: 'identity_app',
+          password: 'identity-app-dev',
           database: 'payments',
         });
         await c.connect();
