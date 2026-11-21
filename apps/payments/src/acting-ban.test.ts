@@ -19,7 +19,6 @@ import {
 import { Public } from '@ex-mio/tenancy';
 import { createAppModule } from './app.module';
 import type { Config } from './config';
-import { CreditsService } from './services/credits.service';
 import { paymentsControllers } from './controllers'; // RED: module does not exist yet
 import { coinRuleViolations, collectControllers } from './testing/controller-walk';
 import {
@@ -35,7 +34,7 @@ import {
  * operation when the caller's token carries `acting_tenant`. Coin commands run here, not
  * in identity, so the ban is tested here: ActingCoinGuard reads the `acting` claim from
  * the service-kit auth context (set by ServiceAuthModule) and denies the pinned coin
- * actions with 403 ACTING_FORBIDDEN before the handler runs. Only `coins.adjust` may be
+ * actions with 403 `acting_forbidden` (payments' own code, X-10) before the handler runs. Only `coins.adjust` may be
  * called while acting; an unrelated read has no coin effect and is allowed.
  *
  * These tests only pin the shared service-kit entry point and payments' guard. They do
@@ -46,13 +45,17 @@ const NOW = 1_800_000_000;
 const T_A = '0190a1b2-c3d4-7e5f-8a6b-0000000000aa';
 const T_B = '0190a1b2-c3d4-7e5f-8a6b-0000000000bb';
 const USER = '0190a1b2-c3d4-7e5f-8a6b-000000000001';
-const PLAYER = '0190a1b2-c3d4-4e5f-8a6b-7c8d9e0f1a2c';
 const key = generateRsaKey('k1');
 
 // Pinned as a literal on purpose: a loop over COIN_VALUE_ACTIONS would shrink with the list.
-const COIN_VALUE = ['coins.credit', 'coins.hold', 'coins.capture', 'coins.release', 'coins.refund'];
+const COIN_VALUE = [
+  'coins.credit',
+  'coins.reserve',
+  'coins.capture',
+  'coins.release',
+  'coins.refund',
+];
 
-const credit = jest.fn();
 const audited: EventEnvelope[] = [];
 const appConfig = {
   PORT: 4003,
@@ -66,7 +69,7 @@ const POLICY: ServiceCallPolicy = {
   identity: {},
   engagement: {
     payments: [
-      'POST /internal/v1/tenants/:tenantId/probe/hold',
+      'POST /internal/v1/tenants/:tenantId/probe/reserve',
       'POST /internal/v1/tenants/:tenantId/probe/capture',
       'POST /internal/v1/tenants/:tenantId/probe/release',
       'POST /internal/v1/tenants/:tenantId/probe/refund',
@@ -79,8 +82,8 @@ const POLICY: ServiceCallPolicy = {
 @UseGuards(ActingCoinGuard)
 @Controller('internal/v1/tenants/:tenantId/probe')
 class InternalProbe {
-  @CoinAction('coins.hold') @Post('hold') hold() {
-    return { ran: 'coins.hold' };
+  @CoinAction('coins.reserve') @Post('reserve') reserve() {
+    return { ran: 'coins.reserve' };
   }
   @CoinAction('coins.capture') @Post('capture') capture() {
     return { ran: 'coins.capture' };
@@ -101,8 +104,8 @@ class Probe {
   @CoinAction('coins.credit') @Post('credit') credit() {
     return { ran: 'coins.credit' };
   }
-  @CoinAction('coins.hold') @Post('hold') hold() {
-    return { ran: 'coins.hold' };
+  @CoinAction('coins.reserve') @Post('reserve') reserve() {
+    return { ran: 'coins.reserve' };
   }
   @CoinAction('coins.capture') @Post('capture') capture() {
     return { ran: 'coins.capture' };
@@ -141,7 +144,6 @@ class Probe {
     }),
   ],
   controllers: [Probe, InternalProbe, ...paymentsControllers],
-  providers: [{ provide: CreditsService, useValue: { credit, list: jest.fn(async () => []) } }],
 })
 class TestApp {}
 
@@ -186,11 +188,11 @@ const call = (
 describe('INV-ACTBAN: payments refuses coin operations to an acting token', () => {
   // Mutation: ActingCoinGuard does not read `acting` from the auth context (or is not registered).
   it.each(COIN_VALUE)(
-    'INV-ACTBAN-1 an acting token on %s is 403 ACTING_FORBIDDEN and the handler does not run',
+    'INV-ACTBAN-1 an acting token on %s is 403 acting_forbidden and the handler does not run',
     async (action) => {
       const res = await call('POST', `/probe/${action.split('.')[1]}`, acting());
       expect(res.statusCode).toBe(403);
-      expect(res.json()).toMatchObject({ code: 'ACTING_FORBIDDEN' });
+      expect(res.json()).toMatchObject({ code: 'acting_forbidden' }); // X-10: payments' own lower-case code
       expect(res.body).not.toContain('"ran"');
     },
   );
@@ -199,7 +201,7 @@ describe('INV-ACTBAN: payments refuses coin operations to an acting token', () =
   // a value action is a SERVICE (engagement: reserve, capture, release, refund) over an internal
   // route, which carries no acting claim. The guard must not over-block it.
   // Mutation: the guard denies everything for everyone (over-blocks), or ignores the action list.
-  it.each(['coins.hold', 'coins.capture', 'coins.release', 'coins.refund'])(
+  it.each(['coins.reserve', 'coins.capture', 'coins.release', 'coins.refund'])(
     'INV-ACTBAN-2 an engagement service token on the internal route of %s runs, with no acting claim',
     async (action) => {
       const svc = signJwt({
@@ -214,47 +216,29 @@ describe('INV-ACTBAN: payments refuses coin operations to an acting token', () =
     },
   );
 
-  // D-14 / N4 (inverts the old INV-ACTBAN-2 that expected 201 for an operator on /v1/credits).
+  // D-14 / N4, D-1 (inverts the old INV-ACTBAN-2 that expected 201 for an operator on /v1/credits).
   // Operators can never mint coins (RBAC matrix: coins.credit is "no" for every role, D-1: credits
-  // come from the inbox only). Mutation: serve coins.credit to an ordinary operator token again.
-  it('INV-ACTBAN-2 an ordinary operator_admin token on the real POST /v1/credits is 403 FORBIDDEN and nothing is credited', async () => {
-    credit.mockClear();
-    const res = await app
-      .getHttpAdapter()
-      .getInstance()
-      .inject({
-        method: 'POST',
-        url: '/v1/credits',
-        headers: { authorization: `Bearer ${token()}`, 'idempotency-key': 'key-12345678' },
-        payload: { player_id: PLAYER, amount: 5 },
-      });
-    expect(res.statusCode).toBe(403);
-    expect(res.json()).toMatchObject({ code: 'FORBIDDEN' });
-    expect(credit).not.toHaveBeenCalled();
+  // come from the inbox only), so the real app has NO credit route at all. Mutation: serve a credit
+  // route again, for any token.
+  it('INV-ACTBAN-2 an ordinary operator_admin token on POST /v1/credits is 404: the real app has no credit route', async () => {
+    for (const url of ['/v1/credits', `/internal/v1/tenants/${T_A}/credits`]) {
+      const res = await call('POST', url, token(), { 'idempotency-key': 'key-12345678' });
+      expect([url, res.statusCode]).toEqual([url, 404]);
+    }
   });
 
   // D-11 item 3: refused by a LATER guard (ActingCoinGuard), so an interceptor-only audit misses it.
   // Mutation: emit the audit event from an interceptor only (interceptors do not run when a guard refuses).
-  it('INV-AUTH-9 an acting POST /v1/credits refused by the guard writes exactly one refused event for service payments', async () => {
-    credit.mockClear();
+  it('INV-AUTH-9 an acting coin-value request refused by the guard writes exactly one refused event for service payments', async () => {
     audited.length = 0;
-    const res = await app
-      .getHttpAdapter()
-      .getInstance()
-      .inject({
-        method: 'POST',
-        url: '/v1/credits',
-        headers: { authorization: `Bearer ${acting()}`, 'idempotency-key': 'key-12345678' },
-        payload: { player_id: PLAYER, amount: 5 },
-      });
+    const res = await call('POST', '/probe/credit', acting(), { 'idempotency-key': 'key-12345678' });
     expect(res.statusCode).toBe(403);
-    expect(res.json()).toMatchObject({ code: 'ACTING_FORBIDDEN' });
-    expect(credit).not.toHaveBeenCalled();
+    expect(res.json()).toMatchObject({ code: 'acting_forbidden' });
     const events = audited.filter((e) => e.type === 'audit.acting_request');
     expect(events).toHaveLength(1);
     expect(ActingRequestAuditedV1.parse(events[0]?.payload)).toMatchObject({
       service: 'payments',
-      route: 'POST /v1/credits',
+      route: 'POST /probe/credit',
       decision: 'refused',
       status: 403,
     });
@@ -287,7 +271,7 @@ describe('INV-ACTBAN: payments refuses coin operations to an acting token', () =
       kid: 'k1',
       claims: serviceClaims({ now: NOW, service: 'engagement', aud: 'payments' }),
     });
-    const forged = await call('POST', `/internal/v1/tenants/${T_A}/probe/hold`, svc, {
+    const forged = await call('POST', `/internal/v1/tenants/${T_A}/probe/reserve`, svc, {
       'x-acting-tenant': T_B,
     });
     expect(forged.statusCode).toBe(201);
@@ -346,9 +330,10 @@ describe('INV-ACTBAN-7 every payments handler declares its coin effect', () => {
   // D-14 / N3, the route scan: the booted-app shape, not a list. Walks every module reachable from
   // createAppModule (imports, dynamic modules) and asserts the guard and a declaration on every
   // registered coin route. Mutation: register an unguarded controller in an imported child module.
-  it('INV-ACTBAN-8 the route scan of the real app module finds the credits controller and no violation', () => {
+  it('INV-ACTBAN-8 the route scan of the real app module finds the coins controller, no credits controller and no violation', () => {
     const controllers = collectControllers(createAppModule(appConfig));
-    expect(controllers.map((c) => c.name)).toContain('CreditsController');
+    expect(controllers.map((c) => c.name)).toContain('CoinsController');
+    expect(controllers.map((c) => c.name)).not.toContain('CreditsController');
     expect(coinRuleViolations(createAppModule(appConfig))).toEqual([]);
   });
 
@@ -372,26 +357,20 @@ describe('INV-ACTBAN-7 every payments handler declares its coin effect', () => {
     ]);
   });
 
-  // Mutation: declare the credit route NoCoinEffect (the ban never fires for it).
-  it('the credit route is declared coins.credit and the list route is NoCoinEffect', () => {
-    const proto = paymentsControllers[0]?.prototype as Record<string, object>;
-    expect(Reflect.getMetadata(COIN_ACTION_KEY, proto['create'] as object)).toBe('coins.credit');
-    expect(Reflect.getMetadata(NO_COIN_EFFECT_KEY, proto['list'] as object)).toBe(true);
-  });
-
-  it('an acting token on the real POST /v1/credits is 403 ACTING_FORBIDDEN and CreditsService is not called', async () => {
-    const res = await app
-      .getHttpAdapter()
-      .getInstance()
-      .inject({
-        method: 'POST',
-        url: '/v1/credits',
-        headers: { authorization: `Bearer ${acting()}`, 'idempotency-key': 'key-12345678' },
-        payload: { player_id: PLAYER, amount: 5 },
-      });
-    expect(res.statusCode).toBe(403);
-    expect(res.json()).toMatchObject({ code: 'ACTING_FORBIDDEN' });
-    expect(credit).not.toHaveBeenCalled();
+  // D-1: no handler of the real app is a credit, and every coin command it serves declares exactly
+  // one of the four service actions. Mutation: re-add a handler declared coins.credit, or declare a
+  // coin command NoCoinEffect (the ban never fires for it).
+  it('no real handler is declared coins.credit; the coin commands are reserve, capture, release, refund', () => {
+    const declared: string[] = [];
+    for (const ctrl of collectControllers(createAppModule(appConfig))) {
+      for (const { handler } of methodsOf(ctrl)) {
+        const action = Reflect.getMetadata(COIN_ACTION_KEY, handler);
+        if (action !== undefined) declared.push(action);
+      }
+    }
+    expect(declared.sort()).toEqual(
+      ['coins.capture', 'coins.refund', 'coins.release', 'coins.reserve'].sort(),
+    );
   });
 });
 
