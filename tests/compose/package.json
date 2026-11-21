@@ -39,7 +39,21 @@
       "**/*.compose.test.ts"
     ],
     "moduleNameMapper": {
-      "^@ex-mio/contracts$": "<rootDir>/../../packages/contracts/src"
+      "^@ex-mio/contracts$": "<rootDir>/../../packages/contracts/src",
+      "^@ex-mio/(tenancy|bus|idempotency|service-kit|logger)$": "<rootDir>/../../packages/$1/src"
+    },
+    "transform": {
+      "^.+\\.ts$": [
+        "ts-jest",
+        {
+          "diagnostics": false,
+          "tsconfig": {
+            "module": "CommonJS",
+            "experimentalDecorators": true,
+            "emitDecoratorMetadata": true
+          }
+        }
+      ]
     },
     "testTimeout": 60000
   },
