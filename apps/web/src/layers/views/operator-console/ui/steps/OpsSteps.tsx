@@ -17,7 +17,7 @@ import {
 import { STEPS, type StepProps } from './types';
 
 type Filter = 'all' | RedemptionStatus;
-const FILTERS: Filter[] = ['all', 'pending', 'issuing', 'issued', 'failed', 'refunded'];
+const FILTERS: Filter[] = ['all', 'pending', 'issuing', 'issued', 'failed_refunded'];
 
 export function RedemptionsStep({ s, nav }: StepProps) {
   const [filter, setFilter] = useState<Filter>('all');

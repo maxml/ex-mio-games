@@ -267,19 +267,23 @@ export function reducer(s: State, a: Action): State {
       });
     }
     case 'redeem/status': {
-      if (a.status === 'refunded') return s; // only `redeem/refund` can move coins back
+      // W-5: the public word for a failed redemption whose coins are back is `failed_refunded`;
+      // only `redeem/refund` can move coins back, so `status` can never set it.
+      if (a.status === 'failed_refunded') return s;
       return patchP({
         redemptions: p.redemptions.map((r) =>
-          r.id === a.id && r.status !== 'refunded' ? { ...r, status: a.status } : r,
+          r.id === a.id && r.status !== 'failed_refunded' ? { ...r, status: a.status } : r,
         ),
       });
     }
     case 'redeem/refund': {
       const r = p.redemptions.find((x) => x.id === a.id);
-      if (!r || r.status !== 'failed') return s; // refund once, and only after a failure
+      if (!r || r.status !== 'issuing') return s; // refund once, and only for an order the casino did not issue
       return patchP({
         coins: p.coins + r.coins,
-        redemptions: p.redemptions.map((x) => (x.id === a.id ? { ...x, status: 'refunded' } : x)),
+        redemptions: p.redemptions.map((x) =>
+          x.id === a.id ? { ...x, status: 'failed_refunded' } : x,
+        ),
         history: [
           row(`h-ref-${a.id}`, `Refund: ${r.item} could not be issued`, r.coins),
           ...p.history,

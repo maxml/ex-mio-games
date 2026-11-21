@@ -6,8 +6,7 @@ export type Status =
   | 'pending'
   | 'issuing'
   | 'issued'
-  | 'failed'
-  | 'refunded'
+  | 'failed_refunded'
   | 'trial'
   | 'active'
   | 'past_due'
@@ -147,7 +146,7 @@ export const REDEMPTIONS: Redemption[] = [
     player: 'p_22be',
     item: '50 free spins',
     coins: 1200,
-    status: 'failed',
+    status: 'failed_refunded',
     at: '2026-11-21 13:40',
     note: 'Casino returned 503; coins refunded',
   },
@@ -156,7 +155,7 @@ export const REDEMPTIONS: Redemption[] = [
     player: 'p_22be',
     item: '50 free spins',
     coins: 1200,
-    status: 'refunded',
+    status: 'failed_refunded',
     at: '2026-11-21 13:41',
     note: 'Refund of rd-1040',
   },

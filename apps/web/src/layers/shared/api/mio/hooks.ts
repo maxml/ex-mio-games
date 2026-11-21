@@ -9,7 +9,8 @@ import type { MioApi } from './api';
 import { useMioApi } from './context';
 
 const POLL_MS = 800;
-const FINAL = new Set(['issued', 'refunded']);
+// W-5: the store's public words (`pending|issuing|issued|failed_refunded`); polling stops on a final one.
+const FINAL = new Set(['issued', 'failed_refunded']);
 
 export function usePlayerState() {
   const api = useMioApi();

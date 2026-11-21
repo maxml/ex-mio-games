@@ -352,7 +352,7 @@ export function PlayerWidgetView({
                 title: r.item,
                 trailing: (
                   <>
-                    {r.status === 'refunded' && <Badge>{`+${r.coins} coins back`}</Badge>}
+                    {r.status === 'failed_refunded' && <Badge>{`+${r.coins} coins back`}</Badge>}
                     <StatusPill status={r.status} />
                   </>
                 ),

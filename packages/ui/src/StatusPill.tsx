@@ -51,6 +51,8 @@ export type Status =
   | 'issued'
   | 'failed'
   | 'refunded'
+  /** The store's public word for a redemption that did not complete and gave the coins back (W-5). */
+  | 'failed_refunded'
   | 'accepted'
   | 'duplicate'
   | 'rejected'
@@ -70,6 +72,7 @@ const STATUS: Record<Status, { tone: Tone; label: string }> = {
   issued: { tone: 'success', label: 'Issued' },
   failed: { tone: 'danger', label: 'Failed' },
   refunded: { tone: 'neutral', label: 'Refunded' },
+  failed_refunded: { tone: 'danger', label: 'Failed, coins back' },
   accepted: { tone: 'success', label: 'Accepted' },
   duplicate: { tone: 'neutral', label: 'Duplicate (ignored)' },
   rejected: { tone: 'danger', label: 'Rejected' },

@@ -137,7 +137,7 @@ describe('redemption lifecycle', () => {
 
   it('failed: refunded once, and a second refund does nothing', () => {
     const { s, id } = run(true);
-    expect(s.get().player.redemptions[0].status).toBe('refunded');
+    expect(s.get().player.redemptions[0].status).toBe('failed_refunded'); // W-5: the store's public word
     expect(s.get().player.coins).toBe(420);
     const after = s.get();
     s.dispatch({ type: 'redeem/refund', id });

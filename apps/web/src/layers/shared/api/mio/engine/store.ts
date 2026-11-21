@@ -84,7 +84,7 @@ export function cancelPayment(id: string, store: Store = appStore): void {
 }
 
 /**
- * Redemption lifecycle (pending, issuing, issued or failed then refunded). The timers live here,
+ * Redemption lifecycle (pending, issuing, then issued or failed_refunded). The timers live here,
  * not in a component, so leaving the widget never strands a redemption half-way.
  */
 export function startRedeem(
@@ -99,7 +99,7 @@ export function startRedeem(
   wait(() => store.dispatch({ type: 'redeem/status', id, status: 'issuing' }), 1200);
   wait(() => {
     if (!down) return store.dispatch({ type: 'redeem/status', id, status: 'issued' });
-    store.dispatch({ type: 'redeem/status', id, status: 'failed' });
+    // the casino refused: the store's public word is `failed_refunded` (W-5), coins go back with it
     wait(() => store.dispatch({ type: 'redeem/refund', id }), 1400);
   }, 2600);
   return id;
