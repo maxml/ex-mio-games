@@ -1,46 +1,69 @@
 import { forwardRef, type ButtonHTMLAttributes } from 'react';
-import { cva, type VariantProps } from 'class-variance-authority';
 import { cn } from './cn';
 
-// Variants are token-driven (apps/web/tailwind.config.ts + app/globals.css).
-// SEED only — the variant set is finalized once you supply your design tokens.
-export const buttonVariants = cva(
-  'inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50',
+export type ButtonVariant = 'primary' | 'secondary' | 'ghost' | 'danger' | 'accent';
+export type ButtonSize = 'sm' | 'md' | 'lg';
+
+export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
+  variant?: ButtonVariant;
+  size?: ButtonSize;
+  /** Shows a spinner and blocks clicks: the single-request guard for spin and redeem. */
+  loading?: boolean;
+}
+
+const VARIANTS: Record<ButtonVariant, string> = {
+  primary: 'bg-primary text-primary-fg hover:brightness-110',
+  accent: 'bg-accent text-accent-fg hover:brightness-110',
+  secondary: 'bg-surface text-fg border border-border hover:bg-surface-2',
+  ghost: 'bg-transparent text-fg hover:bg-surface-2',
+  danger: 'bg-surface text-danger border border-danger hover:bg-surface-2',
+};
+const SIZES: Record<ButtonSize, string> = {
+  sm: 'h-8 px-3 text-sm',
+  md: 'h-10 px-4 text-sm',
+  lg: 'h-12 px-6 text-base',
+};
+
+export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button(
   {
-    variants: {
-      variant: {
-        primary: 'bg-primary text-primary-foreground hover:bg-primary/90',
-        secondary: 'bg-secondary text-secondary-foreground hover:bg-secondary/80',
-        outline: 'border border-input bg-background hover:bg-muted hover:text-foreground',
-        ghost: 'hover:bg-muted hover:text-foreground',
-        destructive: 'bg-destructive text-destructive-foreground hover:bg-destructive/90',
-      },
-      size: {
-        sm: 'h-9 px-3',
-        md: 'h-10 px-4 py-2',
-        lg: 'h-11 px-6 text-base',
-      },
-    },
-    defaultVariants: {
-      variant: 'primary',
-      size: 'md',
-    },
+    variant = 'primary',
+    size = 'md',
+    loading = false,
+    disabled,
+    className,
+    children,
+    type = 'button',
+    onClick,
+    ...rest
   },
-);
-
-export interface ButtonProps
-  extends ButtonHTMLAttributes<HTMLButtonElement>,
-    VariantProps<typeof buttonVariants> {}
-
-export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
-  ({ className, variant, size, type = 'button', ...props }, ref) => (
+  ref,
+) {
+  // A busy button stays focusable (aria-disabled, not `disabled`) so keyboard focus is not thrown
+  // to <body> the moment a spin or redeem starts; the click is ignored while busy.
+  return (
     <button
       ref={ref}
       type={type}
-      className={cn(buttonVariants({ variant, size }), className)}
-      {...props}
-    />
-  ),
-);
-
-Button.displayName = 'Button';
+      disabled={disabled}
+      aria-disabled={loading || undefined}
+      aria-busy={loading || undefined}
+      onClick={loading ? (e) => e.preventDefault() : onClick}
+      className={cn(
+        'inline-flex items-center justify-center gap-2 rounded-md font-semibold transition',
+        'disabled:cursor-not-allowed disabled:opacity-50 aria-disabled:cursor-not-allowed aria-disabled:opacity-50',
+        VARIANTS[variant],
+        SIZES[size],
+        className,
+      )}
+      {...rest}
+    >
+      {loading && (
+        <span
+          aria-hidden
+          className="inline-block size-4 animate-spin rounded-full border-2 border-current border-t-transparent"
+        />
+      )}
+      {children}
+    </button>
+  );
+});
