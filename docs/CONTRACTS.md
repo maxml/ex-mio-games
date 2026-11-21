@@ -82,6 +82,31 @@ sandbox?, payload }`; `tenant_id` is mandatory; the payload schema is registered
   transaction.
 - **pinned:** `packages/idempotency/src/idempotency.test.ts`; `tests/compose/src/tenancy.compose.test.ts`
 
+## Casino ingestion and the adapter interface
+
+- **provider:** `apps/engagement` (`src/integrations`), schemas in `packages/contracts` (`src/ingest.ts`) ·
+  **consumers:** casino platforms (inbound webhooks), `apps/casino-sim`, the rules, wheel and store code
+  (canonical types only)
+- **spec:** `docs/specs/engagement-ingest.md`. `POST /v1/integrations/{tenantSlug}/events`: HMAC and
+  timestamp window (300 s) with the tenant's secret, then schema, then one transaction for the
+  `UNIQUE (tenant_id, source, external_event_id)` row and the `engagement.deposit.confirmed` outbox message.
+  A duplicate returns 200 with the first body. Money is an integer in minor units. Each adapter declares a
+  recovery mode (`native_lookup` or `idempotent_replay`) so a lost reward reply is recoverable by our key.
+- **pinned:** `packages/contracts/src/ingest.contracts.test.ts`,
+  `apps/engagement/src/integrations/adapters.contract.test.ts`,
+  `apps/engagement/src/controllers/ingest.controller.test.ts`,
+  `tests/compose/src/ingest.compose.test.ts`
+
+## Spin and reward table
+
+- **provider:** `apps/engagement` · **consumers:** `web` (player widget), `payments` (via
+  `engagement.spin.completed`; key `spin:{spin_id}`)
+- **spec:** `docs/specs/engagement-ingest.md` section 8. A spin consumes one credit with a single
+  conditional UPDATE; the outcome is `HMAC(server_seed[version], spin_id)` against a versioned weight
+  table; the request body carries nothing that can steer the outcome; the player view has no weights.
+- **pinned:** `apps/engagement/src/services/wheel.test.ts`, `services/spin.service.test.ts`,
+  `controllers/spin.controller.test.ts`, `tests/compose/src/ingest.compose.test.ts`
+
 ## Health endpoints
 
 - **provider:** `packages/service-kit` (`src/health.ts`) · **consumers:** compose, the deploy plane
