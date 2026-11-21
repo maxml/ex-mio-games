@@ -147,6 +147,19 @@ describe('D1-4 engagement re-publishes the same spin under a new event id', () =
     expect(await credited(t)).toBe(1);
     expect((await h.dbWallet(t, p)).available).toBe(7);
   });
+
+  // Reviewer test (Stage B, gap b): the credit is deduped by spin_id, so the meter must be too; the same
+  // spin under a new event id is one billable spin. Mutation: meter by event_id.
+  it('the re-published spin is metered once, like it is credited once', async () => {
+    const t = newTenant();
+    const p = newPlayer();
+    const spin = uuidv7();
+    await h.consume(spinCompleted(t, p, 7, { spinId: spin, at: AT }));
+    const again = await h.consume(spinCompleted(t, p, 7, { spinId: spin, at: AT }));
+    expect(again.outcome).toBe('applied');
+    expect(await awards(t, spin)).toBe(1);
+    expect(await spinsMetered(t)).toBe(1);
+  });
 });
 
 describe('D1-5 the same spin with different parameters is a conflict, not a success', () => {
@@ -210,6 +223,34 @@ describe('D1-6 inbox row, credit, meter and event commit or roll back together',
       expect(await spinsMetered(t)).toBe(before.spins + 1);
     },
   );
+});
+
+describe('D1-6b a failure AFTER the credit (in metering) rolls the credit back too (reviewer, Stage B)', () => {
+  // Every fault hook of D1-6 sits inside `creditSpin`, so a credit committed in its own transaction
+  // still rolls back there and D1-6 stays green. Metering runs after the credit in the same delivery.
+  // Mutation: run `creditSpin` in its own transaction (`db.tenantTx`) instead of the inbox's.
+  it('metering throws: no inbox row, no award, no coins; the redelivery applies once', async () => {
+    const t = newTenant();
+    const p = newPlayer();
+    const e = spinCompleted(t, p, 7, { at: AT });
+    const meter = jest
+      .spyOn(h.usage, 'handle')
+      .mockRejectedValueOnce(new Error('meter failed after the credit'));
+    try {
+      const failed = await h.consume(e);
+      expect(meter).toHaveBeenCalledTimes(1);
+      expect(failed.acked).toBe(false);
+      expect(await inboxRows(t)).toBe(0);
+      expect(await allJournal(t)).toBe(0);
+      expect(await credited(t)).toBe(0);
+      expect(await n('wallet_owner_links', t)).toBe(0);
+    } finally {
+      meter.mockRestore();
+    }
+    expect((await h.consume(e)).outcome).toBe('applied');
+    expect((await h.dbWallet(t, p)).available).toBe(7);
+    expect(await spinsMetered(t)).toBe(1);
+  });
 });
 
 describe("D1-7 a transient failure must not lose the player's coins (decision D-9)", () => {
@@ -381,5 +422,59 @@ describe('D1-13 the Redis projection follows the event, eventually', () => {
     );
     await h.as(t, () => h.balances.onCoinEvent(parseEvent(rows[0].envelope)));
     expect(await h.as(t, () => h.balances.readByPlayer(p))).toMatchObject({ available: 12 });
+  });
+});
+
+describe('X-2 a sandbox spin never credits the production wallet (D-15, D-13; reviewer, Stage B gap a)', () => {
+  // Choke point: the inbox handler and `LedgerService.creditSpin`, read back through the two production
+  // readers of a wallet: the coin reserve (what a redemption can spend) and the balance read API.
+  // The sandbox flag is set by the producer on the envelope (D-13); payments keeps separate sandbox
+  // wallets (D-15). The sandbox coins may live anywhere EXCEPT where production can spend or show them.
+  // Mutation: credit a sandbox spin like a production one (today: `creditSpin` never reads the flag).
+  const reserveOf = (t: string, p: string, amount: number) =>
+    h.as(t, () =>
+      h.ledger.reserve(
+        { player_id: p, reserve_id: uuidv7(), amount, currency: 'COIN' },
+        `x2-${uuidv7()}`,
+      ),
+    );
+  const productionAvailable = async (t: string, p: string): Promise<number> => {
+    h.cache.store.clear(); // read the database, not a value cached by an earlier test
+    try {
+      return (await h.as(t, () => h.balances.readByPlayer(p))).available;
+    } catch (err) {
+      expect(err).toMatchObject({ code: 'wallet_not_found' });
+      return 0;
+    }
+  };
+
+  it('a new player with only a sandbox spin: delivered and acked, production shows and spends nothing', async () => {
+    const t = newTenant();
+    const p = newPlayer();
+    const d = await h.consume(spinCompleted(t, p, 50, { sandbox: true }));
+    expect(d.outcome).toBe('applied'); // not lost, not dead-lettered
+    expect(d.acked).toBe(true);
+    expect(await productionAvailable(t, p)).toBe(0);
+    await expect(reserveOf(t, p, 1)).rejects.toMatchObject({ code: 'insufficient_funds' });
+  });
+
+  it('production 3 and sandbox 50 for one player: production can spend 3 and not a coin more', async () => {
+    const t = newTenant();
+    const p = newPlayer();
+    await h.fund(t, p, 3);
+    await h.consume(spinCompleted(t, p, 50, { sandbox: true }));
+    expect(await productionAvailable(t, p)).toBe(3);
+    await expect(reserveOf(t, p, 4)).rejects.toMatchObject({ code: 'insufficient_funds' });
+    await expect(reserveOf(t, p, 3)).resolves.toMatchObject({ body: { amount: 3 } });
+  });
+
+  // Mutation: publish the sandbox credit as a plain `payments.coins.credited` (the projection and every
+  // other consumer would then take it for production coins).
+  it('every event the sandbox credit publishes is marked sandbox by payments, the producer', async () => {
+    const t = newTenant();
+    const p = newPlayer();
+    await h.consume(spinCompleted(t, p, 50, { sandbox: true }));
+    const { rows } = await h.admin.query(`SELECT envelope FROM outbox WHERE tenant_id = $1`, [t]);
+    for (const r of rows) expect(parseEvent(r.envelope).sandbox).toBe(true);
   });
 });
