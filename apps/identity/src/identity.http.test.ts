@@ -9,15 +9,16 @@ import {
   IdentityErrorBody,
   INTERNAL_ROUTES,
   InternalResolvePlayerResponse,
-  InternalVerifyWebhookResponse,
   JwksResponse,
   LaunchResponse,
+  PlayerLinkResponse,
   PlayerLookup,
   SERVICE_CALL_POLICY,
   ServiceCallAuditedV1,
   ServiceTokenClaims,
   SignupResponse,
   StaffMember,
+  TenantIntegration,
   TenantStatusResponse,
   TenantView,
   TokenResponse,
@@ -29,7 +30,6 @@ import {
   generateRsaKey,
   signJwt,
   signLaunchToken,
-  signWebhook,
 } from '@ex-mio/service-kit/testing';
 import { identityControllers } from './controllers'; // RED: module does not exist yet
 import { PERMISSION_KEY, PermissionGuard } from './controllers/permissions'; // RED
@@ -687,7 +687,8 @@ describe('INV-S2S: service-to-service tokens and internal endpoints (D-4, MIO-04
         `/%69nternal/v1/tenants/${w.b.tenant.id}/players/resolve`,
         { platform: 'sim-casino', external_player_id: 'ext-1' },
       ],
-      ['POST', '/%69nternal/v1/webhooks/verify', {}],
+      ['GET', `/%69nternal/v1/tenants/${w.b.tenant.id}/integration`, undefined],
+      ['GET', '/%69nternal/v1/integrations/by-slug/b', undefined],
     ] as const) {
       const res = await w.app.inject({ method, url, headers: operator, payload });
       expect([url, [401, 404].includes(res.statusCode)]).toEqual([url, true]);
@@ -712,7 +713,7 @@ describe('INV-S2S: service-to-service tokens and internal endpoints (D-4, MIO-04
 
   // D-14, callee side at identity: payments may read the tenant status and nothing else here.
   // Mutation: skip the per-client route allow-list in the entry point.
-  it('INV-S2S-8 payments (status only) is 403 SERVICE_CALL_FORBIDDEN on resolve and verify; engagement may call all three', async () => {
+  it('INV-S2S-8 payments (status only) is 403 SERVICE_CALL_FORBIDDEN on resolve and integration; engagement may call all of them', async () => {
     const w = await world();
     const asPayments = await asService(w, 'payments');
     const resolve = await w.app.inject({
@@ -724,13 +725,14 @@ describe('INV-S2S: service-to-service tokens and internal endpoints (D-4, MIO-04
     expect(resolve.statusCode).toBe(403);
     expect(resolve.json()).toMatchObject({ code: 'SERVICE_CALL_FORBIDDEN' });
     expect(await w.k.players.links(w.a.tenant.id)).toEqual([]);
-    const verify = await w.app.inject({
-      method: 'POST',
-      url: INTERNAL_ROUTES.verifyWebhook,
+    const integration = await w.app.inject({
+      method: 'GET',
+      url: `/internal/v1/tenants/${w.a.tenant.id}/integration`,
       headers: asPayments,
-      payload: {},
     });
-    expect(verify.statusCode).toBe(403);
+    expect(integration.statusCode).toBe(403);
+    expect(integration.json()).toMatchObject({ code: 'SERVICE_CALL_FORBIDDEN' });
+    expect(integration.body).not.toContain('webhook_secrets');
     expect(
       (await w.get(w, `/internal/v1/tenants/${w.a.tenant.id}/status`, asPayments)).statusCode,
     ).toBe(200);
@@ -797,46 +799,71 @@ describe('INV-S2S: service-to-service tokens and internal endpoints (D-4, MIO-04
     expect(smuggled.json()).toMatchObject({ code: 'VALIDATION_FAILED' });
   });
 
-  // Mutation: the tenant of a webhook comes from anywhere but the key that signed it.
-  it('INV-S2S-5 verify webhook: the tenant is the tenant of the key; a bad signature is 401; a user token is 401', async () => {
+  // X-7, D-15 Q-1. Mutation: serve the integration to a user token or another service, take the
+  // tenant from the header, or return another tenant's secrets.
+  it('INV-S2S-5 integration read: the tenant is the path tenant; the header is ignored; secrets go to svc:engagement only', async () => {
     const w = await world();
-    const keyA = await w.k.credentials.issue(w.a.tenant.id, 'sim-casino');
-    const raw = JSON.stringify({ player: 'ext-1', amount: 10 });
-    const ts = w.k.now();
-    const req = (over: Record<string, unknown> = {}, headers?: Record<string, string>) =>
-      w.app.inject({
-        method: 'POST',
-        url: INTERNAL_ROUTES.verifyWebhook,
-        headers: headers ?? { 'x-tenant-id': w.b.tenant.id },
-        payload: {
-          api_key: keyA.api_key,
-          timestamp: ts,
-          signature: signWebhook(keyA.hmac_secret, ts, raw),
-          raw_body: raw,
-          ...over,
-        },
-      });
-    const withService = async (over: Record<string, unknown> = {}) =>
-      req(over, { ...(await asService(w)), 'x-tenant-id': w.b.tenant.id });
-    const ok = await withService();
-    expect(ok.statusCode).toBe(200);
-    expect(InternalVerifyWebhookResponse.parse(ok.json())).toMatchObject({
-      tenant_id: w.a.tenant.id,
-      key_id: keyA.key_id,
-      platform: 'sim-casino',
+    const keyA = await w.k.credentials.issue(w.a.tenant.id, 'sim-casino', {
+      environment: 'sandbox',
     });
-    const bad = await withService({ signature: 'f'.repeat(64) });
-    expect(bad.statusCode).toBe(401);
-    expect(bad.json()).toMatchObject({ code: 'WEBHOOK_SIGNATURE_INVALID' });
-    expect((await req()).statusCode).toBe(401); // no token
+    const eng = await asService(w);
+    const get = (url: string, headers: Record<string, string>) =>
+      w.app.inject({ method: 'GET', url, headers });
+    const ok = await get(`/internal/v1/tenants/${w.a.tenant.id}/integration`, {
+      ...eng,
+      'x-tenant-id': w.b.tenant.id,
+    });
+    expect(ok.statusCode).toBe(200);
+    expect(TenantIntegration.parse(ok.json())).toMatchObject({
+      tenant_id: w.a.tenant.id,
+      platform: 'sim-casino',
+      environment: 'sandbox',
+      webhook_secrets: [keyA.hmac_secret],
+    });
+    const bySlug = await get('/internal/v1/integrations/by-slug/a', eng);
+    expect(TenantIntegration.parse(bySlug.json()).tenant_id).toBe(w.a.tenant.id);
+    expect((await get('/internal/v1/integrations/by-slug/nope', eng)).statusCode).toBe(404);
+    expect((await get(`/internal/v1/tenants/${w.a.tenant.id}/integration`, {})).statusCode).toBe(401);
+    const operator = { authorization: `Bearer ${await w.tokenFor(w.a.tenant.id, 'boss@a.test')}` };
     expect(
-      (await req({}, { authorization: `Bearer ${await w.tokenFor(w.a.tenant.id, 'boss@a.test')}` }))
-        .statusCode,
+      (await get(`/internal/v1/tenants/${w.a.tenant.id}/integration`, operator)).statusCode,
     ).toBe(401);
   });
 
+  // X-8. Reader test: the link written by resolve is the link this route returns. Mutation: read
+  // another tenant's link, or keep returning it after the erasure deleted the mapping.
+  it('INV-S2S-5b player link: returns what resolve stored, per tenant; 404 for another tenant or after erasure', async () => {
+    const w = await world();
+    const eng = await asService(w);
+    const resolved = InternalResolvePlayerResponse.parse(
+      (
+        await w.app.inject({
+          method: 'POST',
+          url: `/internal/v1/tenants/${w.a.tenant.id}/players/resolve`,
+          headers: eng,
+          payload: { platform: 'sim-casino', external_player_id: 'ext-77' },
+        })
+      ).json(),
+    );
+    const link = (tenantId: string) =>
+      w.app.inject({
+        method: 'GET',
+        url: `/internal/v1/tenants/${tenantId}/players/${resolved.user_id}/link`,
+        headers: eng,
+      });
+    const own = await link(w.a.tenant.id);
+    expect(own.statusCode).toBe(200);
+    expect(PlayerLinkResponse.parse(own.json())).toEqual({
+      platform: 'sim-casino',
+      external_player_id: 'ext-77',
+    });
+    expect((await link(w.b.tenant.id)).statusCode).toBe(404);
+    await w.k.players.erase(w.a.tenant.id, resolved.user_id);
+    expect((await link(w.a.tenant.id)).statusCode).toBe(404);
+  });
+
   // Mutation: add an internal route that is not in the contract, or drop one.
-  it('INV-S2S-6 the internal routes of identity are exactly the three in the contract', () => {
+  it('INV-S2S-6 the internal routes of identity are exactly the five in the contract', () => {
     const found: string[] = [];
     for (const ctrl of identityControllers) {
       for (const name of Object.getOwnPropertyNames(ctrl.prototype)) {

@@ -62,7 +62,7 @@ const POLICY: ServiceCallPolicy = {
       'GET /internal/v1/tenants/:tenantId/ping',
       'POST /internal/v1/ping',
       'POST /internal/v1/tenants/:tenantId/both',
-      'POST /internal/v1/webhooks/verify',
+      'POST /internal/v1/tenantless/ping',
     ],
   },
 };
@@ -153,7 +153,7 @@ class Probe {
   }
 
   @InternalTenantless()
-  @Post('internal/v1/webhooks/verify')
+  @Post('internal/v1/tenantless/ping')
   internalTenantless() {
     return { auth: currentAuth(), tenant: tenancy.tryTenantContext() ?? null };
   }
@@ -542,7 +542,7 @@ describe('INV-AUTH-8 internal endpoints accept ONLY service tokens, tenant from 
     const b = await boot();
     const ok = await b.inject({
       method: 'POST',
-      url: '/internal/v1/webhooks/verify',
+      url: '/internal/v1/tenantless/ping',
       headers: bearer(svcToken()),
       payload: {},
     });
@@ -550,7 +550,7 @@ describe('INV-AUTH-8 internal endpoints accept ONLY service tokens, tenant from 
     expect(ok.json().tenant).toBeNull();
     const user = await b.inject({
       method: 'POST',
-      url: '/internal/v1/webhooks/verify',
+      url: '/internal/v1/tenantless/ping',
       headers: bearer(userToken()),
       payload: {},
     });

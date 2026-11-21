@@ -84,22 +84,22 @@ exchange, integration credentials. All other services only verify our tokens.
    900 s) with `tid` = `PLATFORM_TENANT_ID`, `roles` = `[platform_admin]`, `act = {tenant_id, reason}`. While acting, requests
    run in the acting tenant, every identity `authorize` writes one audit row naming the real actor and the acting tenant,
    coin commands that move value are denied (except `coins.adjust`), and a new acting session cannot be started.
-   - **Coins are refused where they happen (D-5, F3).** Payments owns every coin operation, so payments refuses them:
-     `ActingCoinGuard` (payments, `controllers/coin-action.ts`) reads `acting` from the service-kit auth context and answers
-     403 `ACTING_FORBIDDEN` for the five value actions `coins.credit|hold|capture|release|refund`, before the handler runs.
-     Every payments controller carries `@UseGuards(ActingCoinGuard)` (a controller-level guard always runs after the global
-     `ServiceAuthModule` guard, so ordering never depends on module registration; with no auth context it answers 401, it never
-     passes) and every handler declares `@CoinAction(action)`, `@NoCoinEffect()` or `@Public()`; an undeclared handler is
-     denied. The five-action list is pinned as a literal in `identity.contracts.test.ts`, `identity.access.test.ts` and
-     `acting-ban.test.ts`.
+   - **Coins are refused where they happen (D-5, F3, X-10, X-11, D-15 Q-2).** Payments owns every coin operation, and its
+     user-mode guard is specified in `docs/specs/payments.md` (one guard, 403 `acting_forbidden`, reading `authOf(req).act`);
+     this spec no longer names its files or decorators, and the coin-value action list is payments' `COIN_VALUE_ACTIONS`
+     (one list; identity derives `coins.<a>` from it and does not redeclare it). Internal coin routes accept service tokens
+     only, which carry no `act`, so the hop where an acting user token causes a coin command is engagement's operator
+     resolve: `redemptions.resolve` is in `ACTING_DENIED_ACTIONS` and engagement refuses it for an `act` token, 403
+     `ACTING_FORBIDDEN`, before any coin call. The six-action deny list (`coins.credit|reserve|capture|release|refund` plus
+     `redemptions.resolve`) is pinned as a literal in `identity.contracts.test.ts` and `identity.access.test.ts`.
    - **Audit outside identity (D-11).** The audit of acting requests is owned by this epic in the entry point (section 1.5), so
      engagement and payments add no audit code of their own. Identity's `authorize` still writes its permission-level row.
-   - **A coin route is guarded everywhere, including child modules (D-14, N3).** The guard rule is checked by a scan of the
-     module tree reachable from each app's `createAppModule`, not by a list: every controller found carries `ActingCoinGuard`
-     and every route declares its coin effect. A controller in an imported child module is found and fails the scan.
+   - **A coin route is guarded everywhere, including child modules (D-14, N3).** The route scan that enumerates every
+     registered payments route and asserts the guard is on each one is payments' test (L2), not identity's.
    - **Operators never mint coins (D-14, N4).** `coins.credit` is "no" for every role (section 3) and credits come from the inbox
-     (D-1). Payments answers an operator token on `POST /v1/credits` with 403 `FORBIDDEN` (pinned inverted, INV-ACTBAN-2 and
-     INV-STACK-2c); the full payments RBAC matrix is L2's. Services never call a credit, mint or adjust route (1.11).
+     (D-1). There is no credit route in payments, so an operator token on `POST /v1/credits` is 404 (pinned inverted in
+     INV-STACK-2c, together with a 401 for an operator token on the internal reserve route). Services never call a credit,
+     mint or adjust route (1.11).
 8. **Player identity.** `player_links (tenant_id, platform, external_player_id) -> user_id`, one writer
    (`PlayersService.resolveOrCreate`, idempotent, concurrency-safe). A player user has role `player` and no password.
 9. **Launch token.** Casino-signed HS256 JWT, header `kid` = integration key id, claims `pid`, `plat`, `aud=mio-launch`,
@@ -107,12 +107,20 @@ exchange, integration credentials. All other services only verify our tokens.
    `jti` recorded single-use only after the signature verified, tenant taken from the key. Result: a player session JWT.
    **The platform comes from the key too (F7).** The `plat` claim must equal the key's platform, otherwise
    `LAUNCH_TOKEN_INVALID`; the link is always written under the key's platform. The key lookup honours key status: a revoked
-   key, or a retiring key past its grace, is `LAUNCH_TOKEN_INVALID` (F6), the same rule as for webhooks.
-10. **Integration credentials.** Per tenant and platform: `key_id`, `api_key`, `hmac_secret`. The secret and key are
-    shown once. At rest the api key is hashed and the secret encrypted (`CREDENTIALS_KEK`). Webhook scheme:
-    headers `x-mio-key`, `x-mio-timestamp`, `x-mio-signature` = hex HMAC-SHA256 over `${timestamp}.${rawBody}`, skew at
-    most 300 s. The tenant of a webhook is the tenant of its key. Rotation: new key; old key stops now or after
-    `graceSeconds`. One lookup (`CredentialsService`) serves webhooks and launches.
+   key, or a retiring key past its grace, is `LAUNCH_TOKEN_INVALID` (F6).
+   **Environment (X-3, D-13).** A launch through a sandbox credential mints a player token with `sbx: true`; a production
+   credential mints none. A client can never add the claim, and `ServiceAuth` exposes it in the auth context. Producers set
+   `envelope.sandbox` from that context only.
+10. **Integration credentials.** Per tenant and platform: `key_id`, `api_key`, `hmac_secret`, a per-tenant `player_hash_key`,
+    and an `environment` (`production` or `sandbox`, set at issue, never changed). The secret and key are shown once. At rest
+    the api key is hashed and the secret encrypted (`CREDENTIALS_KEK`, so it stays recoverable for the integration read).
+    **Webhook authentication is the casino's own (D-15 Q-1):** casino-native signatures are verified in the engagement
+    adapters. Identity verifies no webhook; the MIO `x-mio-*` scheme and `verifyWebhook` are dropped. Identity serves the
+    secrets only to `svc:engagement`, through `INTERNAL_ROUTES.integration` (by tenant) and `.integrationBySlug`
+    (`TenantIntegration`: tenant, platform, status, environment, 1..2 `webhook_secrets`, `player_hash_key`, optional
+    `reward_api`). Rotation: new key; old key stops now or after `graceSeconds` (the old secret stays in the served list for
+    the grace). `INTERNAL_ROUTES.playerLink` returns the casino id of an internal player (`PlayerLinkResponse`), 404 after
+    erasure (X-8). One lookup (`CredentialsService`) serves integrations and launches.
 11. **Service-to-service auth (D-4, MIO-046).** Each service has a client id (its name) and a secret from env. It gets a
     short-lived token from `POST /v1/auth/service-token` (`ServiceTokenRequest`: `client_id`, `client_secret`, `audience`).
     Claims (`ServiceTokenClaims`, strict): `iss`, `sub=svc:<name>`, `aud=<target service>`, `scope=internal`, `iat`, `exp`
@@ -120,14 +128,14 @@ exchange, integration credentials. All other services only verify our tokens.
     skew as user tokens); a user token never satisfies it and the reverse. Routes under `/internal/v1/` accept ONLY a service
     token with the right `aud`; they take `tenant_id` explicitly, in the path or the body, and the entry point sets the tenant
     context from it, in service mode only (never from a header, the Host or the token). The one tenant-less internal route,
-    `verifyWebhook`, is declared `@InternalTenantless()`: its tenant is the tenant of the key. Events carry the tenant in the
+    `integrationBySlug`, is declared `@InternalTenantless()`: it resolves a slug to a tenant. Events carry the tenant in the
     bus envelope. A wrong or unknown client secret is 401 `INVALID_SERVICE_CREDENTIALS`.
     **Scoping (D-14).** `SERVICE_CALL_POLICY` (contracts) lists per calling client the audiences it may ask for and per audience
     the `METHOD route-template` entries it may call. Identity refuses a token for an audience outside the list
     (401 `INVALID_SERVICE_CREDENTIALS`); the entry point of the CALLEE refuses a route outside the list (403
     `SERVICE_CALL_FORBIDDEN`, handler not run). Entries match the whole template and method, never a prefix. Today:
     engagement -> payments is exactly reserve, capture, release, refund and the balance read (`PAYMENTS_INTERNAL_ROUTES`);
-    engagement -> identity is status, resolve player, verify webhook; payments -> identity is status only; identity calls
+    engagement -> identity is status, resolve player, integration by tenant and by slug, player link; payments -> identity is status only; identity calls
     nobody. No service holds a credit, mint or adjust route. The tenant named in the path or body is trusted only on these
     listed routes, a path tenant and a different body `tenant_id` is 400 `VALIDATION_FAILED`, and every internal call is
     audited (`audit.service_call`, 1.5). A service token still carries no tenant.
@@ -159,8 +167,13 @@ Access token life: `issued -> valid -> expired (exp) | key retired (JWKS no long
 | tenant.read                                                    | own tenant     | no                             | no                 | platform tenant, or acting                             |
 | tenant.suspend                                                 | no             | no                             | no                 | yes                                                    |
 | acting.start                                                   | no             | no                             | no                 | yes (not when already acting)                          |
-| coins.credit, hold, capture, release, refund                   | no             | no                             | no                 | no (never; payments also refuses an acting token, D-5) |
+| coins.credit, reserve, capture, release, refund                | no             | no                             | no                 | no (never; payments also refuses an acting token, D-5) |
 | coins.adjust                                                   | admin          | no                             | no                 | acting, audited                                        |
+| spins.play, redemptions.create, redemptions.read_own, balance.read_own | no     | no                             | yes (own)          | no                                                     |
+| store.read                                                     | yes            | yes                            | yes                | no                                                     |
+| redemptions.read, balance.read, usage.read                     | yes            | yes                            | no                 | no                                                     |
+| store.manage, rules.manage, wheel.manage, billing.manage       | yes            | no                             | no                 | no                                                     |
+| redemptions.resolve                                            | yes            | no                             | no                 | no (never acting: it moves coins, D-15 Q-2)            |
 
 `authorize` outcomes: other tenant's object -> `NOT_FOUND` (404); same tenant but another player's object -> `NOT_FOUND`;
 same tenant, role too weak -> `FORBIDDEN` (403); platform_admin without acting on an operator object ->
@@ -179,24 +192,25 @@ command -> `ACTING_FORBIDDEN` (403).
 | INV-SCAN-1..4 no header-based tenant code, no app-level tenancy wiring, no leftover foundation test or deploy secret                                                                                                                                                                                     | D-4, F2, F15                                                     | the repository (source scan)                                                 | `packages/service-kit/src/no-header-tenant.test.ts`                      |
 | INV-WIRE-1..4 payments and engagement are wired through the entry point (audience, identity URL, no tenancy module, acting guard over the whole module tree, no audit or allow-list override)                                                                                                           | F2, D-11, D-14                                                   | `createAppModule` of each app                                                | `apps/payments/src/wiring.test.ts`, `apps/engagement/src/wiring.test.ts` |
 | INV-ACTBAN-1..9 payments refuses coin value actions to an acting token; services (not operators) run the value actions; every handler of every controller in the module tree declares its coin effect (scan, child modules included); the guard fails closed without the entry point; the refusal is audited | MIO-034, D-5, F3, D-14                                           | `ActingCoinGuard` in `apps/payments/src/controllers/coin-action.ts`          | `apps/payments/src/acting-ban.test.ts`                                   |
-| INV-S2S-1..9 client-credentials tokens, internal routes (tenant status, resolve player, verify webhook), no operator token on an encoded internal URL (3), audience allow-list at issue (7), route allow-list at the callee (8), service-call audit (9)                                                    | MIO-046, D-4, D-14                                               | `SessionsService.issueServiceToken`, internal controller                     | `apps/identity/src/identity.http.test.ts`                                |
+| INV-S2S-1..9 client-credentials tokens, internal routes (tenant status, resolve player, integration by tenant and slug (5), player link (5b)), no operator token on an encoded internal URL (3), audience allow-list at issue (7), route allow-list at the callee (8), service-call audit (9)                                                    | MIO-046, D-4, D-14                                               | `SessionsService.issueServiceToken`, internal controller                     | `apps/identity/src/identity.http.test.ts`                                |
 | INV-TEN-1..6 tenant registry (one platform, operator signup, outbox atomicity, slug unique, host resolution, suspended)                                                                                                                                                                                  | MIO-030 AC1,3; MIO-031 AC2                                       | `TenantsService` + tenants repository                                        | `apps/identity/src/identity.tenants.test.ts`                             |
 | INV-STAFF-1..8 `(tenant_id, user_id)`, email unique per tenant, DB roles, provider failure, no provider ids in tokens                                                                                                                                                                                    | MIO-043 AC1,2; MIO-040                                           | `StaffService`, `SessionsService.login`                                      | `apps/identity/src/identity.staff.test.ts`                               |
 | INV-JWT-1..5 issued token shape, JWKS public-only, TTL, rotation, claim validity                                                                                                                                                                                                                         | MIO-042                                                          | `SessionsService`                                                            | `apps/identity/src/identity.tokens.test.ts`                              |
 | INV-ACT-1..6 acting sessions                                                                                                                                                                                                                                                                             | MIO-034 AC and negative cases                                    | `SessionsService.startActing`                                                | `apps/identity/src/identity.tokens.test.ts`                              |
-| INV-RBAC-1..6 full 64-cell can() matrix (literal), default deny, no null-tenant shortcut, platform_admin only on the platform tenant                                                                                                                                                                     | MIO-045                                                          | `AccessService.can`                                                          | `apps/identity/src/identity.access.test.ts`                              |
+| INV-RBAC-1..6 full 116-cell (4 roles x 29 actions, X-15) can() matrix (literal), default deny, no null-tenant shortcut, platform_admin only on the platform tenant                                                                                                                                                                     | MIO-045                                                          | `AccessService.can`                                                          | `apps/identity/src/identity.access.test.ts`                              |
 | INV-OWN-1..3 404 versus 403                                                                                                                                                                                                                                                                              | MIO-045 AC3, cross-tenant 404, MIO-154 same-tenant player A vs B | `AccessService.authorize`                                                    | `apps/identity/src/identity.access.test.ts`                              |
 | INV-ACTAUTH-1..7 acting audited, only way across, coin deny                                                                                                                                                                                                                                              | MIO-034                                                          | `AccessService.authorize`, `SessionsService.startActing`                     | `apps/identity/src/identity.access.test.ts`                              |
 | INV-LAUNCH-1..11 launch token admission (incl. revoked or grace-expired key, platform from the key)                                                                                                                                                                                                      | MIO-044 all rejection cases, replay, tenant from key             | `LaunchService.exchange`                                                     | `apps/identity/src/identity.launch.test.ts`                              |
 | INV-PLAYER-1..6 one link per triple, concurrency, deposit-then-launch, reader                                                                                                                                                                                                                            | MIO-044                                                          | `PlayersService.resolveOrCreate`, `lookup`                                   | `apps/identity/src/identity.launch.test.ts`                              |
-| INV-CRED-1..6 credentials, webhook tenant from key, rotation                                                                                                                                                                                                                                             | MIO-031 webhooks, MIO-044                                        | `CredentialsService`                                                         | `apps/identity/src/identity.credentials.test.ts`                         |
+| INV-CRED-1..6 credentials, integration read per tenant (X-7), environment and `sbx` (X-3), rotation                                                                                                                                                                                                                                             | MIO-031 webhooks, MIO-044                                        | `CredentialsService`                                                         | `apps/identity/src/identity.credentials.test.ts`                         |
 | INV-EDGE-1..14 HTTP edge (header ignored, forged token, host resolution, validation, 404, acting over HTTP, +929/+931 expiry (11), acting audit produced (12) and consumed (13), every response parses with its contract schema (14))                                                                     | MIO-031, MIO-034, MIO-045, D-11, F14                             | guards + controllers                                                         | `apps/identity/src/identity.http.test.ts`                                |
 | INV-PERM-1..2 every route declares a permission; undeclared is denied                                                                                                                                                                                                                                    | MIO-045 AC1                                                      | `PermissionGuard`, route walk                                                | `apps/identity/src/identity.http.test.ts`                                |
 | INV-DB-1..7 schema enforces uniqueness, RLS, composite FK                                                                                                                                                                                                                                                | MIO-030 AC1,2; MIO-032; MIO-044                                  | migration                                                                    | `tests/compose/src/identity.compose.test.ts`                             |
 | INV-STACK-1..8 JWKS public, header placeholder refused by every service and token A + header B served as A on a no-coin route with seeded rows (2b), an operator cannot mint (2c), audience separation, unknown-key token refused by every service (4), service tokens and their allow-list (5), launch and player concurrency over Postgres, launch response shape (6), same email in two tenants on the emulator (7), acting requests in engagement and payments reach the operator audit log (8) | MIO-042 AC1,2                                                    | service-kit bootstrap                                                        | `tests/compose/src/identity.compose.test.ts`                             |
 | Contract shapes                                                                                                                                                                                                                                                                                          | n/a                                                              | zod schemas                                                                  | `packages/contracts/src/identity.contracts.test.ts` (green by design)    |
 
-Contract pins (literals, not read from the constant they pin): `COIN_VALUE_ACTIONS` (5), `ACTIONS` (16), `Role.options` (4),
+Contract pins (literals, not read from the constant they pin): `ACTING_DENIED_ACTIONS` (6; payments' `COIN_VALUE_ACTIONS` is pinned in
+`payments.contracts.test.ts`), `ACTIONS` (29), `Role.options` (4),
 `SERVICE_AUDIENCES`, `PLATFORM_TENANT_ID`, `INTERNAL_PATH_PREFIX`, `SERVICE_CALL_POLICY` (engagement -> payments is exactly five
 routes, no credit/mint/adjust route anywhere); the platform binding, the strict service-token claims, the two audit events and the
 response schemas are pinned in `identity.contracts.test.ts`.
@@ -209,11 +223,12 @@ operator), INV-PLAYER-3 and INV-PLAYER-4 (link written by deposit is the one lau
 Public (no token): `POST /v1/operators/signup` (201), `POST /v1/auth/login` (tenant from `Host`), `POST /v1/auth/launch`,
 `POST /v1/auth/service-token` (client credentials, `ServiceTokenRequest`), `GET /.well-known/jwks.json`, `GET /healthz/*`.
 
-Internal (service token with `aud=identity`, `INTERNAL_ROUTES` in contracts; tenant in the path, except `verifyWebhook`):
+Internal (service token with `aud=identity`, `INTERNAL_ROUTES` in contracts; tenant in the path, except `integrationBySlug`):
 `GET /internal/v1/tenants/:tenantId/status` (`TenantStatusResponse`), `POST /internal/v1/tenants/:tenantId/players/resolve`
 (`InternalResolvePlayerRequest` -> `InternalResolvePlayerResponse`, calls `PlayersService.resolveOrCreate`),
-`POST /internal/v1/webhooks/verify` (`InternalVerifyWebhookRequest` -> `InternalVerifyWebhookResponse`, calls
-`CredentialsService.verifyWebhook`; 401 `WEBHOOK_SIGNATURE_INVALID`). Engagement (L3) calls the last two.
+`GET /internal/v1/tenants/:tenantId/integration` and `GET /internal/v1/integrations/by-slug/:slug` (`TenantIntegration`, X-7),
+`GET /internal/v1/tenants/:tenantId/players/:userId/link` (`PlayerLinkResponse`, 404 after erasure, X-8). Engagement (L3) calls all
+but the status route (payments calls the status only). There is no webhook-verify route (D-15 Q-1).
 Convention for every service's internal endpoints: prefix `/internal/v1/`, service token only, `tenant_id` explicit in path
 or body, nothing read from headers.
 
@@ -257,7 +272,7 @@ header. `INV-SCAN-1..4` fails while any of them still pins the placeholder.
 
 All in `IDENTITY_ERRORS` (code -> HTTP status): TOKEN_INVALID 401, TOKEN_EXPIRED 401, TENANT_REQUIRED 401,
 INVALID_CREDENTIALS 401, LAUNCH_TOKEN_INVALID 401, LAUNCH_TOKEN_EXPIRED 401, LAUNCH_TOKEN_REPLAYED 401,
-WEBHOOK_SIGNATURE_INVALID 401, TENANT_UNRESOLVED 400, VALIDATION_FAILED 400, ACTING_REASON_REQUIRED 400, FORBIDDEN 403,
+TENANT_UNRESOLVED 400, VALIDATION_FAILED 400, ACTING_REASON_REQUIRED 400, FORBIDDEN 403,
 ACTING_REQUIRED 403, ACTING_FORBIDDEN 403, ACTING_TENANT_MISMATCH 403, TENANT_SUSPENDED 403, NOT_FOUND 404,
 EMAIL_TAKEN 409, SLUG_TAKEN 409, TENANT_PLATFORM_EXISTS 409, PROVIDER_UNAVAILABLE 503, INVALID_SERVICE_CREDENTIALS 401,
 TENANT_STATUS_UNAVAILABLE 503, SERVICE_CALL_FORBIDDEN 403 (D-14), AUDIT_UNAVAILABLE 503 (D-11). Service errors carry `code`
@@ -304,8 +319,8 @@ TENANT_STATUS_UNAVAILABLE 503, SERVICE_CALL_FORBIDDEN 403 (D-14), AUDIT_UNAVAILA
   `now()` (seconds), `advance(seconds)`, `sign(claims)` (signs arbitrary claims with the current key), `verify(token,
 audience)`, `subjectOf(claims)`, `tenants {platformTenant, create, setStatus, resolveByHost, listOperatorSlugs}`,
   `staff {signUpOperator, createPlatformAdmin, invite, list, listUnsafeForTest(tenantId)}`, `sessions {login, startActing,
-jwks, rotateKey, retireKey}`, `access {can, authorize}`, `credentials {issue, rotate, list, verifyWebhook,
-storedRowsForTest}`, `launch {exchange}`, `players {resolveOrCreate, links, lookup}`, `audit {list(tenantId)}`,
+jwks, rotateKey, retireKey}`, `access {can, authorize}`, `credentials {issue(tenantId, platform, {environment?}), rotate, list, integration(tenantId), integrationBySlug(slug),
+environmentOfKey(keyId), storedRowsForTest}`, `sessions.launchWithKey(issued, {externalPlayerId})`, `launch {exchange}`, `players {resolveOrCreate, links, lookup, erase(tenantId, userId)}`, `audit {list(tenantId)}`,
   `auditConsumer {handle(envelope)}` (the identity consumer of `audit.acting_request` and `audit.service_call`; idempotent on the
   event id; writes `audit_log` rows with action `acting.request` or `service.call`), `outbox {events()}` (also holds the audit events
   identity's own entry point writes), `provider {calls, subjectFor(userId)}`. Signatures are as the tests call them. The kernel must

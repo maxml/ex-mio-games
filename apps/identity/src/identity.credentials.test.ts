@@ -1,14 +1,15 @@
-import { signWebhook } from '@ex-mio/service-kit/testing';
+import { INTEGRATION_ENVIRONMENTS, TenantIntegration } from '@ex-mio/contracts';
 import { buildKernel } from './testing/kernel'; // RED: module does not exist yet
 
 /*
- * Choke point: CredentialsService (services/credentials.service.ts): per-tenant
- * API key + HMAC secret. The tenant of a casino webhook is the tenant of the key
- * that signed it. Backlog: MIO-031 (webhooks), MIO-044 (key per tenant).
+ * Choke point: CredentialsService (services/credentials.service.ts): per-tenant API key + webhook
+ * secret + player hash key, each integration either `production` or `sandbox`. D-15 Q-1: webhooks
+ * carry the casino's own signature, verified by engagement; identity only HOLDS the secrets and
+ * serves them to `svc:engagement` (`integration(tenantId)`, `integrationBySlug(slug)`). The MIO
+ * `x-mio-*` scheme and `verifyWebhook` are gone. Backlog: MIO-031, MIO-044.
  */
 
 const PW = 'correct horse battery';
-const body = JSON.stringify({ player: 'ext-1', amount: 10 });
 
 async function world() {
   const k = await buildKernel();
@@ -34,58 +35,40 @@ async function world() {
         'identity',
       ),
     );
-  const verify = (
-    over: {
-      apiKey?: string;
-      secret?: string;
-      ts?: number;
-      body?: string;
-      signedBody?: string;
-    } = {},
-  ) => {
-    const ts = over.ts ?? k.now();
-    return k.credentials.verifyWebhook({
-      apiKey: over.apiKey ?? keyA.api_key,
-      timestamp: ts,
-      signature: signWebhook(
-        over.secret ?? keyA.hmac_secret,
-        ts,
-        over.signedBody ?? over.body ?? body,
-      ),
-      rawBody: over.body ?? body,
-    });
-  };
-  return { k, a, b, keyA, keyB, asAdmin, verify };
+  return { k, a, b, keyA, keyB, asAdmin };
 }
 
 describe('INV-CRED: integration credentials are per tenant, secret at rest, rotatable', () => {
-  // Mutation: accept a webhook whose key is valid but whose tenant is read from the body.
-  it('INV-CRED-1 a signed webhook resolves to the tenant of its key (no tenant input exists)', async () => {
-    const { a, keyA, verify } = await world();
-    await expect(verify()).resolves.toEqual({ tenant_id: a.tenant.id, key_id: keyA.key_id });
+  // X-7. Mutation: read the tenant from a caller input, or return another tenant's secrets.
+  it("INV-CRED-1 the integration of a tenant is that tenant's own, in the TenantIntegration contract shape", async () => {
+    const { k, a, b, keyA, keyB } = await world();
+    const ia = await k.credentials.integration(a.tenant.id);
+    expect(TenantIntegration.parse(ia)).toMatchObject({
+      tenant_id: a.tenant.id,
+      platform: 'sim-casino',
+      status: 'active',
+      environment: 'production',
+    });
+    expect(ia.webhook_secrets).toEqual([keyA.hmac_secret]);
+    expect(ia.webhook_secrets).not.toContain(keyB.hmac_secret);
+    expect((await k.credentials.integration(b.tenant.id)).webhook_secrets).toEqual([
+      keyB.hmac_secret,
+    ]);
+    expect((await k.credentials.integrationBySlug('a'))?.tenant_id).toBe(a.tenant.id);
+    expect(await k.credentials.integrationBySlug('no-such-slug')).toBeUndefined();
   });
 
-  // Mutation: compare signatures with === on strings, or skip the compare for a known key.
-  it("INV-CRED-2 bad signature, other tenant's secret, unknown key, tampered body, skewed timestamp: all WEBHOOK_SIGNATURE_INVALID with one message", async () => {
-    const { k, keyB, verify } = await world();
-    const attempts = [
-      verify({ secret: 'wrong-secret-wrong-secret-wrong' }),
-      verify({ secret: keyB.hmac_secret }),
-      verify({ apiKey: 'mio_live_does_not_exist' }),
-      verify({ signedBody: '{"player":"ext-1","amount":1}' }), // signed one body, sent another
-      verify({ ts: k.now() - 301 }),
-      verify({ ts: k.now() + 301 }),
-    ];
-    const errors = await Promise.all(
-      attempts.map((p) =>
-        p.then(
-          () => undefined,
-          (e: unknown) => e,
-        ),
-      ),
-    );
-    for (const e of errors) expect(e).toMatchObject({ code: 'WEBHOOK_SIGNATURE_INVALID' });
-    expect(new Set(errors.map((e) => (e as Error).message)).size).toBe(1);
+  // X-3. Mutation: derive the environment from the platform name or a caller flag.
+  it('INV-CRED-2 a credential is issued for exactly one environment; a launch through a sandbox key mints sbx, a production key mints none', async () => {
+    const { k, a } = await world();
+    expect([...INTEGRATION_ENVIRONMENTS]).toEqual(['production', 'sandbox']);
+    const sbx = await k.credentials.issue(a.tenant.id, 'sim-casino', { environment: 'sandbox' });
+    expect(await k.credentials.environmentOfKey(sbx.key_id)).toBe('sandbox');
+    const player = await k.sessions.launchWithKey(sbx, { externalPlayerId: 'ext-1' });
+    expect((await k.verify(player.access_token, 'engagement')).sbx).toBe(true);
+    const prod = await k.credentials.issue(a.tenant.id, 'sim-casino-prod');
+    const playerP = await k.sessions.launchWithKey(prod, { externalPlayerId: 'ext-2' });
+    expect((await k.verify(playerP.access_token, 'engagement')).sbx).toBeUndefined();
   });
 
   // Mutation: return the secret from list().
@@ -100,7 +83,8 @@ describe('INV-CRED: integration credentials are per tenant, secret at rest, rota
     expect(text).not.toContain(keyA.api_key);
   });
 
-  // Mutation: store the api key or secret in plaintext.
+  // Mutation: store the api key or secret in plaintext. The secret must stay recoverable for the
+  // integration read, so it is stored ENCRYPTED, never as issued.
   it('INV-CRED-4 at rest neither the api key nor the secret is stored as issued', async () => {
     const { k, a, keyA } = await world();
     const stored = JSON.stringify(await k.credentials.storedRowsForTest(a.tenant.id));
@@ -109,26 +93,25 @@ describe('INV-CRED: integration credentials are per tenant, secret at rest, rota
     expect(stored).toContain(keyA.key_id);
   });
 
-  // Mutation: rotate keeps the old key active forever (or revokes before issuing the new one).
-  it('INV-CRED-5 rotation: the new key works; the old key stops at once, or after the grace period when one is asked for', async () => {
-    const { k, a, keyA, asAdmin, verify } = await world();
+  // Mutation: rotate keeps the old secret served forever (or drops it before the new one is served).
+  it('INV-CRED-5 rotation: the integration serves the new secret; the old one stops at once, or after the grace period', async () => {
+    const { k, a, keyA, asAdmin } = await world();
     const admin = await asAdmin(a.tenant.id, 'boss@a.test');
     const next = await k.credentials.rotate(admin, keyA.key_id, { graceSeconds: 0 });
     expect(next.key_id).not.toBe(keyA.key_id);
-    await expect(verify()).rejects.toMatchObject({ code: 'WEBHOOK_SIGNATURE_INVALID' });
-    await expect(verify({ apiKey: next.api_key, secret: next.hmac_secret })).resolves.toMatchObject(
-      { tenant_id: a.tenant.id, key_id: next.key_id },
-    );
+    expect((await k.credentials.integration(a.tenant.id)).webhook_secrets).toEqual([
+      next.hmac_secret,
+    ]);
 
     const graceful = await k.credentials.rotate(admin, next.key_id, { graceSeconds: 3600 });
-    await expect(verify({ apiKey: next.api_key, secret: next.hmac_secret })).resolves.toBeDefined();
-    await expect(
-      verify({ apiKey: graceful.api_key, secret: graceful.hmac_secret }),
-    ).resolves.toBeDefined();
+    expect((await k.credentials.integration(a.tenant.id)).webhook_secrets).toEqual([
+      graceful.hmac_secret,
+      next.hmac_secret,
+    ]);
     k.advance(3601);
-    await expect(verify({ apiKey: next.api_key, secret: next.hmac_secret })).rejects.toMatchObject({
-      code: 'WEBHOOK_SIGNATURE_INVALID',
-    });
+    expect((await k.credentials.integration(a.tenant.id)).webhook_secrets).toEqual([
+      graceful.hmac_secret,
+    ]);
   });
 
   // Mutation: skip access.authorize in rotate / look the key up without the tenant filter.

@@ -31,7 +31,7 @@ const read = (rel: string) => readFileSync(join(ROOT, rel), 'utf8');
 const isTest = (rel: string) => /\.test\.tsx?$/.test(rel) || /(^|\/)testing\//.test(rel);
 
 const HEADER_NAMES =
-  /x-tenant-id|x-principal-id|x-platform-admin-token|HEADER_TENANT_ID|HEADER_PLATFORM_TOKEN|TENANT_HEADER|PRINCIPAL_HEADER|headerTenantResolver|PLATFORM_ADMIN_TOKEN|PlatformAdminGuard/i;
+  /x-tenant-id|x-principal-|x-platform-admin-token|x-service-id|x-service-token|x-acting-tenant|x-sandbox|HEADER_TENANT_ID|HEADER_PLATFORM_TOKEN|HEADER_SERVICE_|HEADER_PRINCIPAL_|HEADER_ACTING_|TENANT_HEADER|PRINCIPAL_HEADER|PrincipalHeaders|ServiceTokenGuard|SERVICE_TOKENS|headerTenantResolver|PLATFORM_ADMIN_TOKEN|PlatformAdminGuard/i;
 
 const hits = (files: string[], re: RegExp) => files.filter((f) => re.test(read(f)));
 
@@ -72,7 +72,7 @@ describe('INV-SCAN: no header-based tenant code remains anywhere', () => {
     expect(
       hits(
         files,
-        /x-tenant-id|x-principal-id|x-platform-admin-token|PLATFORM_TOKEN|headerTenantResolver|TenancyModule\.forRoot/i,
+        /x-tenant-id|x-principal-|x-platform-admin-token|x-service-id|x-service-token|x-acting-tenant|x-sandbox|PLATFORM_TOKEN|headerTenantResolver|TenancyModule\.forRoot/i,
       ),
     ).toEqual([]);
   });

@@ -1,5 +1,5 @@
 import type { Action, Role } from '@ex-mio/contracts';
-import { PLATFORM_TENANT_ID } from '@ex-mio/contracts';
+import { ACTIONS, PLATFORM_TENANT_ID } from '@ex-mio/contracts';
 import { buildKernel } from './testing/kernel'; // RED: module does not exist yet
 import type { Subject } from './services/access.service'; // RED: module does not exist yet
 
@@ -47,11 +47,24 @@ describe('INV-RBAC: can(subject, action, object) is default-deny and tenant-boun
       'audit.read': true,
       'acting.start': false,
       'coins.credit': false,
-      'coins.hold': false,
+      'coins.reserve': false,
       'coins.capture': false,
       'coins.release': false,
       'coins.refund': false,
       'coins.adjust': true,
+      'spins.play': false,
+      'store.read': true,
+      'store.manage': true,
+      'redemptions.create': false,
+      'redemptions.read_own': false,
+      'redemptions.read': true,
+      'redemptions.resolve': true,
+      'rules.manage': true,
+      'wheel.manage': true,
+      'balance.read_own': false,
+      'balance.read': true,
+      'billing.manage': true,
+      'usage.read': true,
     },
     operator_staff: {
       'tenant.read': false,
@@ -65,11 +78,24 @@ describe('INV-RBAC: can(subject, action, object) is default-deny and tenant-boun
       'audit.read': false,
       'acting.start': false,
       'coins.credit': false,
-      'coins.hold': false,
+      'coins.reserve': false,
       'coins.capture': false,
       'coins.release': false,
       'coins.refund': false,
       'coins.adjust': false,
+      'spins.play': false,
+      'store.read': true,
+      'store.manage': false,
+      'redemptions.create': false,
+      'redemptions.read_own': false,
+      'redemptions.read': true,
+      'redemptions.resolve': false,
+      'rules.manage': false,
+      'wheel.manage': false,
+      'balance.read_own': false,
+      'balance.read': true,
+      'billing.manage': false,
+      'usage.read': true,
     },
     player: {
       'tenant.read': false,
@@ -83,11 +109,24 @@ describe('INV-RBAC: can(subject, action, object) is default-deny and tenant-boun
       'audit.read': false,
       'acting.start': false,
       'coins.credit': false,
-      'coins.hold': false,
+      'coins.reserve': false,
       'coins.capture': false,
       'coins.release': false,
       'coins.refund': false,
       'coins.adjust': false,
+      'spins.play': true,
+      'store.read': true,
+      'store.manage': false,
+      'redemptions.create': true,
+      'redemptions.read_own': true,
+      'redemptions.read': false,
+      'redemptions.resolve': false,
+      'rules.manage': false,
+      'wheel.manage': false,
+      'balance.read_own': true,
+      'balance.read': false,
+      'billing.manage': false,
+      'usage.read': false,
     },
     platform_admin: {
       'tenant.read': true,
@@ -101,11 +140,24 @@ describe('INV-RBAC: can(subject, action, object) is default-deny and tenant-boun
       'audit.read': false,
       'acting.start': true,
       'coins.credit': false,
-      'coins.hold': false,
+      'coins.reserve': false,
       'coins.capture': false,
       'coins.release': false,
       'coins.refund': false,
       'coins.adjust': false,
+      'spins.play': false,
+      'store.read': false,
+      'store.manage': false,
+      'redemptions.create': false,
+      'redemptions.read_own': false,
+      'redemptions.read': false,
+      'redemptions.resolve': false,
+      'rules.manage': false,
+      'wheel.manage': false,
+      'balance.read_own': false,
+      'balance.read': false,
+      'billing.manage': false,
+      'usage.read': false,
     },
   };
   const matrix: Array<[Role, Action, boolean]> = (Object.keys(CELLS) as Role[]).flatMap((role) =>
@@ -116,9 +168,14 @@ describe('INV-RBAC: can(subject, action, object) is default-deny and tenant-boun
     ]),
   );
 
-  it('INV-RBAC-1 the literal matrix has all 64 cells', () => {
-    expect(matrix).toHaveLength(64);
-    expect(new Set(matrix.map(([r, a]) => `${r}/${a}`)).size).toBe(64);
+  // X-15: 4 roles x 29 actions. Every action in ACTIONS has a cell for every role (a new action
+  // without a reviewed cell fails here, not silently default-denied).
+  it('INV-RBAC-1 the literal matrix has all 116 cells and covers every action', () => {
+    expect(matrix).toHaveLength(116);
+    expect(new Set(matrix.map(([r, a]) => `${r}/${a}`)).size).toBe(116);
+    for (const role of Object.keys(CELLS) as Role[]) {
+      expect(Object.keys(CELLS[role]).sort()).toEqual([...ACTIONS].sort());
+    }
   });
 
   it.each(matrix)('INV-RBAC-1 %s / %s -> %s (own tenant)', async (role, action, allowed) => {
@@ -283,18 +340,20 @@ describe('INV-ACTAUTH: acting_tenant is the only way across, and it is audited',
     expect(await k.audit.list(TA)).toEqual([]);
   });
 
-  // Mutation: drop the COIN_VALUE_ACTIONS deny for acting subjects, or remove one action from the
+  // Mutation: drop the ACTING_DENIED_ACTIONS deny for acting subjects, or remove one action from the
   // list. F4: the loop runs over a LITERAL, not over the constant it pins, so a shrunken constant
-  // fails here (and in the contracts test). The same ban is tested where coins move: payments
-  // (apps/payments/src/acting-ban.test.ts, D-5).
+  // fails here (and in the contracts test). `redemptions.resolve` is in the list (X-11, D-15 Q-2):
+  // it moves coins one hop away through engagement, so engagement refuses it for an `act` token.
+  // Payments keeps its own guard on user-mode routes as defence in depth (apps/payments/src/acting-ban.test.ts, D-5).
   it('INV-ACTAUTH-5 an acting session cannot call coin commands that move value; coins.adjust is the audited exception', async () => {
     const k = await buildKernel();
     const COIN_VALUE = [
       'coins.credit',
-      'coins.hold',
+      'coins.reserve',
       'coins.capture',
       'coins.release',
       'coins.refund',
+      'redemptions.resolve',
     ] as Action[];
     for (const action of COIN_VALUE) {
       expect(k.access.can(acting(TA), action, { tenant_id: TA })).toBe(false);
