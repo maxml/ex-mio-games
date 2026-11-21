@@ -39,7 +39,10 @@ export class PermissionGuard implements CanActivate {
     }
     const declared = this.reflector.getAllAndOverride<Action | undefined>(PERMISSION_KEY, targets);
     if (!declared) {
-      throw new HttpException({ code: 'FORBIDDEN', message: 'route has no declared permission' }, 403);
+      throw new HttpException(
+        { code: 'FORBIDDEN', message: 'route has no declared permission' },
+        403,
+      );
     }
     return true;
   }

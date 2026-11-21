@@ -10,7 +10,10 @@ export interface ProviderCall {
 /** In-memory provider for tests: tenants keep their own accounts, so one email can live in two. */
 export class FakeIdentityProvider implements IdentityProvider {
   readonly calls: ProviderCall[] = [];
-  private readonly tenants = new Map<string, Map<string, { uid: string; password: string | null }>>();
+  private readonly tenants = new Map<
+    string,
+    Map<string, { uid: string; password: string | null }>
+  >();
 
   constructor(
     private readonly options: { down?: boolean; claims?: Record<string, unknown> } = {},
@@ -61,11 +64,8 @@ export class FakeIdentityProvider implements IdentityProvider {
     input: { userId: string; platform: string; externalPlayerId: string; existingUid?: string },
   ) {
     this.enter('exchangeLaunchToken', providerTenantId, input.platform, input.externalPlayerId);
-    if (input.existingUid) return { uid: input.existingUid };
-    const accounts = this.accounts(providerTenantId);
-    const uid = `fb_${randomBytes(10).toString('hex')}`;
-    accounts.set(`player:${input.userId}`, { uid, password: null });
-    return { uid };
+    // D-21: a player has no provider account. Same as the real adapters: a local subject, no account.
+    return { uid: input.existingUid ?? `player:${input.userId}` };
   }
 
   async revokeSessions(providerTenantId: string, uid: string): Promise<void> {

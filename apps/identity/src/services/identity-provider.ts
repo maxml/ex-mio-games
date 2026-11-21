@@ -15,7 +15,10 @@ export interface IdentityProvider {
     providerTenantId: string,
     input: { email: string; password: string },
   ): Promise<{ uid: string } | null>;
-  /** A passwordless player session for a verified launch: the provider-side subject of the player. */
+  /**
+   * The provider-side subject of a player after a verified launch (D-21). Players have no provider
+   * account: this returns a local subject and creates nothing (staff and operators use the provider).
+   */
   exchangeLaunchToken(
     providerTenantId: string,
     input: { userId: string; platform: string; externalPlayerId: string; existingUid?: string },

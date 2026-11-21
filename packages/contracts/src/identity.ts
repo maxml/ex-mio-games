@@ -418,7 +418,7 @@ export const AuditEntry = z.object({
   reason: z.string(),
   service: ServiceName.nullable().optional(),
   route: z.string().nullable().optional(),
-  decision: z.enum(['allowed', 'refused']).nullable().optional(),
+  decision: z.enum(['allowed', 'refused', 'aborted']).nullable().optional(),
   caller_service: ServiceName.nullable().optional(),
 });
 export type AuditEntry = z.infer<typeof AuditEntry>;

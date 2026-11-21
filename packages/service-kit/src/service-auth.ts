@@ -9,6 +9,8 @@ import {
   Injectable,
   Module,
   type NestInterceptor,
+  type OnApplicationShutdown,
+  type OnModuleInit,
   SetMetadata,
 } from '@nestjs/common';
 import { APP_GUARD, APP_INTERCEPTOR, ModuleRef, Reflector } from '@nestjs/core';
@@ -26,8 +28,26 @@ import {
   type ServiceCallPolicy,
   type TenantStatus,
 } from '@ex-mio/contracts';
-import { IS_PUBLIC, isTenantId, runWithTenant, setRequestTenant, type TenantContext } from '@ex-mio/tenancy';
-import { createServiceTokenVerifier, createTokenVerifier, JwksCache, TokenRejectedError, type Jwks } from './auth';
+import {
+  IS_PUBLIC,
+  isTenantId,
+  runWithTenant,
+  setRequestTenant,
+  type TenantContext,
+} from '@ex-mio/tenancy';
+import {
+  createServiceTokenVerifier,
+  createTokenVerifier,
+  JwksCache,
+  TokenRejectedError,
+  type Jwks,
+} from './auth';
+import {
+  createOutboxAuditPort,
+  logAuditFinalizeFailure,
+  startAuditSweeper,
+  type OutboxAuditPort,
+} from './audit-intents';
 import { Db } from './db';
 
 export { Public } from '@ex-mio/tenancy';
@@ -49,6 +69,8 @@ export const SERVICE_AUTH_RUNTIME = Symbol('SERVICE_AUTH_RUNTIME');
 export type AuditPort = ((event: EventEnvelope) => Promise<void>) & {
   /** Called after the response with the same event object, final `decision` and `status` set. */
   finalize?: (event: EventEnvelope) => Promise<void>;
+  /** Ports that hold events back until finalize (the outbox default) are swept on a timer. */
+  sweep?: (olderThanSeconds?: number) => Promise<number>;
 };
 
 export interface ServiceAuthOptions {
@@ -93,7 +115,8 @@ export const InternalTenantless = (): MethodDecorator => SetMetadata(INTERNAL_TE
 /** The auth context of the request being handled; throws when there is none (fails closed). */
 export function currentAuth(): AuthContext {
   const ctx = authStorage.getStore();
-  if (!ctx) throw new Error('no auth context: the request did not pass the service auth entry point');
+  if (!ctx)
+    throw new Error('no auth context: the request did not pass the service auth entry point');
   return ctx;
 }
 
@@ -159,7 +182,11 @@ class IdentityClient {
     const res = await fetch(`${this.identityUrl}/v1/auth/service-token`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ client_id: this.clientId, client_secret: secret, audience: 'identity' }),
+      body: JSON.stringify({
+        client_id: this.clientId,
+        client_secret: secret,
+        audience: 'identity',
+      }),
       signal: AbortSignal.timeout(3000),
     });
     if (!res.ok) throw new Error(`service token ${res.status}`);
@@ -177,24 +204,6 @@ class IdentityClient {
     const body = (await res.json()) as { status: TenantStatus };
     return body.status;
   }
-}
-
-/** Default audit port: the service's own outbox, in its own transaction (spec 1.5). */
-function outboxAuditPort(moduleRef: ModuleRef): AuditPort {
-  const db = () => moduleRef.get(Db, { strict: false });
-  const port: AuditPort = async (event) => {
-    const d = db();
-    await d.platformTx((tx) => d.publish(tx, event));
-  };
-  port.finalize = async (event) => {
-    await db().platformTx((tx) =>
-      tx.query(
-        `UPDATE "outbox" SET "envelope" = $2 WHERE "event_id" = $1 AND "published_at" IS NULL`,
-        [event.event_id, JSON.stringify(event)],
-      ),
-    );
-  };
-  return port;
 }
 
 // ---- runtime ---------------------------------------------------------------------------------
@@ -220,13 +229,30 @@ export class ServiceAuthRuntime {
     this.statusSource = options.tenantStatus ?? ((id) => client!.tenantStatus(id));
     this.explicitAudit = options.auditPort;
     const cache = new JwksCache(jwks, this.now);
-    this.verifyUser = createTokenVerifier({ audience: this.audience, jwks, nowSeconds: this.now, cache });
+    this.verifyUser = createTokenVerifier({
+      audience: this.audience,
+      jwks,
+      nowSeconds: this.now,
+      cache,
+    });
     this.verifyService = createServiceTokenVerifier({
       audience: this.audience,
       jwks,
       nowSeconds: this.now,
       cache,
     });
+  }
+
+  private defaultAudit: OutboxAuditPort | undefined;
+
+  /**
+   * The audit port: the one the options gave, else the service's own two-step outbox port (D-21).
+   * One instance per runtime, shared by the guard (writes) and the sweeper.
+   */
+  auditPort(moduleRef: ModuleRef): AuditPort {
+    if (this.explicitAudit) return this.explicitAudit as AuditPort;
+    this.defaultAudit ??= createOutboxAuditPort(() => moduleRef.get(Db, { strict: false }));
+    return this.defaultAudit;
   }
 
   /** Cached tenant status, at most TENANT_STATUS_CACHE_SECONDS stale; an unreachable source fails closed. */
@@ -253,13 +279,13 @@ export class ServiceAuthGuard implements CanActivate {
   private audit: AuditPort | undefined;
 
   constructor(
-    private readonly reflector: Reflector,
-    private readonly moduleRef: ModuleRef,
+    @Inject(Reflector) private readonly reflector: Reflector,
+    @Inject(ModuleRef) private readonly moduleRef: ModuleRef,
     @Inject(SERVICE_AUTH_RUNTIME) private readonly rt: ServiceAuthRuntime,
   ) {}
 
   private auditPort(): AuditPort {
-    this.audit ??= (this.rt.explicitAudit as AuditPort | undefined) ?? outboxAuditPort(this.moduleRef);
+    this.audit ??= this.rt.auditPort(this.moduleRef);
     return this.audit;
   }
 
@@ -295,7 +321,9 @@ export class ServiceAuthGuard implements CanActivate {
       if (err instanceof TokenRejectedError) throw fail(401, err.code);
       throw fail(401, 'TOKEN_INVALID');
     }
-    const acting = claims.act ? { tenantId: claims.act.tenant_id.toLowerCase(), reason: claims.act.reason } : undefined;
+    const acting = claims.act
+      ? { tenantId: claims.act.tenant_id.toLowerCase(), reason: claims.act.reason }
+      : undefined;
     if (acting) {
       await this.auditActing(req, reply, template, claims, acting);
     } else if ((await this.rt.status(claims.tid.toLowerCase())) !== 'active') {
@@ -359,7 +387,9 @@ export class ServiceAuthGuard implements CanActivate {
       if (err instanceof TokenRejectedError) throw fail(401, err.code);
       throw fail(401, 'TOKEN_INVALID');
     }
-    const tenantless = targets.some((t) => Reflect.getMetadata(INTERNAL_TENANTLESS_KEY, t) === true);
+    const tenantless = targets.some(
+      (t) => Reflect.getMetadata(INTERNAL_TENANTLESS_KEY, t) === true,
+    );
     const method = auditMethod(req.method);
     const routeKey = `${req.method === 'HEAD' ? 'GET' : req.method} ${template}`;
 
@@ -420,10 +450,11 @@ export class ServiceAuthGuard implements CanActivate {
   }
 
   /**
-   * An allowed request: the event is written BEFORE the handler (fail closed: if the port throws
-   * the handler never runs), with a provisional outcome. When the response is done, the same event
-   * object gets the real `decision` and `status`, and `port.finalize` persists it where the port
-   * keeps events outside memory (the outbox default updates the row until the relay published it).
+   * An allowed request: an audit INTENT is written BEFORE the handler (fail closed: if the port
+   * throws the handler never runs), with a provisional outcome that is never published. When the
+   * response is done, the same event object gets the real `decision` and `status`, and
+   * `port.finalize` publishes it. The outbox default holds the intent in `audit_intents`, finalizes
+   * it in one transaction and sweeps stale intents as `aborted` (D-21).
    */
   private async write(event: EventEnvelope, reply: ReplyLike): Promise<void> {
     const port = this.auditPort();
@@ -439,7 +470,7 @@ export class ServiceAuthGuard implements CanActivate {
       const payload = event.payload as { decision: string; status: number };
       payload.status = reply.statusCode;
       payload.decision = reply.statusCode < 400 ? 'allowed' : 'refused';
-      void port.finalize?.(event).catch(() => undefined);
+      void port.finalize?.(event).catch(logAuditFinalizeFailure);
     };
     reply.raw.once('finish', finish);
     reply.raw.once('close', finish);
@@ -455,8 +486,10 @@ type InternalTenant = { ok: true; id: string } | { ok: false; message: string };
 
 /** The tenant of an internal call: named once, in the path or the body, and a UUID. */
 function tenantOfInternal(req: FastifyLike): InternalTenant {
-  const fromPath = req.params && typeof req.params === 'object' ? req.params['tenantId'] : undefined;
-  const body = req.body && typeof req.body === 'object' ? (req.body as Record<string, unknown>) : undefined;
+  const fromPath =
+    req.params && typeof req.params === 'object' ? req.params['tenantId'] : undefined;
+  const body =
+    req.body && typeof req.body === 'object' ? (req.body as Record<string, unknown>) : undefined;
   const fromBody = body?.['tenant_id'];
   const named = [fromPath, fromBody].filter((v) => v !== undefined);
   if (named.length === 0) return { ok: false, message: 'tenant_id is required' };
@@ -478,7 +511,9 @@ export class ServiceAuthInterceptor implements NestInterceptor {
     const req = context.switchToHttp().getRequest<object>();
     const auth = authOf(req);
     if (!auth) return next.handle();
-    const tenant = (req as Record<symbol, TenantContext | undefined>)[Symbol.for('ex-mio:tenant-context')];
+    const tenant = (req as Record<symbol, TenantContext | undefined>)[
+      Symbol.for('ex-mio:tenant-context')
+    ];
     return new Observable((subscriber) =>
       authStorage.run(auth, () =>
         tenant
@@ -491,10 +526,31 @@ export class ServiceAuthInterceptor implements NestInterceptor {
 
 // ---- module ----------------------------------------------------------------------------------
 
+/** Starts the 60 s audit sweeper for a port that holds events until finalize (D-21). */
+@Injectable()
+export class AuditSweeper implements OnModuleInit, OnApplicationShutdown {
+  private stop: (() => void) | undefined;
+
+  constructor(
+    @Inject(ModuleRef) private readonly moduleRef: ModuleRef,
+    @Inject(SERVICE_AUTH_RUNTIME) private readonly rt: ServiceAuthRuntime,
+  ) {}
+
+  onModuleInit(): void {
+    const port = this.rt.auditPort(this.moduleRef);
+    if (typeof port.sweep === 'function') this.stop = startAuditSweeper({ sweep: port.sweep });
+  }
+
+  onApplicationShutdown(): void {
+    this.stop?.();
+  }
+}
+
 @Module({})
 export class ServiceAuthModule {
   static forService(options: ServiceAuthOptions): DynamicModule {
-    if (!options || typeof options !== 'object') throw new Error('ServiceAuthModule: options are required');
+    if (!options || typeof options !== 'object')
+      throw new Error('ServiceAuthModule: options are required');
     for (const key of Object.keys(options)) {
       if (!ALLOWED_OPTIONS.has(key)) {
         throw new Error(`ServiceAuthModule: unknown option "${key}" (there is no resolver option)`);
@@ -518,6 +574,7 @@ export class ServiceAuthModule {
         { provide: SERVICE_AUTH_RUNTIME, useValue: runtime },
         { provide: APP_GUARD, useClass: ServiceAuthGuard },
         { provide: APP_INTERCEPTOR, useClass: ServiceAuthInterceptor },
+        AuditSweeper,
       ],
       exports: [SERVICE_AUTH_OPTIONS],
     };

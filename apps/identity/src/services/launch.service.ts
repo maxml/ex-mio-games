@@ -83,7 +83,8 @@ export class LaunchService {
     const tenant = await this.tenants.get(tenantId).catch(() => {
       throw invalid();
     });
-    if (tenant.status !== 'active') throw new IdentityError('TENANT_SUSPENDED', 'tenant is suspended');
+    if (tenant.status !== 'active')
+      throw new IdentityError('TENANT_SUSPENDED', 'tenant is suspended');
 
     try {
       await this.uow.run(tenantId, (tx) =>
@@ -134,6 +135,8 @@ export class LaunchService {
       tid: tenantId,
       roles: ['player'],
       aud: input.audience,
+      // X-3: the environment is the credential's, so a client can never ask for (or avoid) sandbox
+      ...(key.row.environment === 'sandbox' ? { sbx: true as const } : {}),
     });
     return { ...token, user_id, tenant_id: tenantId };
   }

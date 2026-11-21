@@ -52,7 +52,8 @@ export class StaffService {
     input: Pick<OperatorSignupRequest, 'tenant_name' | 'slug' | 'email' | 'password'>,
   ): Promise<{ tenant: TenantView; user: StaffUser }> {
     const email = input.email.trim().toLowerCase();
-    if (await this.tenants.slugTaken(input.slug)) throw new IdentityError('SLUG_TAKEN', 'slug already taken');
+    if (await this.tenants.slugTaken(input.slug))
+      throw new IdentityError('SLUG_TAKEN', 'slug already taken');
     const providerTenantId = await this.tenants.createProviderTenant(input.slug);
     const { uid } = await this.viaProvider(() =>
       this.provider.createUser(providerTenantId, { email, password: input.password }),
@@ -68,7 +69,12 @@ export class StaffService {
           slug: input.slug,
           providerTenantId,
         });
-        await this.repos.users.insert(tx, { tenant_id: tenantId, id: userId, email, kind: 'staff' });
+        await this.repos.users.insert(tx, {
+          tenant_id: tenantId,
+          id: userId,
+          email,
+          kind: 'staff',
+        });
         await this.repos.users.insertRole(tx, tenantId, userId, 'operator_admin');
         await this.repos.users.insertProviderLink(tx, {
           tenant_id: tenantId,
@@ -94,7 +100,8 @@ export class StaffService {
     const existing = await this.uow.run(PLATFORM_TENANT_ID, (tx) =>
       this.repos.users.findByEmail(tx, PLATFORM_TENANT_ID, email),
     );
-    if (existing) return { id: existing.id, tenant_id: PLATFORM_TENANT_ID, email, roles: existing.roles };
+    if (existing)
+      return { id: existing.id, tenant_id: PLATFORM_TENANT_ID, email, roles: existing.roles };
     return this.insertStaff(PLATFORM_TENANT_ID, email, input.password, 'platform_admin');
   }
 
@@ -111,7 +118,12 @@ export class StaffService {
     const userId = uuidv7();
     try {
       await this.uow.run(tenantId, async (tx) => {
-        await this.repos.users.insert(tx, { tenant_id: tenantId, id: userId, email, kind: 'staff' });
+        await this.repos.users.insert(tx, {
+          tenant_id: tenantId,
+          id: userId,
+          email,
+          kind: 'staff',
+        });
         await this.repos.users.insertRole(tx, tenantId, userId, role);
         await this.repos.users.insertProviderLink(tx, {
           tenant_id: tenantId,

@@ -18,14 +18,18 @@ import type {
 const m = (tx: Tx): EntityManager => tx as EntityManager;
 
 /** Postgres unique violation (23505) -> UniqueViolationError named by the constraint/index. */
-async function guarded<T>(key: string | ((constraint: string) => string), fn: () => Promise<T>): Promise<T> {
+async function guarded<T>(
+  key: string | ((constraint: string) => string),
+  fn: () => Promise<T>,
+): Promise<T> {
   try {
     return await fn();
   } catch (err) {
     const e = err as { code?: string; driverError?: { code?: string; constraint?: string } };
     const code = e.code ?? e.driverError?.code;
     if (code === '23505') {
-      const constraint = e.driverError?.constraint ?? (err as { constraint?: string }).constraint ?? '';
+      const constraint =
+        e.driverError?.constraint ?? (err as { constraint?: string }).constraint ?? '';
       throw new UniqueViolationError(typeof key === 'function' ? key(constraint) : key);
     }
     throw err;
@@ -66,7 +70,15 @@ export function pgRepos(): Repos {
             m(tx).query(
               `INSERT INTO "tenants" ("id","type","name","slug","status","domains","provider_tenant_id")
                VALUES ($1,$2,$3,$4,$5,$6,$7)`,
-              [row.id, row.type, row.name, row.slug, row.status, row.domains, row.provider_tenant_id],
+              [
+                row.id,
+                row.type,
+                row.name,
+                row.slug,
+                row.status,
+                row.domains,
+                row.provider_tenant_id,
+              ],
             ),
         );
       },
@@ -75,34 +87,39 @@ export function pgRepos(): Repos {
       findByDomain: (tx, domain) => one(tx, `WHERE $1 = ANY("domains")`, [domain]),
       platform: (tx) => one(tx, `WHERE "type" = 'platform'`, []),
       async setStatus(tx, id, status) {
-        const res = await m(tx).query(`UPDATE "tenants" SET "status" = $2 WHERE "id" = $1 RETURNING "id"`, [id, status]);
+        const res = await m(tx).query(
+          `UPDATE "tenants" SET "status" = $2 WHERE "id" = $1 RETURNING "id"`,
+          [id, status],
+        );
         return rowsOf(res).length > 0;
       },
       async setProviderTenant(tx, id, pid) {
-        await m(tx).query(`UPDATE "tenants" SET "provider_tenant_id" = $2 WHERE "id" = $1`, [id, pid]);
+        await m(tx).query(`UPDATE "tenants" SET "provider_tenant_id" = $2 WHERE "id" = $1`, [
+          id,
+          pid,
+        ]);
       },
       async listOperatorSlugs(tx) {
-        const rows = (await m(tx).query(`SELECT "slug" FROM "tenants" WHERE "type" = 'operator' ORDER BY "slug"`)) as Array<{ slug: string }>;
+        const rows = (await m(tx).query(
+          `SELECT "slug" FROM "tenants" WHERE "type" = 'operator' ORDER BY "slug"`,
+        )) as Array<{ slug: string }>;
         return rows.map((r) => r.slug);
       },
     },
     users: {
       async insert(tx, row) {
         await guarded('email', () =>
-          m(tx).query(`INSERT INTO "users" ("tenant_id","id","email","kind") VALUES ($1,$2,$3,$4)`, [
-            row.tenant_id,
-            row.id,
-            row.email,
-            row.kind,
-          ]),
+          m(tx).query(
+            `INSERT INTO "users" ("tenant_id","id","email","kind") VALUES ($1,$2,$3,$4)`,
+            [row.tenant_id, row.id, row.email, row.kind],
+          ),
         );
       },
       async insertRole(tx, tenantId, userId, role) {
-        await m(tx).query(`INSERT INTO "user_roles" ("tenant_id","user_id","role") VALUES ($1,$2,$3)`, [
-          tenantId,
-          userId,
-          role,
-        ]);
+        await m(tx).query(
+          `INSERT INTO "user_roles" ("tenant_id","user_id","role") VALUES ($1,$2,$3)`,
+          [tenantId, userId, role],
+        );
       },
       async insertProviderLink(tx, row) {
         await guarded('provider_link', () =>
@@ -120,21 +137,36 @@ export function pgRepos(): Repos {
         return rows[0]?.provider_uid ?? null;
       },
       async findByEmail(tx, tenantId, emailLower) {
-        return userRow(tx, `WHERE u."tenant_id" = $1 AND lower(u."email") = $2`, [tenantId, emailLower]).then((r) => r[0] ?? null);
+        return userRow(tx, `WHERE u."tenant_id" = $1 AND lower(u."email") = $2`, [
+          tenantId,
+          emailLower,
+        ]).then((r) => r[0] ?? null);
       },
       async findById(tx, tenantId, id) {
-        return userRow(tx, `WHERE u."tenant_id" = $1 AND u."id" = $2`, [tenantId, id]).then((r) => r[0] ?? null);
+        return userRow(tx, `WHERE u."tenant_id" = $1 AND u."id" = $2`, [tenantId, id]).then(
+          (r) => r[0] ?? null,
+        );
       },
       async listStaff(tx, tenantId) {
-        return userRow(tx, `WHERE u."tenant_id" = $1 AND u."kind" = 'staff' ORDER BY u."created_at", u."id"`, [tenantId]);
+        return userRow(
+          tx,
+          `WHERE u."tenant_id" = $1 AND u."kind" = 'staff' ORDER BY u."created_at", u."id"`,
+          [tenantId],
+        );
       },
     },
     players: {
       async find(tx, tenantId, platform, ext) {
-        return link(tx, `"tenant_id" = $1 AND "platform" = $2 AND "external_player_id" = $3`, [tenantId, platform, ext]).then((r) => r[0] ?? null);
+        return link(tx, `"tenant_id" = $1 AND "platform" = $2 AND "external_player_id" = $3`, [
+          tenantId,
+          platform,
+          ext,
+        ]).then((r) => r[0] ?? null);
       },
       async findByUser(tx, tenantId, userId) {
-        return link(tx, `"tenant_id" = $1 AND "user_id" = $2`, [tenantId, userId]).then((r) => r[0] ?? null);
+        return link(tx, `"tenant_id" = $1 AND "user_id" = $2`, [tenantId, userId]).then(
+          (r) => r[0] ?? null,
+        );
       },
       async insert(tx, tenantId, row) {
         await guarded('player_link', () =>
@@ -144,18 +176,28 @@ export function pgRepos(): Repos {
           ),
         );
       },
-      list: (tx, tenantId) => link(tx, `"tenant_id" = $1 ORDER BY "created_at", "user_id"`, [tenantId]),
+      async delete(tx, tenantId, userId) {
+        const res = (await m(tx).query(
+          `DELETE FROM "player_links" WHERE "tenant_id" = $1 AND "user_id" = $2 RETURNING "user_id"`,
+          [tenantId, userId],
+        )) as unknown;
+        return rowsOf(res).length > 0;
+      },
+      list: (tx, tenantId) =>
+        link(tx, `"tenant_id" = $1 ORDER BY "created_at", "user_id"`, [tenantId]),
     },
     jti: {
       async insert(tx, tenantId, jti, expiresAt) {
         // expired nonces can never be replayed (the token itself is expired): drop them as we go
-        await m(tx).query(`DELETE FROM "launch_jti" WHERE "tenant_id" = $1 AND "expires_at" < now() - interval '1 hour'`, [tenantId]);
+        await m(tx).query(
+          `DELETE FROM "launch_jti" WHERE "tenant_id" = $1 AND "expires_at" < now() - interval '1 hour'`,
+          [tenantId],
+        );
         await guarded('jti', () =>
-          m(tx).query(`INSERT INTO "launch_jti" ("tenant_id","jti","expires_at") VALUES ($1,$2,$3)`, [
-            tenantId,
-            jti,
-            ts(expiresAt),
-          ]),
+          m(tx).query(
+            `INSERT INTO "launch_jti" ("tenant_id","jti","expires_at") VALUES ($1,$2,$3)`,
+            [tenantId, jti, ts(expiresAt)],
+          ),
         );
       },
     },
@@ -163,14 +205,29 @@ export function pgRepos(): Repos {
       async insert(tx, row) {
         await m(tx).query(
           `INSERT INTO "integration_credentials"
-             ("tenant_id","key_id","platform","api_key_hash","secret_enc","status","retiring_until","created_at")
-           VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
-          [row.tenant_id, row.key_id, row.platform, row.api_key_hash, row.secret_enc, row.status, ts(row.retiring_until), ts(row.created_at)],
+             ("tenant_id","key_id","platform","environment","api_key_hash","secret_enc","status","retiring_until","created_at")
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
+          [
+            row.tenant_id,
+            row.key_id,
+            row.platform,
+            row.environment,
+            row.api_key_hash,
+            row.secret_enc,
+            row.status,
+            ts(row.retiring_until),
+            ts(row.created_at),
+          ],
         );
       },
-      findByKeyId: (tx, tenantId, keyId) => cred(tx, `"tenant_id" = $1 AND "key_id" = $2`, [tenantId, keyId]).then((r) => r[0] ?? null),
-      findByApiKeyHash: (tx, tenantId, hash) => cred(tx, `"tenant_id" = $1 AND "api_key_hash" = $2`, [tenantId, hash]).then((r) => r[0] ?? null),
-      list: (tx, tenantId) => cred(tx, `"tenant_id" = $1 ORDER BY "created_at", "key_id"`, [tenantId]),
+      findByKeyId: (tx, tenantId, keyId) =>
+        cred(tx, `"tenant_id" = $1 AND "key_id" = $2`, [tenantId, keyId]).then((r) => r[0] ?? null),
+      findByApiKeyHash: (tx, tenantId, hash) =>
+        cred(tx, `"tenant_id" = $1 AND "api_key_hash" = $2`, [tenantId, hash]).then(
+          (r) => r[0] ?? null,
+        ),
+      list: (tx, tenantId) =>
+        cred(tx, `"tenant_id" = $1 ORDER BY "created_at", "key_id"`, [tenantId]),
       async update(tx, tenantId, keyId, patch) {
         await m(tx).query(
           `UPDATE "integration_credentials" SET "status" = $3, "retiring_until" = $4 WHERE "tenant_id" = $1 AND "key_id" = $2`,
@@ -185,7 +242,20 @@ export function pgRepos(): Repos {
              ("tenant_id","id","occurred_at","actor_user_id","actor_tenant_id","acting_tenant_id","action","reason","service","route","decision","caller_service")
            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
            ON CONFLICT ("tenant_id","id") DO NOTHING RETURNING "id"`,
-          [row.tenant_id, row.id, row.occurred_at, row.actor_user_id, row.actor_tenant_id, row.acting_tenant_id, row.action, row.reason, row.service, row.route, row.decision, row.caller_service],
+          [
+            row.tenant_id,
+            row.id,
+            row.occurred_at,
+            row.actor_user_id,
+            row.actor_tenant_id,
+            row.acting_tenant_id,
+            row.action,
+            row.reason,
+            row.service,
+            row.route,
+            row.decision,
+            row.caller_service,
+          ],
         )) as unknown;
         return rowsOf(res).length > 0;
       },
@@ -212,7 +282,9 @@ export function pgRepos(): Repos {
     },
     keys: {
       async list(tx) {
-        const rows = (await m(tx).query(`SELECT * FROM "signing_keys" ORDER BY "created_at", "kid"`)) as Array<Record<string, unknown>>;
+        const rows = (await m(tx).query(
+          `SELECT * FROM "signing_keys" ORDER BY "created_at", "kid"`,
+        )) as Array<Record<string, unknown>>;
         return rows.map(
           (r): SigningKeyRow => ({
             kid: String(r.kid),
@@ -238,7 +310,12 @@ export function pgRepos(): Repos {
 
 /** typeorm's `query` returns rows, or `[rows, count]` for UPDATE/DELETE ... RETURNING. */
 function rowsOf(res: unknown): unknown[] {
-  if (Array.isArray(res) && res.length === 2 && Array.isArray(res[0]) && typeof res[1] === 'number') {
+  if (
+    Array.isArray(res) &&
+    res.length === 2 &&
+    Array.isArray(res[0]) &&
+    typeof res[1] === 'number'
+  ) {
     return res[0];
   }
   return Array.isArray(res) ? res : [];
@@ -260,7 +337,13 @@ async function userRow(tx: Tx, where: string, params: unknown[]): Promise<UserRo
        FROM "users" u ${where}`,
     params,
   )) as Array<UserRow & { roles: Role[] }>;
-  return rows.map((r) => ({ tenant_id: r.tenant_id, id: r.id, email: r.email, kind: r.kind, roles: r.roles }));
+  return rows.map((r) => ({
+    tenant_id: r.tenant_id,
+    id: r.id,
+    email: r.email,
+    kind: r.kind,
+    roles: r.roles,
+  }));
 }
 
 async function link(tx: Tx, where: string, params: unknown[]): Promise<PlayerLinkRow[]> {
@@ -268,15 +351,23 @@ async function link(tx: Tx, where: string, params: unknown[]): Promise<PlayerLin
     `SELECT "user_id","platform","external_player_id" FROM "player_links" WHERE ${where}`,
     params,
   )) as PlayerLinkRow[];
-  return rows.map((r) => ({ user_id: r.user_id, platform: r.platform, external_player_id: r.external_player_id }));
+  return rows.map((r) => ({
+    user_id: r.user_id,
+    platform: r.platform,
+    external_player_id: r.external_player_id,
+  }));
 }
 
 async function cred(tx: Tx, where: string, params: unknown[]): Promise<CredentialRow[]> {
-  const rows = (await m(tx).query(`SELECT * FROM "integration_credentials" WHERE ${where}`, params)) as Array<Record<string, unknown>>;
+  const rows = (await m(tx).query(
+    `SELECT * FROM "integration_credentials" WHERE ${where}`,
+    params,
+  )) as Array<Record<string, unknown>>;
   return rows.map((r) => ({
     tenant_id: String(r.tenant_id),
     key_id: String(r.key_id),
     platform: String(r.platform),
+    environment: r.environment as CredentialRow['environment'],
     api_key_hash: String(r.api_key_hash),
     secret_enc: String(r.secret_enc),
     status: r.status as CredentialRow['status'],

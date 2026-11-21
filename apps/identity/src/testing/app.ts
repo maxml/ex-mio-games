@@ -3,9 +3,13 @@ import { Module, type Type } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import { FastifyAdapter, type NestFastifyApplication } from '@nestjs/platform-fastify';
 import { HealthModule, ServiceAuthModule } from '@ex-mio/service-kit';
-import { identityControllers, IdentityExceptionFilter, PermissionGuardModule } from '../controllers';
+import {
+  identityControllers,
+  IdentityExceptionFilter,
+  PermissionGuardModule,
+} from '../controllers';
 import { serviceProviders } from '../services/providers';
-import { buildKernel } from './kernel';
+import { buildKernel, type Kernel } from './kernel';
 
 /**
  * Boots the real HTTP edge over the kernel: the service-kit entry point (`ServiceAuthModule`,
@@ -17,7 +21,7 @@ export async function createTestApp(
     extraControllers?: Type[];
     serviceClients?: Partial<Record<'identity' | 'engagement' | 'payments', string>>;
   } = {},
-) {
+): Promise<{ app: NestFastifyApplication; kernel: Kernel }> {
   const kernel = await buildKernel({ serviceSecrets: opts.serviceClients ?? {} });
 
   @Module({
@@ -39,9 +43,13 @@ export async function createTestApp(
   })
   class TestAppModule {}
 
-  const app = await NestFactory.create<NestFastifyApplication>(TestAppModule, new FastifyAdapter(), {
-    logger: false,
-  });
+  const app = await NestFactory.create<NestFastifyApplication>(
+    TestAppModule,
+    new FastifyAdapter(),
+    {
+      logger: false,
+    },
+  );
   app.useGlobalFilters(new IdentityExceptionFilter());
   await app.init();
   await app.getHttpAdapter().getInstance().ready();

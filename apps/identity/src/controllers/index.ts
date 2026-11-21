@@ -12,7 +12,12 @@ import {
 } from './identity.controllers';
 
 export { IdentityExceptionFilter } from './identity-exception.filter';
-export { PermissionGuard, PermissionGuardModule, PERMISSION_KEY, RequirePermission } from './permissions';
+export {
+  PermissionGuard,
+  PermissionGuardModule,
+  PERMISSION_KEY,
+  RequirePermission,
+} from './permissions';
 
 /** Every controller identity serves. A route scan (INV-PERM, INV-S2S-6) walks exactly this list. */
 export const identityControllers: Type[] = [

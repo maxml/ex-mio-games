@@ -9,10 +9,10 @@ import {
   type Provider,
 } from '@nestjs/common';
 import type { DataSource } from 'typeorm';
-import type { EventEnvelope } from '@ex-mio/contracts';
 import {
   BusModule,
   BusRuntime,
+  createOutboxAuditPort,
   DATA_SOURCE,
   Db,
   HealthModule,
@@ -88,7 +88,10 @@ class IdentityCoreModule implements OnApplicationShutdown {
       module: IdentityCoreModule,
       providers: [
         { provide: IDENTITY_CONFIG, useValue: config },
-        { provide: DATA_SOURCE, useFactory: async (): Promise<DataSource> => makeDataSource().initialize() },
+        {
+          provide: DATA_SOURCE,
+          useFactory: async (): Promise<DataSource> => makeDataSource().initialize(),
+        },
         Db,
         {
           provide: IDENTITY_SERVICES,
@@ -97,7 +100,10 @@ class IdentityCoreModule implements OnApplicationShutdown {
             const provider =
               config.IDENTITY_PROVIDER === 'fake'
                 ? new FakeIdentityProvider()
-                : new FirebaseEmulatorProvider(config.FIREBASE_AUTH_EMULATOR_HOST, config.FIREBASE_PROJECT);
+                : new FirebaseEmulatorProvider(
+                    config.FIREBASE_AUTH_EMULATOR_HOST,
+                    config.FIREBASE_PROJECT,
+                  );
             bound.db = db;
             bound.services = wireServices({
               uow: new PgUnitOfWork(db),
@@ -138,22 +144,8 @@ export function createAppModule(config: Config): DynamicModule {
     if (!bound.db) throw new Error('database is not ready');
     return bound.db;
   };
-  const auditPort = Object.assign(
-    async (event: EventEnvelope): Promise<void> => {
-      await db().platformTx((tx) => db().publish(tx, event));
-    },
-    {
-      /** Persist the final outcome while the event is still in the outbox. */
-      finalize: async (event: EventEnvelope): Promise<void> => {
-        await db().platformTx((tx) =>
-          tx.query(`UPDATE "outbox" SET "envelope" = $2 WHERE "event_id" = $1 AND "published_at" IS NULL`, [
-            event.event_id,
-            JSON.stringify(event),
-          ]),
-        );
-      },
-    },
-  );
+  // The same two-step audit port every service uses (intent, finalize, 60 s sweeper; D-21).
+  const auditPort = createOutboxAuditPort(db);
 
   const core = IdentityCoreModule.register(config, bound);
   const bus = BusModule.register({

@@ -1,3 +1,4 @@
+import { createHmac, randomUUID } from 'node:crypto';
 import { createTokenVerifier } from '@ex-mio/service-kit';
 import type { Audience, EventEnvelope } from '@ex-mio/contracts';
 import { FakeIdentityProvider } from '../services/fake-identity-provider';
@@ -53,8 +54,34 @@ export async function buildKernel(opts: KernelOptions = {}) {
   });
   await services.sessions.init();
 
+  /**
+   * Test helper (X-3): sign a launch token with an issued key and exchange it, so a test can see
+   * the player token a given credential yields. Not part of the production service.
+   */
+  const launchWithKey = async (
+    key: { key_id: string; hmac_secret: string },
+    input: { externalPlayerId: string; audience?: Audience },
+  ) => {
+    const live = await services.credentials.findLiveByKeyId(key.key_id);
+    if (!live) throw new Error('launchWithKey: unknown or revoked key');
+    const part = (v: object) => Buffer.from(JSON.stringify(v)).toString('base64url');
+    const head = part({ alg: 'HS256', typ: 'JWT', kid: key.key_id });
+    const body = part({
+      pid: input.externalPlayerId,
+      plat: live.row.platform,
+      aud: 'mio-launch',
+      iat: clock,
+      exp: clock + 120,
+      jti: randomUUID(),
+    });
+    const sig = createHmac('sha256', key.hmac_secret).update(`${head}.${body}`).digest('base64url');
+    const token = `${head}.${body}.${sig}`;
+    return services.launch.exchange({ token, audience: input.audience ?? 'engagement' });
+  };
+
   return {
     ...services,
+    sessions: Object.assign(services.sessions, { launchWithKey }),
     store,
     now: () => clock,
     advance: (seconds: number) => {

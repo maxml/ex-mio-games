@@ -70,6 +70,12 @@ export const RedemptionRequestedV1 = z.object({
 const HTTP_METHOD = z.enum(['GET', 'POST', 'PUT', 'PATCH', 'DELETE']);
 
 /**
+ * D-21: `aborted` is what the entry point's sweeper publishes for a request whose audit intent was
+ * never finalized (the handler hung or the process died). It is never published for a finished one.
+ */
+const AUDIT_DECISION = z.enum(['allowed', 'refused', 'aborted']);
+
+/**
  * D-11: written by the service-kit entry point of EVERY service for each request that carries an
  * acting claim, allowed or refused. Envelope `tenant_id` is the acting tenant. `route` is
  * `METHOD template` (never the raw URL, never the query string).
@@ -86,7 +92,7 @@ export const ActingRequestAuditedV1 = z
     service: ServiceName,
     method: HTTP_METHOD,
     route: z.string().regex(/^(GET|POST|PUT|PATCH|DELETE) \/[^?#\s]*$/),
-    decision: z.enum(['allowed', 'refused']),
+    decision: AUDIT_DECISION,
     status: z.number().int().min(100).max(599),
     request_id: z.string().min(1),
     occurred_at: z.string().datetime(),
@@ -105,7 +111,7 @@ export const ServiceCallAuditedV1 = z
     service: ServiceName,
     method: HTTP_METHOD,
     route: z.string().regex(/^(GET|POST|PUT|PATCH|DELETE) \/[^?#\s]*$/),
-    decision: z.enum(['allowed', 'refused']),
+    decision: AUDIT_DECISION,
     status: z.number().int().min(100).max(599),
     request_id: z.string().min(1),
     occurred_at: z.string().datetime(),

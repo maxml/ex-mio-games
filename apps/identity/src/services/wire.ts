@@ -48,6 +48,15 @@ export function wireServices(d: WireDeps): Services {
   const staff = new StaffService(d.uow, d.repos, d.provider, tenants, access);
   const credentials = new CredentialsService(d.uow, d.repos, d.clock, access, d.kek);
   const players = new PlayersService(d.uow, d.repos, access);
-  const launch = new LaunchService(d.uow, d.repos, d.clock, credentials, players, sessions, tenants, d.provider);
+  const launch = new LaunchService(
+    d.uow,
+    d.repos,
+    d.clock,
+    credentials,
+    players,
+    sessions,
+    tenants,
+    d.provider,
+  );
   return { tenants, audit, access, sessions, staff, credentials, players, launch };
 }

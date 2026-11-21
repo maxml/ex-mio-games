@@ -137,6 +137,8 @@ export class SessionsService {
     roles: Role[];
     aud: Audience;
     act?: { tenant_id: string; reason: string };
+    /** X-3: set only by the launch flow, from the credential's environment; never from a caller. */
+    sbx?: true;
     ttl?: number;
   }): TokenResponse {
     const now = this.clock.now();
@@ -151,6 +153,7 @@ export class SessionsService {
       exp: now + ttl,
       jti: randomUUID(),
       ...(input.act ? { act: input.act } : {}),
+      ...(input.sbx ? { sbx: true } : {}),
     });
     return { access_token: token, token_type: 'Bearer', expires_in: ttl };
   }
@@ -160,7 +163,8 @@ export class SessionsService {
     const tenant = await this.tenants.get(tenantId).catch(() => {
       throw new IdentityError('INVALID_CREDENTIALS', 'invalid credentials');
     });
-    if (tenant.status !== 'active') throw new IdentityError('TENANT_SUSPENDED', 'tenant is suspended');
+    if (tenant.status !== 'active')
+      throw new IdentityError('TENANT_SUSPENDED', 'tenant is suspended');
     const invalid = new IdentityError('INVALID_CREDENTIALS', 'invalid credentials');
     const email = input.email.trim().toLowerCase();
     const user = await this.uow.run(tenantId, (tx) =>
@@ -189,12 +193,20 @@ export class SessionsService {
   }
 
   /** Acting session (spec 1.7): platform_admin only, never from an acting session, always audited. */
-  async startActing(subject: Subject, input: Omit<StartActingRequest, 'audience'> & { audience?: Audience }): Promise<TokenResponse> {
+  /** Only a non-acting platform_admin may start a session. The edge asks this BEFORE validating a body. */
+  assertMayStartActing(subject: Subject): void {
     const isAdmin =
       subject.roles.includes('platform_admin') && subject.tenantId === PLATFORM_TENANT_ID;
     if (!isAdmin || subject.acting) {
       throw new IdentityError('ACTING_FORBIDDEN', 'acting sessions are for the platform admin');
     }
+  }
+
+  async startActing(
+    subject: Subject,
+    input: Omit<StartActingRequest, 'audience'> & { audience?: Audience },
+  ): Promise<TokenResponse> {
+    this.assertMayStartActing(subject);
     if (input.tenant_id === PLATFORM_TENANT_ID) {
       throw new IdentityError('ACTING_FORBIDDEN', 'acting on the platform tenant is meaningless');
     }
@@ -202,7 +214,10 @@ export class SessionsService {
     // D-15 Q-4: 8 to 500 characters (the existence of the tenant is answered first)
     const reason = (input.reason ?? '').trim();
     if (reason.length < 8 || reason.length > 500) {
-      throw new IdentityError('ACTING_REASON_REQUIRED', 'a reason of 8 to 500 characters is required');
+      throw new IdentityError(
+        'ACTING_REASON_REQUIRED',
+        'a reason of 8 to 500 characters is required',
+      );
     }
     await this.audit.record({
       tenantId: target.id,

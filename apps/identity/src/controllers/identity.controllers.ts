@@ -2,7 +2,6 @@ import { Body, Controller, Get, HttpCode, Param, Post, Req } from '@nestjs/commo
 import { z } from 'zod';
 import {
   InternalResolvePlayerRequest,
-  InternalVerifyWebhookRequest,
   InviteStaffRequest,
   LaunchRequest,
   LoginRequest,
@@ -15,17 +14,19 @@ import {
   type CredentialIssued,
   type CredentialSummary,
   type InternalResolvePlayerResponse,
-  type InternalVerifyWebhookResponse,
   type JwksResponse,
   type LaunchResponse,
+  type PlayerLinkResponse,
   type PlayerLookup,
   type SignupResponse,
   type StaffMember,
+  type TenantIntegration,
   type TenantStatusResponse,
   type TenantView,
   type TokenResponse,
 } from '@ex-mio/contracts';
 import { currentAuth, InternalTenantless, parseInput, Public } from '@ex-mio/service-kit';
+import { IdentityError } from '../errors';
 import { AccessService, type Subject } from '../services/access.service';
 import { AuditService } from '../services/audit.service';
 import { CredentialsService } from '../services/credentials.service';
@@ -53,24 +54,22 @@ const toMember = (u: StaffUser): StaffMember => ({
   roles: u.roles as StaffMember['roles'],
 });
 
-// The contract asks for 2+ characters; the frozen INV-EDGE-14 signs up with the slug `c`.
-const SignupBody = OperatorSignupRequest.extend({
-  slug: z
-    .string()
-    .trim()
-    .min(1)
-    .max(48)
-    .regex(/^[a-z0-9]+(-[a-z0-9]+)*$/),
-});
 const IdParam = z.object({ id: Uuid });
 const UserIdParam = z.object({ userId: Uuid });
 const TenantIdParam = z.object({ tenantId: Uuid });
-const IssueCredentialRequest = z
-  .object({ platform: z.string().trim().min(1).max(64) })
-  .strict();
+const TenantUserParam = z.object({ tenantId: Uuid, userId: Uuid });
+const SlugParam = z.object({ slug: z.string().trim().min(1).max(48) });
+const IssueCredentialRequest = z.object({ platform: z.string().trim().min(1).max(64) }).strict();
 const RotateParams = z.object({ keyId: z.string().min(1).max(200) });
 const RotateRequest = z
-  .object({ grace_seconds: z.number().int().min(0).max(30 * 24 * 3600).default(0) })
+  .object({
+    grace_seconds: z
+      .number()
+      .int()
+      .min(0)
+      .max(30 * 24 * 3600)
+      .default(0),
+  })
   .strict();
 
 @Controller('v1/auth')
@@ -91,7 +90,9 @@ export class AuthController {
   ): Promise<TokenResponse> {
     const input = parseInput(LoginRequest, body);
     const host = req.headers['host'];
-    const tenant = await this.tenants.resolveByHost(Array.isArray(host) ? (host[0] ?? '') : (host ?? ''));
+    const tenant = await this.tenants.resolveByHost(
+      Array.isArray(host) ? (host[0] ?? '') : (host ?? ''),
+    );
     return this.sessions.login(tenant.id, input);
   }
 
@@ -113,8 +114,9 @@ export class AuthController {
   @Post('acting')
   @HttpCode(200)
   async acting(@Body() body: unknown): Promise<TokenResponse> {
-    const input = parseInput(StartActingRequest, body);
     const s = subject();
+    this.sessions.assertMayStartActing(s); // who may ask is decided before the body is looked at
+    const input = parseInput(StartActingRequest, body);
     return this.sessions.startActing(s, input);
   }
 }
@@ -126,7 +128,9 @@ export class OperatorsController {
   @Public()
   @Post('signup')
   async signup(@Body() body: unknown): Promise<SignupResponse> {
-    const { tenant, user } = await this.staff.signUpOperator(parseInput(SignupBody, body));
+    const { tenant, user } = await this.staff.signUpOperator(
+      parseInput(OperatorSignupRequest, body),
+    );
     return { tenant, user: toMember(user) };
   }
 }
@@ -262,16 +266,26 @@ export class InternalController {
     return this.players.resolveOrCreate(tenantId, input.platform, input.external_player_id);
   }
 
+  /** X-7: the casino integration of the path tenant (secrets, hash key, environment). */
+  @Get('internal/v1/tenants/:tenantId/integration')
+  integration(@Param() params: unknown): Promise<TenantIntegration> {
+    return this.credentials.integration(parseInput(TenantIdParam, params).tenantId);
+  }
+
+  /** X-7: the one tenant-less internal route; the slug names the tenant. 404 when unknown. */
   @InternalTenantless()
-  @Post('internal/v1/webhooks/verify')
-  @HttpCode(200)
-  async verifyWebhook(@Body() body: unknown): Promise<InternalVerifyWebhookResponse> {
-    const input = parseInput(InternalVerifyWebhookRequest, body);
-    return this.credentials.verifyWebhookDetailed({
-      apiKey: input.api_key,
-      timestamp: input.timestamp,
-      signature: input.signature,
-      rawBody: input.raw_body,
-    });
+  @Get('internal/v1/integrations/by-slug/:slug')
+  async integrationBySlug(@Param() params: unknown): Promise<TenantIntegration> {
+    const { slug } = parseInput(SlugParam, params);
+    const found = await this.credentials.integrationBySlug(slug);
+    if (!found) throw new IdentityError('NOT_FOUND', 'no integration');
+    return found;
+  }
+
+  /** X-8: the reverse of resolve. 404 for another tenant's player or after the erasure. */
+  @Get('internal/v1/tenants/:tenantId/players/:userId/link')
+  playerLink(@Param() params: unknown): Promise<PlayerLinkResponse> {
+    const { tenantId, userId } = parseInput(TenantUserParam, params);
+    return this.players.linkOf(tenantId, userId);
   }
 }

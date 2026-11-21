@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import {
+  ACTING_DENIED_ACTIONS,
   ACTIONS,
   COIN_VALUE_ACTIONS,
   PLATFORM_TENANT_ID,
@@ -37,7 +38,10 @@ export function subjectOf(claims: AccessTokenClaims): Subject {
 /** The tenant a subject's requests run in: the acting tenant for an acting session, else its own. */
 export const effectiveTenant = (s: Subject): string => s.acting?.tenantId ?? s.tenantId;
 
-const COIN_VALUE: ReadonlySet<string> = new Set(COIN_VALUE_ACTIONS);
+/** The coin commands that move value: no role holds them, they belong to services (D-1). */
+const COIN_VALUE: ReadonlySet<string> = new Set(COIN_VALUE_ACTIONS.map((a) => `coins.${a}`));
+/** What an acting session is refused: the coin commands plus `redemptions.resolve` (D-5, D-15 Q-2). */
+const ACTING_DENIED: ReadonlySet<string> = new Set(ACTING_DENIED_ACTIONS);
 
 /** What an operator admin of the tenant may do (also what an acting platform admin may do there). */
 const ADMIN_ACTIONS: ReadonlySet<Action> = new Set<Action>([
@@ -49,8 +53,32 @@ const ADMIN_ACTIONS: ReadonlySet<Action> = new Set<Action>([
   'credentials.rotate',
   'audit.read',
   'coins.adjust',
+  'store.read',
+  'store.manage',
+  'redemptions.read',
+  'redemptions.resolve',
+  'rules.manage',
+  'wheel.manage',
+  'balance.read',
+  'billing.manage',
+  'usage.read',
 ]);
-const STAFF_ACTIONS: ReadonlySet<Action> = new Set<Action>(['staff.list', 'players.read']);
+const STAFF_ACTIONS: ReadonlySet<Action> = new Set<Action>([
+  'staff.list',
+  'players.read',
+  'store.read',
+  'redemptions.read',
+  'balance.read',
+  'usage.read',
+]);
+/** What a player may do in their own tenant; the `own` ones are about the player's own records. */
+const PLAYER_ACTIONS: ReadonlySet<Action> = new Set<Action>([
+  'spins.play',
+  'store.read',
+  'redemptions.create',
+  'redemptions.read_own',
+  'balance.read_own',
+]);
 
 @Injectable()
 export class AccessService {
@@ -68,7 +96,7 @@ export class AccessService {
       if (subject.acting) {
         // acting: operator-admin rights, in the acting tenant only
         if (object.tenant_id !== subject.acting.tenantId) return false;
-        return ADMIN_ACTIONS.has(action);
+        return ADMIN_ACTIONS.has(action) && !ACTING_DENIED.has(action);
       }
       if (action === 'acting.start' || action === 'tenant.suspend') return true;
       if (action === 'tenant.read') return object.tenant_id === PLATFORM_TENANT_ID;
@@ -78,6 +106,10 @@ export class AccessService {
     if (object.tenant_id !== subject.tenantId) return false;
     if (roles.includes('operator_admin') && ADMIN_ACTIONS.has(action)) return true;
     if (roles.includes('operator_staff') && STAFF_ACTIONS.has(action)) return true;
+    if (roles.includes('player') && PLAYER_ACTIONS.has(action)) {
+      // a record of another player is never reachable, whatever the action
+      return object.user_id === undefined || object.user_id === subject.userId;
+    }
     if (roles.includes('player') && action === 'player.self.read') {
       return object.user_id !== undefined && object.user_id === subject.userId;
     }
@@ -93,7 +125,7 @@ export class AccessService {
       (subject.roles ?? []).includes('platform_admin') && subject.tenantId === PLATFORM_TENANT_ID;
     const acting = isPlatformAdmin ? subject.acting : undefined;
 
-    if (acting && COIN_VALUE.has(action)) throw new IdentityError('ACTING_FORBIDDEN');
+    if (acting && ACTING_DENIED.has(action)) throw new IdentityError('ACTING_FORBIDDEN');
     if (acting && action === 'acting.start') throw new IdentityError('ACTING_FORBIDDEN');
 
     if (isPlatformAdmin && !acting) {
@@ -113,7 +145,9 @@ export class AccessService {
         if (object.user_id !== subject.userId) throw new IdentityError('NOT_FOUND');
       }
     }
-    if (!this.can({ ...subject, ...(acting ? { acting } : { acting: undefined }) }, action, object)) {
+    if (
+      !this.can({ ...subject, ...(acting ? { acting } : { acting: undefined }) }, action, object)
+    ) {
       throw new IdentityError('FORBIDDEN');
     }
     if (acting) {

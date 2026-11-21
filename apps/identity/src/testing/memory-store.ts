@@ -30,9 +30,19 @@ const asTx = (tx: Tx): MemTx => tx as MemTx;
 
 export class MemoryStore {
   readonly tenants = new Map<string, TenantRow>();
-  readonly users: Array<{ tenant_id: string; id: string; email: string | null; kind: 'staff' | 'player' }> = [];
+  readonly users: Array<{
+    tenant_id: string;
+    id: string;
+    email: string | null;
+    kind: 'staff' | 'player';
+  }> = [];
   readonly roles: Array<{ tenant_id: string; user_id: string; role: Role }> = [];
-  readonly providerLinks: Array<{ tenant_id: string; user_id: string; provider: string; provider_uid: string }> = [];
+  readonly providerLinks: Array<{
+    tenant_id: string;
+    user_id: string;
+    provider: string;
+    provider_uid: string;
+  }> = [];
   readonly playerLinks: Array<PlayerLinkRow & { tenant_id: string }> = [];
   readonly jti: Array<{ tenant_id: string; jti: string; expires_at: number }> = [];
   readonly credentials: CredentialRow[] = [];
@@ -84,23 +94,36 @@ export class MemoryStore {
     });
   }
 
-  private userView(u: { tenant_id: string; id: string; email: string | null; kind: 'staff' | 'player' }): UserRow {
+  private userView(u: {
+    tenant_id: string;
+    id: string;
+    email: string | null;
+    kind: 'staff' | 'player';
+  }): UserRow {
     return {
       ...u,
-      roles: this.roles.filter((r) => r.tenant_id === u.tenant_id && r.user_id === u.id).map((r) => r.role),
+      roles: this.roles
+        .filter((r) => r.tenant_id === u.tenant_id && r.user_id === u.id)
+        .map((r) => r.role),
     };
   }
 
   repos(): Repos {
+    // The repository methods below are object-literal members, so they need the store as `s`.
+    // eslint-disable-next-line @typescript-eslint/no-this-alias
     const s = this;
     return {
       tenants: {
         async insert(tx, row) {
           await tick();
-          if (row.type === 'platform' && [...s.tenants.values()].some((t) => t.type === 'platform')) {
+          if (
+            row.type === 'platform' &&
+            [...s.tenants.values()].some((t) => t.type === 'platform')
+          ) {
             throw new UniqueViolationError('platform');
           }
-          if ([...s.tenants.values()].some((t) => t.slug === row.slug)) throw new UniqueViolationError('slug');
+          if ([...s.tenants.values()].some((t) => t.slug === row.slug))
+            throw new UniqueViolationError('slug');
           s.tenants.set(row.id, row);
           asTx(tx).undo.push(() => s.tenants.delete(row.id));
         },
@@ -145,7 +168,11 @@ export class MemoryStore {
           await tick();
           if (
             row.email &&
-            s.users.some((u) => u.tenant_id === row.tenant_id && u.email?.toLowerCase() === row.email?.toLowerCase())
+            s.users.some(
+              (u) =>
+                u.tenant_id === row.tenant_id &&
+                u.email?.toLowerCase() === row.email?.toLowerCase(),
+            )
           ) {
             throw new UniqueViolationError('email');
           }
@@ -157,18 +184,25 @@ export class MemoryStore {
         },
         async insertProviderLink(tx, row) {
           await tick();
-          if (s.providerLinks.some((l) => l.tenant_id === row.tenant_id && l.user_id === row.user_id)) {
+          if (
+            s.providerLinks.some((l) => l.tenant_id === row.tenant_id && l.user_id === row.user_id)
+          ) {
             throw new UniqueViolationError('provider_link');
           }
           s.push(tx, s.providerLinks, { ...row });
         },
         async providerUid(_tx, tenantId, userId) {
           await tick();
-          return s.providerLinks.find((l) => l.tenant_id === tenantId && l.user_id === userId)?.provider_uid ?? null;
+          return (
+            s.providerLinks.find((l) => l.tenant_id === tenantId && l.user_id === userId)
+              ?.provider_uid ?? null
+          );
         },
         async findByEmail(_tx, tenantId, emailLower) {
           await tick();
-          const u = s.users.find((x) => x.tenant_id === tenantId && x.email?.toLowerCase() === emailLower);
+          const u = s.users.find(
+            (x) => x.tenant_id === tenantId && x.email?.toLowerCase() === emailLower,
+          );
           return u ? s.userView(u) : null;
         },
         async findById(_tx, tenantId, id) {
@@ -178,14 +212,17 @@ export class MemoryStore {
         },
         async listStaff(_tx, tenantId) {
           await tick();
-          return s.users.filter((u) => u.tenant_id === tenantId && u.kind === 'staff').map((u) => s.userView(u));
+          return s.users
+            .filter((u) => u.tenant_id === tenantId && u.kind === 'staff')
+            .map((u) => s.userView(u));
         },
       },
       players: {
         async find(_tx, tenantId, platform, ext) {
           await tick();
           const l = s.playerLinks.find(
-            (x) => x.tenant_id === tenantId && x.platform === platform && x.external_player_id === ext,
+            (x) =>
+              x.tenant_id === tenantId && x.platform === platform && x.external_player_id === ext,
           );
           return l ? strip(l) : null;
         },
@@ -208,6 +245,18 @@ export class MemoryStore {
           }
           s.push(tx, s.playerLinks, { ...row, tenant_id: tenantId });
         },
+        async delete(tx, tenantId, userId) {
+          await tick();
+          const i = s.playerLinks.findIndex(
+            (x) => x.tenant_id === tenantId && x.user_id === userId,
+          );
+          if (i < 0) return false;
+          const [row] = s.playerLinks.splice(i, 1);
+          asTx(tx).undo.push(() => {
+            if (row) s.playerLinks.splice(i, 0, row);
+          });
+          return true;
+        },
         async list(_tx, tenantId) {
           await tick();
           return s.playerLinks.filter((x) => x.tenant_id === tenantId).map(strip);
@@ -216,7 +265,8 @@ export class MemoryStore {
       jti: {
         async insert(tx, tenantId, jti, expiresAt) {
           await tick();
-          if (s.jti.some((j) => j.tenant_id === tenantId && j.jti === jti)) throw new UniqueViolationError('jti');
+          if (s.jti.some((j) => j.tenant_id === tenantId && j.jti === jti))
+            throw new UniqueViolationError('jti');
           s.push(tx, s.jti, { tenant_id: tenantId, jti, expires_at: expiresAt });
         },
       },
@@ -231,7 +281,9 @@ export class MemoryStore {
         },
         async findByApiKeyHash(_tx, tenantId, hash) {
           await tick();
-          return s.credentials.find((c) => c.tenant_id === tenantId && c.api_key_hash === hash) ?? null;
+          return (
+            s.credentials.find((c) => c.tenant_id === tenantId && c.api_key_hash === hash) ?? null
+          );
         },
         async list(_tx, tenantId) {
           await tick();

@@ -1,8 +1,9 @@
 import { Injectable } from '@nestjs/common';
 import {
-  WEBHOOK_MAX_SKEW_SECONDS,
   type CredentialIssued,
   type CredentialSummary,
+  type IntegrationEnvironment,
+  type TenantIntegration,
 } from '@ex-mio/contracts';
 import { IdentityError } from '../errors';
 import type { Clock, CredentialRow, Repos, UnitOfWork } from '../model/ports';
@@ -14,7 +15,6 @@ import {
   expandUuid,
   hmacHex,
   randomToken,
-  safeEqual,
   sha256Hex,
 } from './crypto';
 
@@ -30,12 +30,11 @@ function tenantOfToken(token: string, prefix: string): string | undefined {
   return expandUuid(rest.slice(0, 32));
 }
 
-const webhookInvalid = () => new IdentityError('WEBHOOK_SIGNATURE_INVALID', 'invalid webhook signature');
-
 /**
  * Per-tenant, per-platform integration credentials: an api key (hashed at rest), an HMAC secret
- * (sealed with CREDENTIALS_KEK) and a key id. One lookup serves webhooks and launches, and it
- * honours the key status in both: revoked, or retiring past its grace, is refused.
+ * (sealed with CREDENTIALS_KEK), a key id and an environment (production or sandbox). Launches
+ * use the key status (revoked, or retiring past its grace, is refused); the same secrets are served
+ * to engagement for the casino-native webhook check (D-15 Q-1).
  */
 @Injectable()
 export class CredentialsService {
@@ -47,7 +46,11 @@ export class CredentialsService {
     private readonly kek: string,
   ) {}
 
-  private async create(tenantId: string, platform: string): Promise<{ row: CredentialRow; issued: CredentialIssued }> {
+  private async create(
+    tenantId: string,
+    platform: string,
+    environment: IntegrationEnvironment,
+  ): Promise<{ row: CredentialRow; issued: CredentialIssued }> {
     const hex = compactUuid(tenantId);
     const issued: CredentialIssued = {
       key_id: `${KEY_PREFIX}${hex}_${randomToken(9)}`,
@@ -58,6 +61,7 @@ export class CredentialsService {
       tenant_id: tenantId,
       key_id: issued.key_id,
       platform,
+      environment,
       api_key_hash: sha256Hex(issued.api_key),
       secret_enc: encryptSecret(issued.hmac_secret, this.kek),
       status: 'active',
@@ -68,8 +72,16 @@ export class CredentialsService {
   }
 
   /** Issue a key for a tenant and platform. The key and secret are shown here, once. */
-  async issue(tenantId: string, platform: string): Promise<CredentialIssued> {
-    const { row, issued } = await this.create(tenantId, platform);
+  async issue(
+    tenantId: string,
+    platform: string,
+    options: { environment?: IntegrationEnvironment } = {},
+  ): Promise<CredentialIssued> {
+    const { row, issued } = await this.create(
+      tenantId,
+      platform,
+      options.environment ?? 'production',
+    );
     await this.uow.run(tenantId, (tx) => this.repos.credentials.insert(tx, row));
     return issued;
   }
@@ -117,7 +129,7 @@ export class CredentialsService {
     return this.uow.run(tenantId, async (tx) => {
       const old = await this.repos.credentials.findByKeyId(tx, tenantId, keyId);
       if (!old) throw new IdentityError('NOT_FOUND', 'key not found');
-      const { row, issued } = await this.create(tenantId, old.platform);
+      const { row, issued } = await this.create(tenantId, old.platform, old.environment);
       await this.repos.credentials.insert(tx, row);
       await this.repos.credentials.update(tx, tenantId, keyId, {
         status: grace > 0 ? 'retiring' : 'revoked',
@@ -140,36 +152,61 @@ export class CredentialsService {
     return { row, secret: decryptSecret(row.secret_enc, this.kek) };
   }
 
-  /** Webhook check: the tenant (and platform) is the one of the key that signed, nothing else. */
-  async verifyWebhookDetailed(input: {
-    apiKey: string;
-    timestamp: number;
-    signature: string;
-    rawBody: string;
-  }): Promise<{ tenant_id: string; key_id: string; platform: string }> {
-    const tenantId = tenantOfToken(input.apiKey, API_PREFIX);
-    const row = tenantId
-      ? await this.uow.run(tenantId, (tx) =>
-          this.repos.credentials.findByApiKeyHash(tx, tenantId, sha256Hex(input.apiKey)),
-        )
-      : null;
-    // always compute a signature, so an unknown key costs the same as a wrong one
-    const secret = row ? decryptSecret(row.secret_enc, this.kek) : 'unknown-key-placeholder';
-    const expected = hmacHex(secret, `${input.timestamp}.${input.rawBody}`);
-    const sigOk = safeEqual(expected, String(input.signature ?? ''));
-    const skewOk = Math.abs(this.clock.now() - input.timestamp) <= WEBHOOK_MAX_SKEW_SECONDS;
-    const live = row ? this.statusOf(row, this.clock.now()) !== 'revoked' : false;
-    if (!row || !sigOk || !skewOk || !live) throw webhookInvalid();
-    return { tenant_id: row.tenant_id, key_id: row.key_id, platform: row.platform };
+  /** The environment a key was issued for; `undefined` for an unknown key. */
+  async environmentOfKey(keyId: string): Promise<IntegrationEnvironment | undefined> {
+    const tenantId = tenantOfToken(keyId, KEY_PREFIX);
+    if (!tenantId) return undefined;
+    const row = await this.uow.run(tenantId, (tx) =>
+      this.repos.credentials.findByKeyId(tx, tenantId, keyId),
+    );
+    return row?.environment;
   }
 
-  async verifyWebhook(input: {
-    apiKey: string;
-    timestamp: number;
-    signature: string;
-    rawBody: string;
-  }): Promise<{ tenant_id: string; key_id: string }> {
-    const { tenant_id, key_id } = await this.verifyWebhookDetailed(input);
-    return { tenant_id, key_id };
+  /**
+   * X-7: what engagement needs for a casino-native webhook check and the reward callback. The
+   * platform and environment are those of the newest live credential; the secrets are those of the
+   * live credentials for that platform and environment, newest first (the active key, then at most
+   * one retiring key still inside its grace). The tenant is the argument, never a caller input.
+   */
+  async integration(tenantId: string): Promise<TenantIntegration> {
+    const tenant = await this.uow.run(null, (tx) => this.repos.tenants.findById(tx, tenantId));
+    if (!tenant || tenant.type !== 'operator')
+      throw new IdentityError('NOT_FOUND', 'no integration');
+    const rows = await this.uow.run(tenantId, (tx) => this.repos.credentials.list(tx, tenantId));
+    const now = this.clock.now();
+    // active before retiring, newest first (list order is oldest first, so reverse it)
+    const live = rows
+      .filter((r) => this.statusOf(r, now) !== 'revoked')
+      .reverse()
+      .sort((a, b) => Number(a.status === 'retiring') - Number(b.status === 'retiring'));
+    const head = live[0];
+    if (!head) throw new IdentityError('NOT_FOUND', 'no integration');
+    const secrets = live
+      .filter((r) => r.platform === head.platform && r.environment === head.environment)
+      .slice(0, 2)
+      .map((r) => decryptSecret(r.secret_enc, this.kek));
+    return {
+      tenant_id: tenantId,
+      platform: head.platform,
+      status: tenant.status,
+      environment: head.environment,
+      webhook_secrets: secrets,
+      // per-tenant, derived from the KEK so it is stable, secret and needs no extra column (D-12)
+      player_hash_key: hmacHex(this.kek, `player-hash-key:${tenantId}`),
+    };
+  }
+
+  /** The tenant-less internal lookup by slug: `undefined` when the slug or its integration is unknown. */
+  async integrationBySlug(slug: string): Promise<TenantIntegration | undefined> {
+    const tenant = await this.uow.run(null, (tx) =>
+      this.repos.tenants.findBySlug(tx, String(slug ?? '').toLowerCase()),
+    );
+    if (!tenant || tenant.type !== 'operator') return undefined;
+    try {
+      return await this.integration(tenant.id);
+    } catch (err) {
+      if (err instanceof IdentityError && err.code === 'NOT_FOUND') return undefined;
+      throw err;
+    }
   }
 }

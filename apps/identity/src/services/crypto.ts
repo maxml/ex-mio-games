@@ -25,7 +25,8 @@ export function decryptSecret(sealed: string, kek: string): string {
   return Buffer.concat([decipher.update(data), decipher.final()]).toString('utf8');
 }
 
-export const sha256Hex = (value: string): string => createHash('sha256').update(value).digest('hex');
+export const sha256Hex = (value: string): string =>
+  createHash('sha256').update(value).digest('hex');
 
 export const randomToken = (bytes = 24): string => randomBytes(bytes).toString('base64url');
 

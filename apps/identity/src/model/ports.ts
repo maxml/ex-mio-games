@@ -1,4 +1,10 @@
-import type { EventEnvelope, Role, TenantStatus, TenantType } from '@ex-mio/contracts';
+import type {
+  EventEnvelope,
+  IntegrationEnvironment,
+  Role,
+  TenantStatus,
+  TenantType,
+} from '@ex-mio/contracts';
 
 /**
  * Data-access ports. Services depend on these, never on a driver. Two implementations exist: the
@@ -48,6 +54,8 @@ export interface CredentialRow {
   tenant_id: string;
   key_id: string;
   platform: string;
+  /** X-3: a credential is for exactly one environment; it never changes after issue. */
+  environment: IntegrationEnvironment;
   api_key_hash: string;
   secret_enc: string;
   status: 'active' | 'retiring' | 'revoked';
@@ -115,6 +123,8 @@ export interface PlayersRepo {
   ): Promise<PlayerLinkRow | null>;
   findByUser(tx: Tx, tenantId: string, userId: string): Promise<PlayerLinkRow | null>;
   insert(tx: Tx, tenantId: string, row: PlayerLinkRow): Promise<void>;
+  /** Erasure (MIO-107): delete the mapping row. True when a row existed. */
+  delete(tx: Tx, tenantId: string, userId: string): Promise<boolean>;
   list(tx: Tx, tenantId: string): Promise<PlayerLinkRow[]>;
 }
 

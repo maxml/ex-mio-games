@@ -25,7 +25,9 @@ export class IdentityCore1732300000000 implements MigrationInterface {
         ADD COLUMN "domains" text[] NOT NULL DEFAULT '{}',
         ADD COLUMN "provider_tenant_id" text`);
     // Exactly one platform tenant, enforced by the schema.
-    await q.query(`CREATE UNIQUE INDEX "tenants_one_platform" ON "tenants" ("type") WHERE "type" = 'platform'`);
+    await q.query(
+      `CREATE UNIQUE INDEX "tenants_one_platform" ON "tenants" ("type") WHERE "type" = 'platform'`,
+    );
     await q.query(`CREATE INDEX "tenants_domains" ON "tenants" USING gin ("domains")`);
     // The platform tenant has a fixed id: the token verifier binds platform_admin to it.
     await q.query(
@@ -111,7 +113,9 @@ export class IdentityCore1732300000000 implements MigrationInterface {
         "caller_service" text,
         PRIMARY KEY ("tenant_id", "id")
       )`);
-    await q.query(`CREATE INDEX "audit_log_tenant_time" ON "audit_log" ("tenant_id", "occurred_at", "id")`);
+    await q.query(
+      `CREATE INDEX "audit_log_tenant_time" ON "audit_log" ("tenant_id", "occurred_at", "id")`,
+    );
     // Platform table (no tenant_id): the signing keys, private part sealed with CREDENTIALS_KEK.
     await q.query(`
       CREATE TABLE "signing_keys" (
