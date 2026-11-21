@@ -9,6 +9,7 @@ Index only: where to go when you need to know something.
 | Which boundaries and contracts apply                  | [`CONTRACTS.md`](CONTRACTS.md)                               |
 | Why a decision was made (the "why")                   | [`adrs/`](adrs)                                              |
 | How to write a new decision record                    | [`adrs/0000-template.md`](adrs/0000-template.md)             |
+| Identity, tokens, tenants, roles, launch admission    | [`specs/identity.md`](specs/identity.md)                     |
 | How to run the stack, the ports, the tests            | [`../README.md`](../README.md)                               |
 | Security rules and how to report a problem            | [`../SECURITY.md`](../SECURITY.md)                           |
 | Where an AI agent starts                              | [`../AGENTS.md`](../AGENTS.md)                               |
