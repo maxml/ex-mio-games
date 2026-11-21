@@ -292,6 +292,23 @@ describe('identity contracts (pinned vocabularies)', () => {
     expect(contracts.REALTIME_TICKET_TTL_SECONDS).toBe(60);
   });
 
+  // D-10: socket auth is a one-time ticket of at most 60 s. If `realtime` simply joins the shared
+  // `Audience` enum, a staff login or an acting session can ask for a 15-minute realtime token and
+  // skip the ticket. Green today (realtime is not an audience yet); it guards the D-22 change.
+  // Mutation: add 'realtime' to the enum that LoginRequest / StartActingRequest / LaunchRequest use.
+  it('D-22 no login, acting or launch request can ask for a realtime token (only the ticket route mints one)', () => {
+    expect(
+      LoginRequest.safeParse({ email: 'a@b.co', password: 'x', audience: 'realtime' }).success,
+    ).toBe(false);
+    expect(
+      StartActingRequest.safeParse({ tenant_id: U1, reason: 'ticket 42', audience: 'realtime' })
+        .success,
+    ).toBe(false);
+    expect(LaunchRequest.safeParse({ token: 'x'.repeat(30), audience: 'realtime' }).success).toBe(
+      false,
+    );
+  });
+
   it('the platform tenant id and the internal prefix are fixed', () => {
     expect(PLATFORM_TENANT_ID).toBe('00000000-0000-7000-8000-000000000001');
     expect(INTERNAL_PATH_PREFIX).toBe('/internal/v1/');
