@@ -182,8 +182,11 @@ export const AccessTokenClaims = z
     sub: Uuid,
     tid: Uuid,
     roles: z.array(Role).min(1),
-    /** One audience, or (a player session only, D-22) a non-empty array of known audiences. */
-    aud: z.union([Audience, z.array(Audience).min(1)]),
+    /**
+     * One audience, or (a player session only, D-22) a non-empty array drawn from the session
+     * audiences. D-23: `realtime` is never a member; only a ticket carries it, as a single string.
+     */
+    aud: z.union([Audience, z.array(z.enum(PLAYER_SESSION_AUDIENCES)).min(1)]),
     iat: z.number().int(),
     exp: z.number().int(),
     jti: z.string().min(8),
@@ -262,6 +265,8 @@ export const INTERNAL_ROUTES = {
   integrationBySlug: '/internal/v1/integrations/by-slug/:slug',
   /** `GET`, tenant in the path: the casino-side id linked to an internal player; 404 after erasure (X-8). */
   playerLink: '/internal/v1/tenants/:tenantId/players/:userId/link',
+  /** `POST`, tenant-less (`@InternalTenantless`: the tenant is the ticket's own `tid`): redeem a realtime ticket once (D-23). */
+  realtimeTicketRedeem: '/internal/v1/realtime-tickets/redeem',
 } as const;
 
 /**
@@ -301,6 +306,7 @@ export const SERVICE_CALL_POLICY: ServiceCallPolicy = {
       `GET ${INTERNAL_ROUTES.integration}`,
       `GET ${INTERNAL_ROUTES.integrationBySlug}`,
       `GET ${INTERNAL_ROUTES.playerLink}`,
+      `POST ${INTERNAL_ROUTES.realtimeTicketRedeem}`,
     ],
     payments: [
       PAYMENTS_INTERNAL_ROUTES.reserve,
@@ -344,6 +350,15 @@ export const TenantIntegration = z
     status: TenantStatus,
     environment: IntegrationEnvironment,
     webhook_secrets: z.array(z.string().min(1)).min(1).max(2),
+    /**
+     * F5: the tenant's live SANDBOX credentials, served beside the production set that
+     * `webhook_secrets` holds (`environment: 'production'`). Issuing a sandbox credential never cuts
+     * off production webhooks, and a webhook that verifies with one of these is a sandbox deposit.
+     */
+    sandbox: z
+      .object({ webhook_secrets: z.array(z.string().min(1)).min(1).max(2) })
+      .strict()
+      .optional(),
     /** Per-tenant HMAC key for hashing the casino's external player id (D-12). */
     player_hash_key: z.string().min(16),
     /** The ingest epic's `CasinoRewardApiConfig` (prod and sandbox endpoints, issue deadline); defined once, there. */
@@ -461,6 +476,10 @@ export const RealtimeTicketResponse = z
   })
   .strict();
 export type RealtimeTicketResponse = z.infer<typeof RealtimeTicketResponse>;
+
+/** D-23: the body of the internal redeem route is the ticket alone (the tenant is the ticket's own `tid`). */
+export const RealtimeTicketRedeemRequest = z.object({ ticket: z.string().min(1) }).strict();
+export type RealtimeTicketRedeemRequest = z.infer<typeof RealtimeTicketRedeemRequest>;
 
 /** What `SessionsService.redeemRealtimeTicket` returns: the principal of a ticket, once (D-23). */
 export const RealtimeTicketRedeemResponse = z

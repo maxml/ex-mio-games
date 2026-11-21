@@ -8,6 +8,7 @@ import {
   LoginRequest,
   OperatorSignupRequest,
   PLATFORM_TENANT_ID,
+  RealtimeTicketRedeemRequest,
   RealtimeTicketRequest,
   RotateRequest,
   ServiceTokenRequest,
@@ -21,6 +22,7 @@ import {
   type LaunchResponse,
   type PlayerLinkResponse,
   type PlayerLookup,
+  type RealtimeTicketRedeemResponse,
   type RealtimeTicketResponse,
   type SignupResponse,
   type StaffMember,
@@ -254,7 +256,19 @@ export class InternalController {
     private readonly tenants: TenantsService,
     private readonly players: PlayersService,
     private readonly credentials: CredentialsService,
+    private readonly sessions: SessionsService,
   ) {}
+
+  /**
+   * D-23: the realtime gateway turns a one-time ticket into its principal. Tenant-less (the tenant
+   * is the ticket's own `tid`); the entry point allow-lists the calling service.
+   */
+  @InternalTenantless()
+  @Post('internal/v1/realtime-tickets/redeem')
+  @HttpCode(200)
+  redeemRealtimeTicket(@Body() body: unknown): Promise<RealtimeTicketRedeemResponse> {
+    return this.sessions.redeemRealtimeTicket(parseInput(RealtimeTicketRedeemRequest, body).ticket);
+  }
 
   @Get('internal/v1/tenants/:tenantId/status')
   status(@Param() params: unknown): Promise<TenantStatusResponse> {

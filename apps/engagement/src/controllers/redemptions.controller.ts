@@ -9,6 +9,7 @@ import {
   Query,
   Res,
   UseFilters,
+  UseGuards,
 } from '@nestjs/common';
 import { z } from 'zod';
 import {
@@ -23,7 +24,8 @@ import { parseInput } from '@ex-mio/service-kit';
 import { currentTenant } from '@ex-mio/tenancy';
 import { RedemptionsService } from '../services/redemptions.service';
 import { SagaError } from '../redemptions/saga-error';
-import { playerIdOf, readPrincipal, refuseActing, requireRole, type Principal } from './principal';
+import { ActingBanGuard } from './acting-ban.guard';
+import { playerIdOf, readPrincipal, requireRole, type Principal } from './principal';
 import { toRedemption } from './redemption.dto';
 import { StoreErrorFilter } from './store-error.filter';
 
@@ -108,7 +110,9 @@ export class RedemptionsController {
     return toRedemption(found, 'operator');
   }
 
+  // X-11: the acting ban is a guard (D-24), so it runs before the handler and is audited as refused.
   @Post('v1/operator/redemptions/:id/resolve')
+  @UseGuards(ActingBanGuard)
   @HttpCode(200)
   async resolve(
     @Headers() headers: Headers_,
@@ -116,8 +120,6 @@ export class RedemptionsController {
     @Body() body: unknown,
   ): Promise<Redemption> {
     const principal = readPrincipal(headers);
-    // X-11: the acting check comes first. Resolving moves coins (release or capture) one hop away.
-    refuseActing(principal);
     requireRole(principal, 'operator_admin');
     const { id } = parseInput(IdParam, params);
     const input = parseInput(ResolveReviewRequest, body);

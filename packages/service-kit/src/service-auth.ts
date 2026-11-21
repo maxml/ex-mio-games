@@ -124,6 +124,11 @@ export function currentAuth(): AuthContext {
   return ctx;
 }
 
+/** The auth context when there is one: for a read with a safe default (no context, no sandbox). */
+export function tryCurrentAuth(): AuthContext | undefined {
+  return authStorage.getStore();
+}
+
 /** For a guard that runs after the entry point: the context it established for this request. */
 export function authOf(request: object): AuthContext | undefined {
   return (request as Record<symbol, AuthContext | undefined>)[REQUEST_AUTH];
@@ -373,7 +378,7 @@ export class ServiceAuthGuard implements CanActivate {
         occurred_at: new Date(this.rt.now() * 1000).toISOString(),
       },
     });
-    await this.write(event, reply);
+    await this.write(event, req, reply);
   }
 
   // ---- service mode --------------------------------------------------------------------------
@@ -426,7 +431,7 @@ export class ServiceAuthGuard implements CanActivate {
         },
       });
       if (refused) await this.writeFinal(event);
-      else await this.write(event, reply);
+      else await this.write(event, req, reply);
     }
     if (refusal) throw refusal;
 
@@ -463,7 +468,7 @@ export class ServiceAuthGuard implements CanActivate {
    * `port.finalize` publishes it. The outbox default holds the intent in `audit_intents`, finalizes
    * it in one transaction and sweeps stale intents as `aborted` (D-21).
    */
-  private async write(event: EventEnvelope, reply: ReplyLike): Promise<void> {
+  private async write(event: EventEnvelope, req: FastifyLike, reply: ReplyLike): Promise<void> {
     const port = this.auditPort();
     try {
       await port(event);
@@ -476,7 +481,7 @@ export class ServiceAuthGuard implements CanActivate {
       done = true;
       const payload = event.payload as { decision: string; status: number };
       payload.status = reply.statusCode;
-      payload.decision = auditDecision(reply.statusCode);
+      payload.decision = auditDecision(req, reply.statusCode);
       void port.finalize?.(event).catch(logAuditFinalizeFailure);
     };
     // 'close' without a finished response means the client went away before the outcome was known
@@ -498,13 +503,18 @@ export class ServiceAuthGuard implements CanActivate {
   }
 }
 
+const HANDLER_STARTED = Symbol.for('ex-mio:handler-started');
+
 /**
  * D-24 / INV-STACK-8: the audit decision is the guards' authorization outcome, not the HTTP outcome.
- * The entry point let the call in; only a guard refusal (401/403) is `refused`. A handler's 404, 409
- * or 500 is still an `allowed` call and the event carries the real status.
+ * Every guard (this entry point and any later one, such as payments' coin guard or engagement's
+ * acting ban) runs before the interceptor that marks the handler as started. A request that ended
+ * in an error WITHOUT reaching the handler was refused by a guard; once the handler started, its
+ * own 403, 404, 409 or 500 is still an `allowed` call and the event carries the real status.
  */
-export function auditDecision(status: number): 'allowed' | 'refused' {
-  return status === 401 || status === 403 ? 'refused' : 'allowed';
+export function auditDecision(req: object, status: number): 'allowed' | 'refused' {
+  const handlerStarted = (req as Record<symbol, boolean | undefined>)[HANDLER_STARTED] === true;
+  return !handlerStarted && status >= 400 ? 'refused' : 'allowed';
 }
 
 function auditMethod(method: string): 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE' | undefined {
@@ -539,6 +549,8 @@ export class ServiceAuthInterceptor implements NestInterceptor {
   intercept(context: ExecutionContext, next: CallHandler): Observable<unknown> {
     if (context.getType() !== 'http') return next.handle();
     const req = context.switchToHttp().getRequest<object>();
+    // Interceptors run after every guard: reaching this point means no guard refused (D-24).
+    (req as Record<symbol, boolean>)[HANDLER_STARTED] = true;
     const auth = authOf(req);
     if (!auth) return next.handle();
     const tenant = (req as Record<symbol, TenantContext | undefined>)[

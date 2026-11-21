@@ -80,18 +80,18 @@ export abstract class SpinCreditsRepository {
    */
   abstract consume(
     tx: Tx,
-    input: { userId: string; creditId?: string },
+    input: { userId: string; sandbox: boolean; creditId?: string },
   ): Promise<SpinCredit | undefined>;
   /**
    * `GET /v1/me/spins`: the number of `available` credits of ONE player in the ambient tenant.
    *   SELECT count(*) FROM spin_credits WHERE tenant_id=$1 AND user_id=$2 AND status='available'
    * `user_id` is the principal, never input.
    */
-  abstract countAvailable(tx: Tx, input: { userId: string }): Promise<number>;
-  /** Used only to tell 404 (not this player's) from 409 (theirs, not available). */
+  abstract countAvailable(tx: Tx, input: { userId: string; sandbox: boolean }): Promise<number>;
+  /** Used only to tell 404 (not this player's, or the other environment's) from 409 (theirs, not available). */
   abstract findOwn(
     tx: Tx,
-    input: { userId: string; creditId: string },
+    input: { userId: string; sandbox: boolean; creditId: string },
   ): Promise<SpinCredit | undefined>;
 }
 

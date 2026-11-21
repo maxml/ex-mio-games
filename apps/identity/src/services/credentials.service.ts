@@ -169,9 +169,11 @@ export class CredentialsService {
 
   /**
    * X-7: what engagement needs for a casino-native webhook check and the reward callback. The
-   * platform and environment are those of the newest live credential; the secrets are those of the
-   * live credentials for that platform and environment, newest first (the active key, then at most
-   * one retiring key still inside its grace). The tenant is the argument, never a caller input.
+   * platform and environment are those of the newest live PRODUCTION credential (or of the newest
+   * live one when there is no production credential); `webhook_secrets` are the live credentials of
+   * that platform and environment, newest first (the active key, then at most one retiring key
+   * still inside its grace), and `sandbox.webhook_secrets` the live sandbox ones beside production
+   * (F5). The tenant is the argument, never a caller input.
    */
   async integration(tenantId: string): Promise<TenantIntegration> {
     const tenant = await this.uow.run(null, (tx) => this.repos.tenants.findById(tx, tenantId));
@@ -184,18 +186,24 @@ export class CredentialsService {
       .filter((r) => this.statusOf(r, now) !== 'revoked')
       .reverse()
       .sort((a, b) => Number(a.status === 'retiring') - Number(b.status === 'retiring'));
-    const head = live[0];
+    // F5: production is the primary set. A sandbox credential issued later never replaces it; it is
+    // served beside it as `sandbox.webhook_secrets`. A tenant with sandbox credentials only is a
+    // sandbox integration (environment `sandbox`, its secrets in `webhook_secrets`).
+    const head = live.find((r) => r.environment === 'production') ?? live[0];
     if (!head) throw new IdentityError('NOT_FOUND', 'no integration');
-    const secrets = live
-      .filter((r) => r.platform === head.platform && r.environment === head.environment)
-      .slice(0, 2)
-      .map((r) => decryptSecret(r.secret_enc, this.kek));
+    const secretsOf = (environment: IntegrationEnvironment): string[] =>
+      live
+        .filter((r) => r.platform === head.platform && r.environment === environment)
+        .slice(0, 2)
+        .map((r) => decryptSecret(r.secret_enc, this.kek));
+    const sandboxSecrets = head.environment === 'production' ? secretsOf('sandbox') : [];
     return {
       tenant_id: tenantId,
       platform: head.platform,
       status: tenant.status,
       environment: head.environment,
-      webhook_secrets: secrets,
+      webhook_secrets: secretsOf(head.environment),
+      ...(sandboxSecrets.length > 0 ? { sandbox: { webhook_secrets: sandboxSecrets } } : {}),
       // per-tenant, derived from the KEK so it is stable, secret and needs no extra column (D-12)
       player_hash_key: hmacHex(this.kek, `player-hash-key:${tenantId}`),
     };

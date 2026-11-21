@@ -14,7 +14,7 @@ import {
   type SpinConflictBody,
   type SpinResponse,
 } from '@ex-mio/contracts';
-import { Db } from '@ex-mio/service-kit';
+import { Db, tryCurrentAuth } from '@ex-mio/service-kit';
 import { currentTenant } from '@ex-mio/tenancy';
 import {
   SEEDS,
@@ -106,14 +106,21 @@ export class SpinService {
       return toResponse(existing);
     }
 
+    // Credits are per environment, like wallets (D-13): a sandbox token spends only sandbox credits.
+    const sandboxToken = input.sandbox === true;
     const credit = await this.credits.consume(tx, {
       userId,
+      sandbox: sandboxToken,
       ...(input.creditId !== undefined ? { creditId: input.creditId } : {}),
     });
     if (!credit) {
       if (input.creditId !== undefined) {
         // 404 for a credit that is not the player's; theirs but not available is `no_credit`.
-        const own = await this.credits.findOwn(tx, { userId, creditId: input.creditId });
+        const own = await this.credits.findOwn(tx, {
+          userId,
+          sandbox: sandboxToken,
+          creditId: input.creditId,
+        });
         if (!own) throw new NotFoundException('credit not found');
       }
       throw NO_CREDIT();
@@ -164,7 +171,11 @@ export class SpinService {
   /** `GET /v1/me/spins`: the caller's own count of available credits. */
   async availableSpins(): Promise<MySpinsResponse> {
     const { userId } = this.caller();
-    const available = await this.db.tenantTx((tx) => this.credits.countAvailable(tx, { userId }));
+    // Credits are per environment (D-13): the verified token's `sbx` claim picks which are counted.
+    const sandbox = tryCurrentAuth()?.sandbox === true;
+    const available = await this.db.tenantTx((tx) =>
+      this.credits.countAvailable(tx, { userId, sandbox }),
+    );
     return { available };
   }
 

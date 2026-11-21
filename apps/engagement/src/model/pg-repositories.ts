@@ -137,19 +137,20 @@ export class PgSpinCreditsRepository extends SpinCreditsRepository {
 
   async consume(
     tx: Tx,
-    input: { userId: string; creditId?: string },
+    input: { userId: string; sandbox: boolean; creditId?: string },
   ): Promise<SpinCredit | undefined> {
-    const params: unknown[] = [tenantId(), input.userId];
+    const params: unknown[] = [tenantId(), input.userId, input.sandbox];
     let byId = '';
     if (input.creditId !== undefined) {
       params.push(input.creditId);
-      byId = 'AND id = $3';
+      byId = 'AND id = $4';
     }
     const rows = rowsOf(
       await tx.query(
         `UPDATE spin_credits SET status = 'used', used_at = now()
           WHERE id = (SELECT id FROM spin_credits
-                       WHERE tenant_id = $1 AND user_id = $2 AND status = 'available' ${byId}
+                       WHERE tenant_id = $1 AND user_id = $2 AND sandbox = $3
+                         AND status = 'available' ${byId}
                        ORDER BY created_at, id
                        FOR UPDATE SKIP LOCKED LIMIT 1)
             AND status = 'available'
@@ -160,12 +161,12 @@ export class PgSpinCreditsRepository extends SpinCreditsRepository {
     return rows[0] ? toCredit(rows[0]) : undefined;
   }
 
-  async countAvailable(tx: Tx, input: { userId: string }): Promise<number> {
+  async countAvailable(tx: Tx, input: { userId: string; sandbox: boolean }): Promise<number> {
     const rows = rowsOf(
       await tx.query(
         `SELECT count(*)::int AS n FROM spin_credits
-          WHERE tenant_id = $1 AND user_id = $2 AND status = 'available'`,
-        [tenantId(), input.userId],
+          WHERE tenant_id = $1 AND user_id = $2 AND sandbox = $3 AND status = 'available'`,
+        [tenantId(), input.userId, input.sandbox],
       ),
     );
     return rows[0]!.n as number;
@@ -173,13 +174,13 @@ export class PgSpinCreditsRepository extends SpinCreditsRepository {
 
   async findOwn(
     tx: Tx,
-    input: { userId: string; creditId: string },
+    input: { userId: string; sandbox: boolean; creditId: string },
   ): Promise<SpinCredit | undefined> {
     const rows = rowsOf(
       await tx.query(
         `SELECT id, user_id, wheel_id, status, sandbox FROM spin_credits
-          WHERE tenant_id = $1 AND user_id = $2 AND id = $3`,
-        [tenantId(), input.userId, input.creditId],
+          WHERE tenant_id = $1 AND user_id = $2 AND sandbox = $3 AND id = $4`,
+        [tenantId(), input.userId, input.sandbox, input.creditId],
       ),
     );
     return rows[0] ? toCredit(rows[0]) : undefined;

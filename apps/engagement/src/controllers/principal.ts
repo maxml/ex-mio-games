@@ -1,4 +1,3 @@
-import { HttpException } from '@nestjs/common';
 import { Uuid } from '@ex-mio/contracts';
 import { currentAuth, parseInput } from '@ex-mio/service-kit';
 import { SagaError } from '../redemptions/saga-error';
@@ -38,19 +37,6 @@ export function requireRole(principal: Principal, ...roles: Role[]): void {
   if (!roles.some((r) => principal.roles.includes(r))) {
     throw new SagaError('forbidden', 'role not allowed');
   }
-}
-
-/**
- * D-5, D-15 Q-2 (a): an acting platform_admin session never moves coins, and resolving a redemption
- * moves coins one hop away (`redemptions.resolve` is in identity's `ACTING_DENIED_ACTIONS`). 403
- * `ACTING_FORBIDDEN` BEFORE the service is called; the entry point audits the refusal (D-11).
- */
-export function refuseActing(principal: Principal): void {
-  if (principal.acting)
-    throw new HttpException(
-      { code: 'ACTING_FORBIDDEN', message: 'an acting session cannot resolve a redemption' },
-      403,
-    );
 }
 
 /** A player id is a UUID: the payments service validates `player_id` as one. */

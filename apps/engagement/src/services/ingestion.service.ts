@@ -68,7 +68,7 @@ export class IngestionService {
     }
     const adapter = entry.create({ baseUrl: '', transport: noTransport });
 
-    const verdict = this.verify(adapter, integration, raw, headers);
+    const { verdict, sandbox: verifiedSandbox } = this.verify(adapter, integration, raw, headers);
     if (verdict !== 'valid') {
       const code: IngestErrorCode =
         verdict === 'stale'
@@ -98,7 +98,8 @@ export class IngestionService {
     const externalPlayerHmac = createHmac('sha256', integration.player_hash_key)
       .update(`${e.source}\n${e.external_player_id}`)
       .digest('hex');
-    const sandbox = integration.environment === 'sandbox';
+    // X-3 / F5: the environment is that of the KEY that verified the signature.
+    const sandbox = verifiedSandbox;
 
     let playerId: string;
     try {
@@ -154,19 +155,24 @@ export class IngestionService {
     integration: TenantIntegration,
     raw: string,
     headers: Headers,
-  ): SignatureVerdict {
+  ): { verdict: SignatureVerdict; sandbox: boolean } {
     const now = this.clock.now();
     let best: SignatureVerdict = 'invalid';
-    for (const secret of integration.webhook_secrets) {
-      // F6: an empty secret is no key (anyone can sign with it); an empty list verifies nothing.
-      if (secret === '') continue;
-      // F6: an empty secret is no key (anyone can sign with it); an empty list verifies nothing.
-      const verdict = adapter.verifySignature(raw, headers, secret, now);
-      if (verdict === 'valid') return 'valid';
-      if (verdict === 'stale') best = 'stale';
-      else if (verdict === 'missing' && best === 'invalid') best = 'missing';
+    const sets: Array<{ secrets: readonly string[]; sandbox: boolean }> = [
+      { secrets: integration.webhook_secrets, sandbox: integration.environment === 'sandbox' },
+      { secrets: integration.sandbox?.webhook_secrets ?? [], sandbox: true },
+    ];
+    for (const set of sets) {
+      for (const secret of set.secrets) {
+        // F6: an empty secret is no key (anyone can sign with it); an empty list verifies nothing.
+        if (secret === '') continue;
+        const verdict = adapter.verifySignature(raw, headers, secret, now);
+        if (verdict === 'valid') return { verdict: 'valid', sandbox: set.sandbox };
+        if (verdict === 'stale') best = 'stale';
+        else if (verdict === 'missing' && best === 'invalid') best = 'missing';
+      }
     }
-    return best;
+    return { verdict: best, sandbox: false };
   }
 
   private refuse(slug: string, code: IngestErrorCode): void {
