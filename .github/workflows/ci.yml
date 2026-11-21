@@ -26,6 +26,9 @@ jobs:
         with:
           fetch-depth: 0
 
+      # Hermetic, seconds: role prompts and agent wrappers (bash and python3 only).
+      - run: bash ci/check-prompts.sh
+
       - uses: nrwl/nx-set-shas@e602fada7ad5987b0f7b1905e7a99ea1c661514c # v5
 
       # The pnpm version comes from package.json "packageManager".
