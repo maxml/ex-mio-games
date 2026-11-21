@@ -1,14 +1,17 @@
 import { uuidv7 } from '@ex-mio/contracts';
+import { TestClock } from './testing/clock';
 import { MemoryStore } from './testing/memory-store';
 import { storeConformance } from './testing/store-conformance';
 
 // Keeps the in-memory fake honest: the same contract suite runs against the
 // Postgres store in redemption-store.pg.itest.ts. (This file is green at Stage A.)
 storeConformance('memory', async () => {
-  const store = new MemoryStore();
+  const clock = new TestClock();
+  const store = new MemoryStore(() => clock.now());
   const tenantId = uuidv7();
   return {
     store,
+    clock,
     tenantId,
     otherTenantId: uuidv7(),
     async addItem(o) {

@@ -19,10 +19,13 @@ import { StoreItemsService } from '../services/store-items.service';
 const TENANT = '0190a1b2-c3d4-4e5f-8a6b-7c8d9e0f1a2b';
 const ITEM = '0190a1b2-c3d4-7e5f-8a6b-7c8d9e0f1a2c';
 const RID = '0190a1b2-c3d4-7e5f-8a6b-7c8d9e0f1a2d';
+// Player ids are UUIDs: the payments service validates `player_id` as one.
+const P1 = '0190a1b2-c3d4-7e5f-8a6b-7c8d9e0f0001';
+const P2 = '0190a1b2-c3d4-7e5f-8a6b-7c8d9e0f0002';
 
 const as = (role: string, extra: Record<string, string> = {}) => ({
   'x-tenant-id': TENANT,
-  'x-principal-id': role === 'player' ? 'p1' : 'op-1',
+  'x-principal-id': role === 'player' ? P1 : 'op-1',
   'x-principal-role': role,
   ...extra,
 });
@@ -30,7 +33,7 @@ const as = (role: string, extra: Record<string, string> = {}) => ({
 const record = (over: Partial<RedemptionRecord> = {}): RedemptionRecord => ({
   id: RID,
   tenantId: TENANT,
-  playerId: 'p1',
+  playerId: P1,
   sandbox: false,
   itemId: ITEM,
   itemVersion: 1,
@@ -55,6 +58,7 @@ describe('store HTTP layer', () => {
   const redemptions = {
     redeem: jest.fn(),
     getOwn: jest.fn(),
+    getForOperator: jest.fn(),
     listForOperator: jest.fn(),
     resolveReview: jest.fn(),
   };
@@ -153,7 +157,7 @@ describe('store HTTP layer', () => {
     const res = await req('POST', '/v1/redemptions', { ...h, 'x-sandbox': '1' }, { item_id: ITEM });
     expect(res.statusCode).toBe(202);
     expect(redemptions.redeem).toHaveBeenCalledWith(
-      { tenantId: TENANT, playerId: 'p1', sandbox: true },
+      { tenantId: TENANT, playerId: P1, sandbox: true },
       'key-12345678',
       ITEM,
     );
@@ -195,17 +199,34 @@ describe('store HTTP layer', () => {
     expect(res.json().code).toBe(code);
   });
 
+  // D-8 / F9: the coin reserve is synchronous, so the player is told at once. Mutation: answer 202
+  // and park the reason on GET, map insufficient_funds to a 500, or leave it out of the error table.
+  it('I-API-8 insufficient funds -> the POST answers 409 insufficient_funds, with a message and no redemption body', async () => {
+    redemptions.redeem.mockRejectedValueOnce(new StoreRejection('insufficient_funds'));
+    const res = await req(
+      'POST',
+      '/v1/redemptions',
+      { ...as('player'), ...key },
+      { item_id: ITEM },
+    );
+    expect(res.statusCode).toBe(409);
+    const body = res.json();
+    expect(body.code).toBe('insufficient_funds');
+    expect(typeof body.message).toBe('string');
+    expect(body.id).toBeUndefined();
+  });
+
   // Mutation: look the redemption up by id alone (drop the player scope) -> B reads A's.
   it("I-OWN-1 player B cannot read player A's redemption: the lookup is scoped by the caller and answers 404", async () => {
     redemptions.getOwn.mockResolvedValueOnce(null);
     const res = await req('GET', `/v1/redemptions/${RID}`, {
       ...as('player'),
-      'x-principal-id': 'p2',
+      'x-principal-id': P2,
     });
     expect(res.statusCode).toBe(404);
     expect(res.json().code).toBe('redemption_not_found');
     expect(redemptions.getOwn).toHaveBeenCalledWith(
-      { tenantId: TENANT, playerId: 'p2', sandbox: false },
+      { tenantId: TENANT, playerId: P2, sandbox: false },
       RID,
     );
     expect((await req('GET', '/v1/redemptions/not-a-uuid', as('player'))).statusCode).toBe(400);
@@ -239,6 +260,38 @@ describe('store HTTP layer', () => {
     }
   });
 
+  // F9: the reader test. A mapper that hides every reason from players would pass I-VIEW-1/2.
+  // Mutation: null the failure_reason for every state in the player view.
+  it('I-VIEW-3 the player sees why a redemption failed for funds: failure_reason insufficient_funds on GET', async () => {
+    redemptions.getOwn.mockResolvedValueOnce(
+      record({ state: 'REJECTED_FUNDS', failureReason: 'insufficient_funds' }),
+    );
+    const body = (await req('GET', `/v1/redemptions/${RID}`, as('player'))).json();
+    expect(body.status).toBe('failed_refunded');
+    expect(body.failure_reason).toBe('insufficient_funds');
+  });
+
+  // F13: MIO-067 "operator: own tenant". Mutation: look it up by id alone, or open it to players.
+  it('I-OPS-3 operator reads one redemption of ITS tenant, with the reason and history; players are refused; unknown id is 404', async () => {
+    const r = record({ state: 'NEEDS_REVIEW', failureReason: 'attempts_exhausted' });
+    redemptions.getForOperator.mockResolvedValueOnce(r);
+    const res = await req('GET', `/v1/operator/redemptions/${RID}`, as('analyst'));
+    expect(res.statusCode).toBe(200);
+    expect(res.json().failure_reason).toBe('attempts_exhausted');
+    expect(res.json().history).toHaveLength(1);
+    expect(redemptions.getForOperator).toHaveBeenCalledWith(TENANT, RID);
+    expect((await req('GET', `/v1/operator/redemptions/${RID}`, as('player'))).statusCode).toBe(
+      403,
+    );
+    redemptions.getForOperator.mockResolvedValueOnce(null);
+    const missing = await req('GET', `/v1/operator/redemptions/${RID}`, as('admin'));
+    expect(missing.statusCode).toBe(404);
+    expect(missing.json().code).toBe('redemption_not_found');
+    expect((await req('GET', '/v1/operator/redemptions/not-a-uuid', as('admin'))).statusCode).toBe(
+      400,
+    );
+  });
+
   it('I-OPS-1 operator list: players are refused, an unknown status filter is 400', async () => {
     expect((await req('GET', '/v1/operator/redemptions', as('player'))).statusCode).toBe(403);
     expect(
@@ -261,5 +314,21 @@ describe('store HTTP layer', () => {
       id: 'op-1',
       role: 'admin',
     });
+  });
+
+  // D-2 gate: the saga refuses an unbacked not_issued; the API must say so, not answer 500.
+  // Mutation: leave `release_not_allowed` or `illegal_transition` out of the controller's error table.
+  it.each([
+    ['release_not_allowed', 409],
+    ['illegal_transition', 409],
+    ['forbidden', 403],
+  ] as const)('I-OPS-4 a saga refusal %s is HTTP %i with its code', async (code, status) => {
+    redemptions.resolveReview.mockRejectedValueOnce(Object.assign(new Error(code), { code }));
+    const res = await req('POST', `/v1/operator/redemptions/${RID}/resolve`, as('admin'), {
+      outcome: 'not_issued',
+      reason: 'casino says no',
+    });
+    expect(res.statusCode).toBe(status);
+    expect(res.json().code).toBe(code);
   });
 });

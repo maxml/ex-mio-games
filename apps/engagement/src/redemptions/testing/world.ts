@@ -1,238 +1,314 @@
-import {
-  createEvent,
-  parseEvent,
-  type EventEnvelope,
-  type IssueRewardRequest,
-  type IssueRewardResult,
-  type RewardAdapter,
-  type RewardStatusResult,
+import type {
+  CasinoRewardPort,
+  EventEnvelope,
+  IssueResult,
+  RedemptionState,
+  RewardRequest,
+  RewardStatus,
 } from '@ex-mio/contracts';
-import type { Clock, CrashBoundary, CrashPoints } from '../ports';
+import type {
+  ApplyResult,
+  CoinsCall,
+  CoinsPort,
+  CoinsReply,
+  RedemptionRecord,
+  RedemptionSaga,
+  RedemptionStore,
+  SagaDeps,
+  Scope,
+  StateChange,
+} from '../ports';
+import { TestClock } from './clock';
 import { MemoryStore } from './memory-store';
 
-/** A simulated process death. The world catches it and "restarts" the saga. */
+export { TestClock };
+
+/** A simulated process death. The world decides when it happens; the saga cannot place it. */
 export class Crash extends Error {
   constructor(readonly where: string) {
     super(`crash at ${where}`);
   }
 }
 
-// ---- fake casino ---------------------------------------------------------------------
+// ---- fake casino (the shared port of casino-adapter.ts) ---------------------------------------------
 
 export type CasinoBehaviour =
-  | 'ok'
+  | 'ok' // issued at once
   | 'reject' // definitive rejection, nothing issued
-  | 'timeout_effect' // reward issued, reply lost -> outcome unknown
-  | 'timeout_noeffect' // nothing issued, outcome unknown
-  | 'error500' // nothing issued, outcome unknown
-  | 'unknown_code'; // the adapter met a rejection code it does not know: unknown
+  | 'timeout_effect' // reward issued, reply lost -> unknown
+  | 'timeout_noeffect' // nothing issued -> unknown
+  | 'error500' // nothing issued -> unknown
+  | 'unknown_code' // a rejection code the adapter does not know: unknown
+  | 'pending_then_issued' // casino B: ticket now, `settle(key, 'issued')` later
+  | 'pending_then_rejected' // casino B: ticket now, `settle(key, 'rejected')` later
+  | 'pending_forever' // casino B: the ticket never settles
+  | 'drop_reply'; // casino B: ticket created, the 202 reply was lost -> unknown
 
-export class FakeCasino implements RewardAdapter {
-  readonly issueCalls: IssueRewardRequest[] = [];
-  readonly rewards = new Map<string, string>(); // key -> reference
-  readonly rejected = new Set<string>();
-  plan: CasinoBehaviour[] = [];
-  sticky: CasinoBehaviour = 'ok';
-  statusDown = false;
-  private n = 0;
-
-  async issueReward(req: IssueRewardRequest): Promise<IssueRewardResult> {
-    this.issueCalls.push(structuredClone(req));
-    const b = this.plan.shift() ?? this.sticky;
-    const issue = (): string => {
-      const have = this.rewards.get(req.idempotencyKey);
-      if (have) return have;
-      const ref = `ref-${++this.n}`;
-      this.rewards.set(req.idempotencyKey, ref);
-      return ref;
-    };
-    switch (b) {
-      case 'ok':
-        return { outcome: 'issued', reference: issue() };
-      case 'reject':
-        this.rejected.add(req.idempotencyKey);
-        return { outcome: 'rejected', code: 'player_not_eligible' };
-      case 'timeout_effect':
-        issue();
-        return { outcome: 'unknown', detail: 'timeout' };
-      case 'timeout_noeffect':
-        return { outcome: 'unknown', detail: 'timeout' };
-      case 'error500':
-        return { outcome: 'unknown', detail: 'http 500' };
-      case 'unknown_code':
-        return { outcome: 'unknown', detail: 'unlisted rejection code' };
-    }
-  }
-
-  async getRewardStatus(key: string): Promise<RewardStatusResult> {
-    if (this.statusDown) return { outcome: 'unknown', detail: 'status endpoint down' };
-    const ref = this.rewards.get(key);
-    if (ref) return { outcome: 'issued', reference: ref };
-    if (this.rejected.has(key)) return { outcome: 'rejected', code: 'player_not_eligible' };
-    return { outcome: 'not_found' };
-  }
-
-  get rewardCount(): number {
-    return this.rewards.size;
-  }
-}
-
-// ---- fake payments (hold table of MIO-066) -------------------------------------------
-
-type HoldState = 'HELD' | 'CAPTURED' | 'RELEASED' | 'REFUNDED';
-
-export class FakePayments {
-  readonly balances = new Map<string, { available: number; held: number; captured: number }>();
-  readonly holds = new Map<string, { state: HoldState; amount: number; player: string }>();
-  readonly inbox = new Set<string>();
-  readonly outbox: { envelope: EventEnvelope; consumed: boolean }[] = [];
-  releases = 0;
-  refunds = 0;
-  captures = 0;
-  down = false;
-
-  credit(player: string, amount: number): void {
-    this.bal(player).available += amount;
-  }
-
-  bal(player: string): { available: number; held: number; captured: number } {
-    let b = this.balances.get(player);
-    if (!b) this.balances.set(player, (b = { available: 0, held: 0, captured: 0 }));
-    return b;
-  }
-
-  /** available + held + captured: the quantity that must stay equal to what was credited. */
-  total(player: string): number {
-    const b = this.bal(player);
-    return b.available + b.held + b.captured;
-  }
-
-  private emit(cmd: EventEnvelope, type: string, extra: Record<string, unknown> = {}): void {
-    const p = cmd.payload as { redemption_id: string; player_id: string; sandbox: boolean };
-    this.outbox.push({
-      consumed: false,
-      envelope: createEvent({
-        type: type as never,
-        tenantId: cmd.tenant_id,
-        causationId: cmd.event_id,
-        payload: {
-          redemption_id: p.redemption_id,
-          player_id: p.player_id,
-          sandbox: p.sandbox,
-          ...extra,
-        } as never,
-      }),
-    });
-  }
-
-  /** One command, one transaction: inbox dedupe by event id, effect idempotent by operation id. */
-  process(cmd: EventEnvelope): void {
-    if (this.inbox.has(cmd.event_id)) return;
-    this.inbox.add(cmd.event_id);
-    const p = cmd.payload as { operation_id: string; redemption_id: string; player_id: string };
-    const id = p.redemption_id;
-    const hold = this.holds.get(id);
-    const b = this.bal(p.player_id);
-    const reject = (command: string, reason: string) =>
-      this.emit(cmd, 'payments.hold.command_rejected', { command, reason });
-    switch (cmd.type) {
-      case 'engagement.hold.place': {
-        const amount = (cmd.payload as { amount: number }).amount;
-        if (hold) {
-          this.emit(cmd, 'payments.hold.placed', { amount: hold.amount });
-        } else if (b.available >= amount) {
-          b.available -= amount;
-          b.held += amount;
-          this.holds.set(id, { state: 'HELD', amount, player: p.player_id });
-          this.emit(cmd, 'payments.hold.placed', { amount });
-        } else {
-          this.emit(cmd, 'payments.hold.rejected', { reason: 'insufficient_funds' });
-        }
-        return;
-      }
-      case 'engagement.hold.capture':
-        if (!hold) return reject('capture', 'hold_not_found');
-        if (hold.state === 'RELEASED') return reject('capture', 'hold_already_released');
-        if (hold.state === 'HELD') {
-          b.held -= hold.amount;
-          b.captured += hold.amount;
-          hold.state = 'CAPTURED';
-          this.captures += 1;
-        }
-        return this.emit(cmd, 'payments.hold.captured');
-      case 'engagement.hold.release':
-        if (!hold) return reject('release', 'hold_not_found');
-        if (hold.state === 'CAPTURED' || hold.state === 'REFUNDED')
-          return reject('release', 'hold_already_captured');
-        if (hold.state === 'HELD') {
-          b.held -= hold.amount;
-          b.available += hold.amount;
-          hold.state = 'RELEASED';
-          this.releases += 1;
-        }
-        return this.emit(cmd, 'payments.hold.released');
-      case 'engagement.hold.refund':
-        if (!hold || hold.state === 'HELD' || hold.state === 'RELEASED')
-          return reject('refund', 'hold_not_captured');
-        if (hold.state === 'CAPTURED') {
-          b.captured -= hold.amount;
-          b.available += hold.amount;
-          hold.state = 'REFUNDED';
-          this.refunds += 1;
-        }
-        return this.emit(cmd, 'payments.hold.refunded');
-    }
-  }
-}
-
-// ---- the world -------------------------------------------------------------------------
-
-export class TestClock implements Clock {
-  constructor(public t = new Date('2026-11-22T10:00:00.000Z')) {}
-  now(): Date {
-    return new Date(this.t);
-  }
-  advance(ms: number): void {
-    this.t = new Date(this.t.getTime() + ms);
-  }
-}
-
-export interface SagaLike {
-  handle(event: EventEnvelope): Promise<void>;
-  sweep(now: Date): Promise<number>;
-}
-
-export interface SagaFactory<S extends SagaLike> {
-  (deps: {
-    store: MemoryStore;
-    adapters: { production: RewardAdapter; sandbox: RewardAdapter };
-    clock: Clock;
-    random: () => number;
-    crash: CrashPoints;
-  }): S;
+interface Ticket {
+  ref: string;
+  status: 'pending' | 'issued' | 'rejected';
+  request: RewardRequest;
 }
 
 /**
- * Everything around the saga: store, payments, two casinos, a relay that
- * delivers outbox commands to payments and payment events back to the saga
- * (at least once), and a way to kill the process at a named point.
- *
- * Kill points: the two saga boundaries ('after_issuing_committed',
- * 'after_casino_effect') and relay boundaries 'cmd:<verb>' (before the
- * command is delivered) and 'evt:<verb>' (before the event is consumed).
+ * Behaves like the casino side of the port. It does NOT dedupe by key unless asked: a double
+ * `issueReward` is a double `effect`, so "one reward" assertions count `effects`, never map sizes.
+ * `lookup: 'replay'` is casino B: no lookup by key; the casino only answers when the frozen request
+ * is passed again, and a different request for a known key is `unknown`.
  */
-export class World<S extends SagaLike> {
+export class FakeCasino implements CasinoRewardPort {
+  readonly issueCalls: { key: string; request: RewardRequest }[] = [];
+  readonly statusCalls: { key: string; request: RewardRequest }[] = [];
+  readonly tickets = new Map<string, Ticket>();
+  readonly rejectedKeys = new Set<string>();
+  /** Issuances that really happened. */
+  effects = 0;
+  plan: CasinoBehaviour[] = [];
+  sticky: CasinoBehaviour = 'ok';
+  /** The status endpoint itself times out (answers `unknown`). */
+  statusTimeout = false;
+  dedupe = false;
+  lookup: 'by_key' | 'replay' = 'by_key';
+  private n = 0;
+
+  private grant(key: string, request: RewardRequest): Ticket {
+    const have = this.tickets.get(key);
+    if (this.dedupe && have?.status === 'issued') return have;
+    const t: Ticket = { ref: `ref-${++this.n}`, status: 'issued', request };
+    this.tickets.set(key, t);
+    this.effects += 1;
+    return t;
+  }
+
+  private open(key: string, request: RewardRequest): Ticket {
+    const have = this.tickets.get(key);
+    if (have) return have;
+    const t: Ticket = { ref: `ticket-${++this.n}`, status: 'pending', request };
+    this.tickets.set(key, t);
+    return t;
+  }
+
+  /** The casino finishes a pending ticket (test hook). */
+  settle(key: string, outcome: 'issued' | 'rejected'): void {
+    const t = this.tickets.get(key);
+    if (!t || t.status !== 'pending') throw new Error(`no pending ticket for ${key}`);
+    t.status = outcome;
+    if (outcome === 'issued') this.effects += 1;
+  }
+
+  async issueReward(request: RewardRequest, key: string): Promise<IssueResult> {
+    this.issueCalls.push({ key, request: structuredClone(request) });
+    const b = this.plan.shift() ?? this.sticky;
+    switch (b) {
+      case 'ok':
+        return { kind: 'issued', external_ref: this.grant(key, request).ref };
+      case 'reject':
+        this.rejectedKeys.add(key);
+        return { kind: 'rejected', reason: 'player_not_eligible' };
+      case 'timeout_effect':
+        this.grant(key, request);
+        return { kind: 'unknown' };
+      case 'timeout_noeffect':
+      case 'error500':
+      case 'unknown_code':
+        return { kind: 'unknown' };
+      case 'pending_then_issued':
+      case 'pending_then_rejected':
+      case 'pending_forever':
+        return { kind: 'pending', external_ref: this.open(key, request).ref };
+      case 'drop_reply':
+        this.open(key, request);
+        return { kind: 'unknown' };
+    }
+  }
+
+  async getRewardStatus(key: string, request: RewardRequest): Promise<RewardStatus> {
+    this.statusCalls.push({ key, request: structuredClone(request) });
+    if (this.statusTimeout) return { kind: 'unknown' };
+    const t = this.tickets.get(key);
+    if (this.lookup === 'replay' && t && JSON.stringify(t.request) !== JSON.stringify(request))
+      return { kind: 'unknown' };
+    if (t?.status === 'issued') return { kind: 'issued', external_ref: t.ref };
+    if (t?.status === 'pending') return { kind: 'pending', external_ref: t.ref };
+    if (t?.status === 'rejected' || this.rejectedKeys.has(key))
+      return { kind: 'rejected', reason: 'player_not_eligible' };
+    return { kind: 'not_found' };
+  }
+}
+
+// ---- fake payments: the HTTP table of the payments service (decisions D-1, D-9) ----------------------
+
+type ReserveState = 'reserved' | 'captured' | 'released' | 'refunded';
+type Verb = 'reserve' | 'capture' | 'release' | 'refund';
+
+/** The transport failed: the caller cannot tell whether the call had an effect. */
+export class PaymentsDown extends Error {
+  constructor() {
+    super('payments unreachable');
+  }
+}
+
+/**
+ * Answers like `POST /internal/v1/coins/reserve|capture|release|refund`: 409 insufficient_funds,
+ * 409 invalid_reserve_transition, 404 reserve_not_found, 409 operation_conflict. Capture, release
+ * and refund are idempotent BY THE STATE of the reserve, whatever key they come with. Wallets are
+ * keyed by (player, sandbox): a sandbox order never touches production coins.
+ */
+export class FakePayments implements CoinsPort {
+  readonly wallets = new Map<string, { available: number; held: number; captured: number }>();
+  readonly reserves = new Map<
+    string,
+    { state: ReserveState; amount: number; wallet: string; playerId: string }
+  >();
+  /** Every call that reached the service, with the key it carried. */
+  readonly calls: { verb: Verb; key: string; reserveId: string; sandbox: boolean }[] = [];
+  /** Calls that changed something. */
+  readonly effects: Record<Verb, number> = { reserve: 0, capture: 0, release: 0, refund: 0 };
+  down = false;
+
+  private wallet(player: string, sandbox: boolean) {
+    const k = `${player}|${sandbox}`;
+    let w = this.wallets.get(k);
+    if (!w) this.wallets.set(k, (w = { available: 0, held: 0, captured: 0 }));
+    return w;
+  }
+
+  credit(player: string, amount: number, sandbox = false): void {
+    this.wallet(player, sandbox).available += amount;
+  }
+
+  bal(player: string, sandbox = false) {
+    return this.wallet(player, sandbox);
+  }
+
+  /** available + held + captured: what must stay equal to what was credited. */
+  total(player: string, sandbox = false): number {
+    const b = this.bal(player, sandbox);
+    return b.available + b.held + b.captured;
+  }
+
+  holdState(reserveId: string): ReserveState | undefined {
+    return this.reserves.get(reserveId)?.state;
+  }
+
+  callsOf(verb: Verb): { verb: Verb; key: string; reserveId: string; sandbox: boolean }[] {
+    return this.calls.filter((c) => c.verb === verb);
+  }
+
+  private enter(verb: Verb, call: CoinsCall, key: string): void {
+    if (this.down) throw new PaymentsDown();
+    this.calls.push({ verb, key, reserveId: call.reserveId, sandbox: call.sandbox });
+  }
+
+  async reserve(call: CoinsCall & { amount: number }, key: string): Promise<CoinsReply> {
+    this.enter('reserve', call, key);
+    const have = this.reserves.get(call.reserveId);
+    if (have) {
+      const same = have.amount === call.amount && have.playerId === call.playerId;
+      return same ? { ok: true, amount: have.amount } : { ok: false, code: 'operation_conflict' };
+    }
+    const w = this.wallet(call.playerId, call.sandbox);
+    if (w.available < call.amount) return { ok: false, code: 'insufficient_funds' };
+    w.available -= call.amount;
+    w.held += call.amount;
+    this.reserves.set(call.reserveId, {
+      state: 'reserved',
+      amount: call.amount,
+      wallet: `${call.playerId}|${call.sandbox}`,
+      playerId: call.playerId,
+    });
+    this.effects.reserve += 1;
+    return { ok: true, amount: call.amount };
+  }
+
+  private move(
+    verb: Exclude<Verb, 'reserve'>,
+    from: ReserveState,
+    to: ReserveState,
+    call: CoinsCall,
+    key: string,
+  ): CoinsReply {
+    this.enter(verb, call, key);
+    const r = this.reserves.get(call.reserveId);
+    if (!r) return { ok: false, code: 'reserve_not_found' };
+    if (r.state === to) return { ok: true, amount: r.amount }; // stored result, any key
+    if (r.state !== from) return { ok: false, code: 'invalid_reserve_transition' };
+    const w = this.wallets.get(r.wallet)!;
+    if (verb === 'capture') {
+      w.held -= r.amount;
+      w.captured += r.amount;
+    } else if (verb === 'release') {
+      w.held -= r.amount;
+      w.available += r.amount;
+    } else {
+      w.captured -= r.amount;
+      w.available += r.amount;
+    }
+    r.state = to;
+    this.effects[verb] += 1;
+    return { ok: true, amount: r.amount };
+  }
+
+  async capture(call: CoinsCall, key: string): Promise<CoinsReply> {
+    return this.move('capture', 'reserved', 'captured', call, key);
+  }
+  async release(call: CoinsCall, key: string): Promise<CoinsReply> {
+    return this.move('release', 'reserved', 'released', call, key);
+  }
+  async refund(call: CoinsCall, key: string): Promise<CoinsReply> {
+    return this.move('refund', 'captured', 'refunded', call, key);
+  }
+}
+
+// ---- the world -------------------------------------------------------------------------------------
+
+interface Life {
+  dead: boolean;
+}
+
+export interface CasinoCallAudit {
+  key: string;
+  /** The row at the moment the casino was called, read from the store, not reported by the saga. */
+  state: RedemptionState;
+  attempts: number;
+  replayed: boolean;
+}
+
+export interface SagaFactory<S extends RedemptionSaga> {
+  (deps: SagaDeps): S;
+}
+
+/**
+ * Everything around the saga: store, payments, two casinos, a clock, and a way to kill the
+ * process at a named point. The kill points are placed HERE, on the ports the saga calls, so the
+ * saga cannot choose where it can be killed. A kill marks the process dead: every later call the
+ * dead saga makes on any port throws `Crash`, so swallowing the first error cannot make a dead
+ * process write anything. `restart()` builds a fresh saga over the same durable state.
+ *
+ * Kill points:
+ *   after_place                      the order committed, nothing else happened
+ *   after_commit:<STATE>             the store committed a change INTO <STATE>
+ *   casino:after_effect              the casino issued, the reply never arrived
+ *   payments:before:<verb>           the request was never sent
+ *   payments:after_effect:<verb>     payments applied it, the reply never arrived
+ *   (<verb> = reserve | capture | release | refund)
+ *
+ * Audit: every `issueReward` records the row as the store holds it at that instant. Tests call
+ * `auditViolations()`: the adapter may only be called while the row is ISSUING with its attempt
+ * already counted (the durable-before-call invariant).
+ */
+export class World<S extends RedemptionSaga> {
   readonly store: MemoryStore;
   readonly payments = new FakePayments();
   readonly casino = new FakeCasino();
   readonly sandboxCasino = new FakeCasino();
   readonly clock = new TestClock();
   readonly tenant = '0190a1b2-c3d4-4e5f-8a6b-7c8d9e0f1a2b';
+  readonly audit: CasinoCallAudit[] = [];
   saga!: S;
   restarts = 0;
+  private life: Life = { dead: false };
   private killAt: string | null = null;
-  /** Deliver every event twice (at-least-once). */
-  duplicateDelivery = false;
   random: () => number = () => 1;
 
   constructor(private readonly make: SagaFactory<S>) {
@@ -240,26 +316,143 @@ export class World<S extends SagaLike> {
     this.build();
   }
 
+  get dead(): boolean {
+    return this.life.dead;
+  }
+
   private build(): void {
-    const crash: CrashPoints = { hit: (b: CrashBoundary) => this.maybeKill(b) };
+    const life: Life = { dead: false };
+    this.life = life;
+    const alive = () => {
+      if (life.dead) throw new Crash('dead process');
+    };
+    const kill = (where: string) => {
+      if (this.killAt === where) {
+        this.killAt = null;
+        life.dead = true;
+        throw new Crash(where);
+      }
+    };
+    const s = this.store;
+    const store: RedemptionStore = {
+      placeOrder: async (scope: Scope, input) => {
+        alive();
+        const res = await s.placeOrder(scope, input);
+        if (res.created) kill('after_place');
+        return res;
+      },
+      apply: async (tenantId: string, id: string, change: StateChange): Promise<ApplyResult> => {
+        alive();
+        const res = await s.apply(tenantId, id, change);
+        if (res.applied) kill(`after_commit:${res.redemption.state}`);
+        return res;
+      },
+      reschedule: async (...a: Parameters<RedemptionStore['reschedule']>) => {
+        alive();
+        return s.reschedule(...a);
+      },
+      getOwn: async (scope: Scope, id: string) => {
+        alive();
+        return s.getOwn(scope, id);
+      },
+      getForOperator: async (tenantId: string, id: string) => {
+        alive();
+        return s.getForOperator(tenantId, id);
+      },
+      listForOperator: async (tenantId: string, state?: RedemptionState) => {
+        alive();
+        return s.listForOperator(tenantId, state);
+      },
+      dueForSweep: async (now: Date) => {
+        alive();
+        return s.dueForSweep(now);
+      },
+    };
+
+    const pay = async (verb: Verb, run: () => Promise<CoinsReply>): Promise<CoinsReply> => {
+      alive();
+      kill(`payments:before:${verb}`);
+      const reply = await run();
+      kill(`payments:after_effect:${verb}`);
+      alive();
+      return reply;
+    };
+    const coins: CoinsPort = {
+      reserve: (c, k) => pay('reserve', () => this.payments.reserve(c, k)),
+      capture: (c, k) => pay('capture', () => this.payments.capture(c, k)),
+      release: (c, k) => pay('release', () => this.payments.release(c, k)),
+      refund: (c, k) => pay('refund', () => this.payments.refund(c, k)),
+    };
+
+    const wrapCasino = (inner: FakeCasino): CasinoRewardPort => ({
+      issueReward: async (request, key) => {
+        alive();
+        this.record(key);
+        const res = await inner.issueReward(request, key);
+        kill('casino:after_effect');
+        alive();
+        return res;
+      },
+      getRewardStatus: async (key, request) => {
+        alive();
+        return inner.getRewardStatus(key, request);
+      },
+    });
+    const production = wrapCasino(this.casino);
+    const sandbox = wrapCasino(this.sandboxCasino);
+
     this.saga = this.make({
-      store: this.store,
-      adapters: { production: this.casino, sandbox: this.sandboxCasino },
+      store,
+      coins,
+      adapterFor: (_tenant, isSandbox) => (isSandbox ? sandbox : production),
+      rewardRequest: async (o: RedemptionRecord) => ({
+        external_player_id: `ext-${o.playerId}`,
+        reward: {
+          type: o.reward.type,
+          amount_minor: Number(o.reward.params['count'] ?? o.price),
+          currency: 'EUR',
+        },
+      }),
       clock: this.clock,
       random: () => this.random(),
-      crash,
     });
+  }
+
+  private record(key: string): void {
+    const id = key.startsWith('redeem:') ? key.slice('redeem:'.length) : '';
+    const r = this.store.redemptions.get(id);
+    this.audit.push({
+      key,
+      state: r?.state ?? ('MISSING' as RedemptionState),
+      attempts: r?.attempts ?? 0,
+      replayed: r?.history.some((h) => h.cause.startsWith('replay')) ?? false,
+    });
+  }
+
+  /**
+   * Empty when every adapter call happened while the store row was ISSUING, with a recorded
+   * attempt, and no two calls of one key shared an attempt number (outside a replay).
+   */
+  auditViolations(): string[] {
+    const out: string[] = [];
+    const last = new Map<string, number>();
+    for (const a of this.audit) {
+      if (a.state !== 'ISSUING') out.push(`${a.key}: adapter called while the row was ${a.state}`);
+      else if (a.attempts < 1) out.push(`${a.key}: no attempt recorded before the call`);
+      else if (!a.replayed && a.attempts <= (last.get(a.key) ?? 0))
+        out.push(`${a.key}: attempt ${a.attempts} used for a second call`);
+      last.set(a.key, a.attempts);
+    }
+    return out;
+  }
+
+  /** Total real issuances over both casinos. */
+  get effects(): number {
+    return this.casino.effects + this.sandboxCasino.effects;
   }
 
   killOnce(where: string): void {
     this.killAt = where;
-  }
-
-  private maybeKill(where: string): void {
-    if (this.killAt === where) {
-      this.killAt = null;
-      throw new Crash(where);
-    }
   }
 
   restart(): void {
@@ -267,51 +460,28 @@ export class World<S extends SagaLike> {
     this.build();
   }
 
-  /** One relay pass. Returns how many messages moved. */
-  async relay(): Promise<number> {
-    let moved = 0;
-    if (!this.payments.down) {
-      for (const row of this.store.outbox.filter((r) => !r.relayed)) {
-        const type = row.envelope.type;
-        if (!type.startsWith('engagement.hold.')) continue;
-        this.maybeKill(`cmd:${type.split('.')[2]}`);
-        this.payments.process(parseEvent(row.envelope));
-        if (this.duplicateDelivery) this.payments.process(parseEvent(row.envelope));
-        row.relayed = true; // marked after the effect: a crash in between means redelivery
-        moved += 1;
-      }
-    }
-    for (const row of this.payments.outbox.filter((r) => !r.consumed)) {
-      this.maybeKill(`evt:${row.envelope.type.split('.')[2]}`);
-      await this.saga.handle(parseEvent(row.envelope));
-      if (this.duplicateDelivery) await this.saga.handle(parseEvent(row.envelope));
-      row.consumed = true;
-      moved += 1;
-    }
-    return moved;
+  /** The process died while the caller was inside a request (the saga may have swallowed the error). */
+  recoverIfDead(): boolean {
+    if (!this.life.dead) return false;
+    this.restart();
+    return true;
   }
 
-  /** Run relay + sweep rounds, advancing time, restarting after a crash. */
+  /** Run sweeps, advancing time, restarting after a crash. */
   async settle(rounds = 24, stepMs = 6 * 60_000): Promise<void> {
     for (let i = 0; i < rounds; i++) {
       try {
-        await this.relay();
         await this.saga.sweep(this.clock.now());
       } catch (e) {
         if (!(e instanceof Crash)) throw e;
-        this.restart();
       }
+      this.recoverIfDead();
       this.clock.advance(stepMs);
     }
   }
 
-  /** Re-deliver every already consumed payments event (redelivery after a lost ack). */
-  async redeliverAllEvents(): Promise<void> {
-    for (const row of this.payments.outbox) await this.saga.handle(parseEvent(row.envelope));
-  }
-
-  /** Commands in the engagement outbox, by type. */
-  commands(type: string): EventEnvelope[] {
+  /** Events the store wrote, by type. */
+  events(type: string): EventEnvelope[] {
     return this.store.outbox.map((r) => r.envelope).filter((e) => e.type === type);
   }
 
@@ -320,9 +490,9 @@ export class World<S extends SagaLike> {
     return {
       state: r.state,
       reservation: r.reservation,
-      rewards: this.casino.rewardCount + this.sandboxCasino.rewardCount,
-      holdState: this.payments.holds.get(id)?.state,
-      balance: structuredClone(this.payments.bal(r.playerId)),
+      effects: this.effects,
+      holdState: this.payments.holdState(id),
+      balance: structuredClone(this.payments.bal(r.playerId, r.sandbox)),
     };
   }
 }

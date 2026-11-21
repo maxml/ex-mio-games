@@ -7,7 +7,10 @@ import type { RedemptionState } from '@ex-mio/contracts';
  */
 export const ORACLE_TRANSITIONS: ReadonlyArray<readonly [RedemptionState, RedemptionState]> = [
   ['REQUESTED', 'RESERVED'], // HoldPlaced
-  ['REQUESTED', 'REJECTED_FUNDS'], // HoldRejected
+  ['REQUESTED', 'REJECTED_FUNDS'], // reserve answered 409 insufficient_funds
+  // EXTENSION (spec §3, F10): a reserve whose answer does not match our order (other amount, or a
+  // refusal other than insufficient_funds) must not strand held coins in REQUESTED forever.
+  ['REQUESTED', 'NEEDS_REVIEW'],
   ['RESERVED', 'ISSUING'], // issue job starts
   ['ISSUING', 'ISSUED'], // adapter success
   ['ISSUING', 'REJECTED'], // adapter definitive rejection
@@ -27,6 +30,8 @@ export const ORACLE_TRANSITIONS: ReadonlyArray<readonly [RedemptionState, Redemp
   ['NEEDS_REVIEW', 'REJECTED'], // operator: not_issued
   // EXTENSION of the MIO-066 table (spec §3, decision D1): `replay` of an exhausted redemption
   // re-enters the unknown path with a fresh attempt budget, so MIO-068's "replay ends COMPLETED" holds.
+  // `apply` allows this pair ONLY when the review was entered from UNKNOWN (D-8): the pair alone
+  // is legal, the pair plus its history is the rule. See the conformance suite.
   ['NEEDS_REVIEW', 'UNKNOWN'],
 ];
 

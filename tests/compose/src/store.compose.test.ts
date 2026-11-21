@@ -44,12 +44,35 @@ const redeem = (tenant: string, player: string, itemId: string, key: string, ext
     body: JSON.stringify({ item_id: itemId }),
   });
 
+/**
+ * A player id with coins in the payments service. ASSUMED seeding route: the payments internal
+ * credit API with the service identity headers (see the payments spec). If payments seeds through
+ * another route (an event), only this helper changes. Player ids are UUIDs.
+ */
+const funded = async (tenant: string, amount = 1000): Promise<string> => {
+  const player = uuidv7();
+  const res = await fetch(`${urls.payments}/internal/v1/coins/credit`, {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+      'x-tenant-id': tenant,
+      'x-service-id': 'engagement',
+      'x-service-token': process.env['PAYMENTS_SERVICE_TOKEN'] ?? 'dev-service-token-engagement',
+      'idempotency-key': `seed-${uuidv7()}`,
+    },
+    body: JSON.stringify({ player_id: player, spin_id: uuidv7(), amount }),
+  });
+  expect(res.status).toBe(201);
+  return player;
+};
+
 describe('bonus store (engagement) against real Postgres', () => {
   // Mutation: replace the conditional stock UPDATE with read-then-write -> more than 7 wins.
   it('I-ORDER-2/AC-065 stock never goes below zero under 50 parallel reservations', async () => {
     const item = await createItem(tenantA, { stock: 7 });
+    const players = await Promise.all(Array.from({ length: 50 }, () => funded(tenantA)));
     const res = await Promise.all(
-      Array.from({ length: 50 }, (_, i) => redeem(tenantA, `p${i}`, item.id, `key-${uuidv7()}`)),
+      players.map((p) => redeem(tenantA, p, item.id, `key-${uuidv7()}`)),
     );
     const bodies = await Promise.all(res.map(async (r) => ({ s: r.status, b: await r.json() })));
     expect(bodies.filter((x) => x.s === 202)).toHaveLength(7);
@@ -63,24 +86,33 @@ describe('bonus store (engagement) against real Postgres', () => {
   it('I-ORDER-1/MIO-142 the same key sent 10 times in parallel -> one redemption', async () => {
     const item = await createItem(tenantA, { stock: 5 });
     const key = `key-${uuidv7()}`;
+    const p1 = await funded(tenantA);
     const res = await Promise.all(
-      Array.from({ length: 10 }, () => redeem(tenantA, 'p1', item.id, key)),
+      Array.from({ length: 10 }, () => redeem(tenantA, p1, item.id, key)),
     );
     const ok = res.filter((r) => r.status === 202);
     expect(ok.length).toBeGreaterThan(0);
-    for (const r of res.filter((x) => x.status !== 202)) expect(r.status).toBe(409);
-    const ids = new Set(
-      await Promise.all(ok.map(async (r) => ((await r.json()) as { id: string }).id)),
-    );
-    expect(ids.size).toBe(1);
+    // D-3: an in-flight duplicate is a retryable 409 with a stable code
+    for (const r of res.filter((x) => x.status !== 202)) {
+      expect(r.status).toBe(409);
+      expect(((await r.json()) as { code: string }).code).toBe('idempotency_in_progress');
+    }
+    // every completed response is the same stored body, and a later replay returns it again
+    const bodies = await Promise.all(ok.map(async (r) => JSON.stringify(await r.json())));
+    expect(new Set(bodies).size).toBe(1);
+    const replay = await redeem(tenantA, p1, item.id, key);
+    expect(replay.status).toBe(202);
+    expect(replay.headers.get('idempotent-replayed')).toBe('true');
+    expect(JSON.stringify(await replay.json())).toBe(bodies[0]);
   });
 
   it('I-ORDER-1b the same key with a different item is 422 idempotency_key_reused', async () => {
     const i1 = await createItem(tenantA, { stock: 5 });
     const i2 = await createItem(tenantA, { stock: 5 });
     const key = `key-${uuidv7()}`;
-    expect((await redeem(tenantA, 'p1', i1.id, key)).status).toBe(202);
-    const res = await redeem(tenantA, 'p1', i2.id, key);
+    const p1 = await funded(tenantA);
+    expect((await redeem(tenantA, p1, i1.id, key)).status).toBe(202);
+    const res = await redeem(tenantA, p1, i2.id, key);
     expect(res.status).toBe(422);
     expect((await res.json()).code).toBe('idempotency_key_reused');
   });
@@ -88,16 +120,29 @@ describe('bonus store (engagement) against real Postgres', () => {
   // Mutation: look up by id alone, or drop the RLS policy on redemptions.
   it("I-OWN-1 player B cannot read A's redemption; another tenant cannot either; a sandbox player cannot", async () => {
     const item = await createItem(tenantA, { stock: 5 });
-    const created = await redeem(tenantA, 'alice', item.id, `key-${uuidv7()}`);
+    const alice = await funded(tenantA);
+    const bob = uuidv7();
+    const created = await redeem(tenantA, alice, item.id, `key-${uuidv7()}`);
     const { id } = (await created.json()) as { id: string };
     const get = (tenant: string, principal: string, extra = {}) =>
       fetch(`${urls.engagement}/v1/redemptions/${id}`, {
         headers: hdr(tenant, principal, 'player', extra),
       });
-    expect((await get(tenantA, 'alice')).status).toBe(200);
-    expect((await get(tenantA, 'bob')).status).toBe(404);
-    expect((await get(tenantB, 'alice')).status).toBe(404);
-    expect((await get(tenantA, 'alice', { 'x-sandbox': '1' })).status).toBe(404);
+    expect((await get(tenantA, alice)).status).toBe(200);
+    expect((await get(tenantA, bob)).status).toBe(404);
+    expect((await get(tenantB, alice)).status).toBe(404);
+    expect((await get(tenantA, alice, { 'x-sandbox': '1' })).status).toBe(404);
+  });
+
+  // D-8 / F9: the coin reserve is synchronous, so a player without coins hears it on the POST.
+  // Mutation: answer 202 and park the failure on GET.
+  it('I-OUTCOME-2 a player without coins gets 409 insufficient_funds on the POST, and the stock is back', async () => {
+    const item = await createItem(tenantA, { stock: 1 });
+    const res = await redeem(tenantA, uuidv7(), item.id, `key-${uuidv7()}`);
+    expect(res.status).toBe(409);
+    expect(((await res.json()) as { code: string }).code).toBe('insufficient_funds');
+    const rich = await funded(tenantA);
+    expect((await redeem(tenantA, rich, item.id, `key-${uuidv7()}`)).status).toBe(202); // the one item is free again
   });
 
   it('I-ISO-1 a tenant sees only its own items', async () => {
@@ -124,7 +169,7 @@ describe('bonus store (engagement) against real Postgres', () => {
 
   it('I-OWN-2 a redemption row exists only for the tenant that created it (checked with the tenant set)', async () => {
     const item = await createItem(tenantA, { stock: 5 });
-    const created = await redeem(tenantA, 'alice', item.id, `key-${uuidv7()}`);
+    const created = await redeem(tenantA, await funded(tenantA), item.id, `key-${uuidv7()}`);
     const { id } = (await created.json()) as { id: string };
     const db = await pgAs('engagement');
     try {
@@ -135,7 +180,11 @@ describe('bonus store (engagement) against real Postgres', () => {
       const row = await db.query('SELECT price, state, sandbox FROM redemptions WHERE id = $1', [
         id,
       ]);
-      expect(row.rows[0]).toMatchObject({ price: 10, state: 'REQUESTED', sandbox: false });
+      // the coin reserve is inline now, so the order has usually moved past REQUESTED already
+      expect(row.rows[0]).toMatchObject({ price: 10, sandbox: false });
+      expect(['REQUESTED', 'RESERVED', 'ISSUING', 'UNKNOWN', 'ISSUED', 'COMPLETED']).toContain(
+        row.rows[0].state,
+      );
       await db.query('ROLLBACK');
     } finally {
       await db.end();

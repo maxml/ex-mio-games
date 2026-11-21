@@ -1,10 +1,9 @@
 import { z } from 'zod';
 import { Uuid } from './ids';
 
-// Bonus store and redemption saga contracts (epic engagement-store).
-// Spec: docs/specs/engagement-store.md. Coordinates with `payments` (hold
-// commands and events) and the casino adapter (RewardAdapter) only through
-// this file.
+// Bonus store and redemption saga contracts (engagement store).
+// Spec: docs/specs/engagement-store.md. The coin reserve is the payments service's HTTP API and
+// the casino port is `casino-adapter.ts`; this file defines neither.
 
 // ---- catalog ------------------------------------------------------------------
 
@@ -131,6 +130,8 @@ export const STORE_ERROR_CODES = {
   redemption_not_found: 404,
   forbidden: 403,
   illegal_transition: 409,
+  /** An operator `not_issued` that the casino's own answer does not back (decision D-2). */
+  release_not_allowed: 409,
 } as const;
 export type StoreErrorCode = keyof typeof STORE_ERROR_CODES;
 
@@ -145,39 +146,10 @@ export const PrincipalHeaders = z.object({
   'x-sandbox': z.enum(['0', '1']).default('0'),
 });
 
-// ---- hold commands (engagement -> payments) and hold events (payments -> engagement)
-
-const HoldCommandBase = z.object({
-  /** `hold:{id}`, `capture:{id}`, `release:{id}` or `refund:{id}`: the idempotency key of the phase. */
-  operation_id: z.string().min(1),
-  redemption_id: Uuid,
-  player_id: z.string().min(1),
-  sandbox: z.boolean(),
-});
-export const PlaceHoldV1 = HoldCommandBase.extend({ amount: z.number().int().positive() });
-export const CaptureHoldV1 = HoldCommandBase;
-export const ReleaseHoldV1 = HoldCommandBase;
-export const RefundCaptureV1 = HoldCommandBase;
-
-const HoldEventBase = z.object({
-  redemption_id: Uuid,
-  player_id: z.string().min(1),
-  sandbox: z.boolean(),
-});
-export const HoldPlacedV1 = HoldEventBase.extend({ amount: z.number().int().positive() });
-export const HoldRejectedV1 = HoldEventBase.extend({ reason: z.enum(['insufficient_funds']) });
-export const HoldCapturedV1 = HoldEventBase;
-export const HoldReleasedV1 = HoldEventBase;
-export const CaptureRefundedV1 = HoldEventBase;
-export const HoldCommandRejectedV1 = HoldEventBase.extend({
-  command: z.enum(['place', 'capture', 'release', 'refund']),
-  reason: z.enum([
-    'hold_already_captured',
-    'hold_already_released',
-    'hold_not_captured',
-    'hold_not_found',
-  ]),
-});
+// The coin reserve is NOT defined here: payments owns it (decisions D-1, D-9). The saga calls the
+// payments internal HTTP API (`POST /internal/v1/coins/reserve|capture|release|refund`, defined in
+// the payments contracts) and consumes none of its events. The casino reward port lives in
+// `casino-adapter.ts` (decision D-2). Neither is redefined in this file.
 
 // ---- redemption events (engagement -> everyone; `sandbox` excludes it from metering)
 
@@ -197,36 +169,3 @@ export const RedemptionIssuedV1 = RedemptionEventBase.extend({
 });
 export const RedemptionRejectedV1 = RedemptionEventBase.extend({ reason: z.string() });
 export const RedemptionNeedsReviewV1 = RedemptionEventBase.extend({ reason: z.string() });
-
-// ---- casino adapter port (implemented by the integrations module, epic ingest) ----
-
-export interface IssueRewardRequest {
-  /** `redeem:{redemption_id}`: identical on every attempt of one redemption. */
-  idempotencyKey: string;
-  playerId: string;
-  /** The reward mapping frozen on the order, never the live catalog entry. */
-  reward: RewardMapping;
-}
-
-/**
- * The adapter classifies; it never throws for a classified failure. `rejected`
- * is returned only for a code on the adapter's FINAL list; anything else
- * (timeout, 5xx, network, 429, unparseable, unknown code) is `unknown`.
- * A thrown error is treated by the saga as `unknown` too.
- */
-export type IssueRewardResult =
-  | { outcome: 'issued'; reference: string }
-  | { outcome: 'rejected'; code: string }
-  | { outcome: 'unknown'; detail: string };
-
-export type RewardStatusResult =
-  | { outcome: 'issued'; reference: string }
-  | { outcome: 'rejected'; code: string }
-  | { outcome: 'not_found' }
-  | { outcome: 'unknown'; detail: string };
-
-export interface RewardAdapter {
-  issueReward(req: IssueRewardRequest): Promise<IssueRewardResult>;
-  /** Lookup by OUR key, so recovery works when the casino's reference was in a lost reply. */
-  getRewardStatus(idempotencyKey: string): Promise<RewardStatusResult>;
-}

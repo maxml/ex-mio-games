@@ -13,7 +13,10 @@ import { isOracleLegal } from './transition-oracle';
  * In-memory RedemptionStore used by the saga tests. Test support, not
  * production code: it models the atomic contract in ports.ts (each method is
  * all-or-nothing) and is itself checked by the same conformance suite that
- * will run against the Postgres store (redemption-store.conformance.ts).
+ * runs against the Postgres store (testing/store-conformance.ts).
+ *
+ * `apply` validates and builds everything first and mutates last, so a failure
+ * (illegal pair, invalid event payload) leaves no trace.
  */
 export interface MemItem {
   id: string;
@@ -29,6 +32,24 @@ export interface OutboxRow {
   envelope: EventEnvelope;
   relayed: boolean;
 }
+
+/** The sweeper re-sends the coin reserve of a REQUESTED order after this long. */
+const REQUEST_GRACE_MS = 30_000;
+const SWEPT: ReadonlySet<RedemptionState> = new Set([
+  'REQUESTED',
+  'RESERVED',
+  'ISSUING',
+  'UNKNOWN',
+  'ISSUED',
+  'REJECTED',
+]);
+
+const illegal = (message: string): Error => {
+  // Same name as model/redemption-state's IllegalTransitionError; tests match on `name`.
+  const err = new Error(message);
+  err.name = 'IllegalTransitionError';
+  return err;
+};
 
 export class MemoryStore implements RedemptionStore {
   readonly items = new Map<string, MemItem>();
@@ -63,15 +84,11 @@ export class MemoryStore implements RedemptionStore {
     return this.items.get(id)?.stock ?? null;
   }
 
-  private emit(tenantId: string, type: string, payload: Record<string, unknown>): void {
-    this.outbox.push({
+  private envelope(tenantId: string, type: string, payload: Record<string, unknown>): OutboxRow {
+    return {
       relayed: false,
-      envelope: createEvent({
-        type: type as never,
-        tenantId,
-        payload: payload as never,
-      }),
-    });
+      envelope: createEvent({ type: type as never, tenantId, payload: payload as never }),
+    };
   }
 
   async placeOrder(
@@ -96,8 +113,6 @@ export class MemoryStore implements RedemptionStore {
     if (item.perPlayerLimit !== null && used >= item.perPlayerLimit)
       throw new StoreRejection('limit_reached');
     if (item.stock !== null && item.stock <= 0) throw new StoreRejection('out_of_stock');
-    if (item.stock !== null) item.stock -= 1;
-    this.used.set(usedKey, used + 1);
     const at = this.now();
     const rec: RedemptionRecord = {
       id: uuidv7(),
@@ -111,7 +126,7 @@ export class MemoryStore implements RedemptionStore {
       operationKey: input.operationKey,
       state: 'REQUESTED',
       attempts: 0,
-      nextAttemptAt: null,
+      nextAttemptAt: new Date(at.getTime() + REQUEST_GRACE_MS),
       unknownSince: null,
       casinoReference: null,
       failureReason: null,
@@ -120,8 +135,7 @@ export class MemoryStore implements RedemptionStore {
       createdAt: at,
       updatedAt: at,
     };
-    this.redemptions.set(rec.id, rec);
-    this.emit(rec.tenantId, 'engagement.redemption.status_changed', {
+    const row = this.envelope(rec.tenantId, 'engagement.redemption.status_changed', {
       redemption_id: rec.id,
       player_id: rec.playerId,
       sandbox: rec.sandbox,
@@ -129,86 +143,97 @@ export class MemoryStore implements RedemptionStore {
       to: 'REQUESTED',
       cause: 'order_placed',
     });
-    this.emit(rec.tenantId, 'engagement.hold.place', {
-      operation_id: `hold:${rec.id}`,
-      redemption_id: rec.id,
-      player_id: rec.playerId,
-      sandbox: rec.sandbox,
-      amount: rec.price,
-    });
+    // every check and every envelope is done: mutate
+    if (item.stock !== null) item.stock -= 1;
+    this.used.set(usedKey, used + 1);
+    this.redemptions.set(rec.id, rec);
+    this.outbox.push(row);
     return { redemption: structuredClone(rec), created: true };
   }
 
   async apply(tenantId: string, redemptionId: string, change: StateChange): Promise<ApplyResult> {
     const rec = this.redemptions.get(redemptionId);
     if (!rec || rec.tenantId !== tenantId) throw new Error('redemption not found');
-    if (change.dedupe) {
-      const k = `${change.dedupe.consumer}\u001f${change.dedupe.eventId}`;
-      if (this.inbox.has(k)) return { applied: false, redemption: structuredClone(rec) };
-    }
+    const dedupeKey = change.dedupe
+      ? `${change.dedupe.consumer}\u001f${change.dedupe.eventId}`
+      : null;
+    if (dedupeKey && this.inbox.has(dedupeKey))
+      return { applied: false, redemption: structuredClone(rec) };
     if (!change.expectFrom.includes(rec.state))
       return { applied: false, redemption: structuredClone(rec) };
-    if (!isOracleLegal(rec.state, change.to)) {
-      // Same name as model/redemption-state's IllegalTransitionError; tests match on `name`.
-      const err = new Error(`illegal transition ${rec.state} -> ${change.to}`);
-      err.name = 'IllegalTransitionError';
-      throw err;
+    if (!isOracleLegal(rec.state, change.to))
+      throw illegal(`illegal transition ${rec.state} -> ${change.to}`);
+    if (rec.state === 'NEEDS_REVIEW' && change.to === 'UNKNOWN') {
+      const entered = [...rec.history].reverse().find((h) => h.to === 'NEEDS_REVIEW');
+      if (entered?.from !== 'UNKNOWN')
+        throw illegal(`replay refused: the review was entered from ${entered?.from ?? 'nowhere'}`);
     }
-    if (change.dedupe) this.inbox.add(`${change.dedupe.consumer}\u001f${change.dedupe.eventId}`);
+
+    // build everything before touching anything
     const at = this.now();
     const from: RedemptionState = rec.state;
-    rec.state = change.to;
-    rec.updatedAt = at;
-    rec.history.push({ from, to: change.to, cause: change.cause, at });
-    if (change.attemptsReset) rec.attempts = 0;
-    if (change.attemptsIncrement) rec.attempts += 1;
-    if (change.nextAttemptAt !== undefined) rec.nextAttemptAt = change.nextAttemptAt;
-    if (change.casinoReference !== undefined) rec.casinoReference = change.casinoReference;
-    if (change.failureReason !== undefined) rec.failureReason = change.failureReason;
-    if (change.to === 'UNKNOWN' && from !== 'UNKNOWN' && rec.unknownSince === null)
-      rec.unknownSince = at;
+    const next = structuredClone(rec);
+    next.state = change.to;
+    next.updatedAt = at;
+    next.history.push({ from, to: change.to, cause: change.cause, at });
+    if (change.attemptsReset) next.attempts = 0;
+    if (change.attemptsIncrement) next.attempts += 1;
+    if (change.nextAttemptAt !== undefined) next.nextAttemptAt = change.nextAttemptAt;
+    if (change.casinoReference !== undefined) next.casinoReference = change.casinoReference;
+    if (change.failureReason !== undefined) next.failureReason = change.failureReason;
+    if (change.to === 'UNKNOWN' && next.unknownSince === null) next.unknownSince = at;
     if (change.to === 'ISSUED' || change.to === 'REJECTED' || change.to === 'NEEDS_REVIEW')
-      rec.unknownSince = null;
-    if (change.reservation === 'commit') rec.reservation = 'committed';
-    if (change.reservation === 'release') {
-      rec.reservation = 'released';
+      next.unknownSince = null;
+    let restoreStock = false;
+    if (change.reservation && rec.reservation === 'reserved') {
+      next.reservation = change.reservation === 'commit' ? 'committed' : 'released';
+      restoreStock = change.reservation === 'release';
+    }
+    const base = { redemption_id: rec.id, player_id: rec.playerId, sandbox: rec.sandbox };
+    const rows: OutboxRow[] = [
+      this.envelope(tenantId, 'engagement.redemption.status_changed', {
+        ...base,
+        from,
+        to: change.to,
+        cause: change.cause,
+      }),
+    ];
+    if (change.to === 'ISSUED' && change.casinoReference)
+      rows.push(
+        this.envelope(tenantId, 'engagement.redemption.issued', {
+          ...base,
+          casino_reference: change.casinoReference,
+          price: rec.price,
+        }),
+      );
+    if (change.to === 'REJECTED' || change.to === 'REJECTED_FUNDS')
+      rows.push(
+        this.envelope(tenantId, 'engagement.redemption.rejected', {
+          ...base,
+          reason: change.failureReason ?? change.cause,
+        }),
+      );
+    if (change.to === 'NEEDS_REVIEW')
+      rows.push(
+        this.envelope(tenantId, 'engagement.redemption.needs_review', {
+          ...base,
+          reason: change.failureReason ?? change.cause,
+        }),
+      );
+    for (const m of change.outbox ?? [])
+      rows.push(this.envelope(tenantId, m.type, { ...m.payload, ...base }));
+
+    // commit
+    if (dedupeKey) this.inbox.add(dedupeKey);
+    this.redemptions.set(rec.id, next);
+    if (restoreStock) {
       const item = this.items.get(rec.itemId);
       if (item && item.stock !== null) item.stock += 1;
       const k = `${rec.tenantId}:${rec.playerId}:${rec.itemId}`;
       this.used.set(k, Math.max(0, (this.used.get(k) ?? 1) - 1));
     }
-    const base = { redemption_id: rec.id, player_id: rec.playerId, sandbox: rec.sandbox };
-    this.emit(tenantId, 'engagement.redemption.status_changed', {
-      ...base,
-      from,
-      to: change.to,
-      cause: change.cause,
-    });
-    if (change.to === 'ISSUED' && change.casinoReference)
-      this.emit(tenantId, 'engagement.redemption.issued', {
-        ...base,
-        casino_reference: change.casinoReference,
-        price: rec.price,
-      });
-    if (change.to === 'REJECTED' || change.to === 'REJECTED_FUNDS')
-      this.emit(tenantId, 'engagement.redemption.rejected', {
-        ...base,
-        reason: change.failureReason ?? change.cause,
-      });
-    if (change.to === 'NEEDS_REVIEW')
-      this.emit(tenantId, 'engagement.redemption.needs_review', {
-        ...base,
-        reason: change.failureReason ?? change.cause,
-      });
-    for (const m of change.outbox ?? []) {
-      this.emit(tenantId, m.type, {
-        ...m.payload,
-        redemption_id: rec.id,
-        player_id: rec.playerId,
-        sandbox: rec.sandbox,
-      });
-    }
-    return { applied: true, redemption: structuredClone(rec) };
+    this.outbox.push(...rows);
+    return { applied: true, redemption: structuredClone(next) };
   }
 
   async reschedule(
@@ -248,7 +273,7 @@ export class MemoryStore implements RedemptionStore {
     return [...this.redemptions.values()]
       .filter(
         (r) =>
-          (r.state === 'RESERVED' || r.state === 'ISSUING' || r.state === 'UNKNOWN') &&
+          SWEPT.has(r.state) &&
           (r.nextAttemptAt === null || r.nextAttemptAt.getTime() <= now.getTime()),
       )
       .map((r) => ({ tenantId: r.tenantId, id: r.id }));

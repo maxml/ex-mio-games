@@ -1,24 +1,43 @@
-import type { EntityManager } from 'typeorm';
+import type { DataSource, EntityManager } from 'typeorm';
 import { uuidv7, type EventEnvelope } from '@ex-mio/contracts';
 import { Db } from '@ex-mio/service-kit';
 import { makeDataSource } from '../model/data-source';
 import { PgRedemptionStore } from '../model/redemption.store';
+import { TestClock } from './testing/clock';
 import { storeConformance } from './testing/store-conformance';
 
 /*
  * The RedemptionStore contract against the real Postgres store, as the `engagement` service role
- * (not a superuser, RLS forced). Not part of the unit run: needs the compose Postgres.
+ * (not a superuser, RLS forced): the SAME `storeConformance` function the in-memory fake passes.
+ * Needs the compose Postgres (only postgres, under the compose lock):
  *   DATABASE_URL=postgresql://engagement:engagement-dev@localhost:54329/engagement \
- *     npx jest --maxWorkers=1 --testMatch '**\/*.itest.ts'
+ *     pnpm --filter @ex-mio/engagement test:pg
+ * CI runs the same script in the `compose` job, after the stack is healthy.
  * RED today: ../model/redemption.store does not exist. Mutations are listed in store-conformance.ts.
  * The harness writes through the real tables named in the spec (§5), under the tenant's RLS context.
+ * One DataSource for the whole file, destroyed in afterAll (no leaked pools, no --forceExit).
+ * Every test uses fresh tenant ids, so the shared database needs no cleanup between tests.
  */
 if (!process.env.DATABASE_URL)
   throw new Error('DATABASE_URL is required for the Postgres store contract run');
 
+let dataSource: Promise<DataSource> | undefined;
+const shared = (): Promise<DataSource> => {
+  dataSource ??= (async () => {
+    const ds = await makeDataSource().initialize();
+    await ds.runMigrations();
+    return ds;
+  })();
+  return dataSource;
+};
+
+afterAll(async () => {
+  if (dataSource) await (await dataSource).destroy();
+});
+
 storeConformance('postgres', async () => {
-  const ds = await makeDataSource().initialize();
-  await ds.runMigrations();
+  const ds = await shared();
+  const clock = new TestClock();
   const tenantId = uuidv7();
   const otherTenantId = uuidv7();
   const inTenant = <T>(fn: (m: EntityManager) => Promise<T>): Promise<T> =>
@@ -27,7 +46,8 @@ storeConformance('postgres', async () => {
       return fn(m);
     });
   return {
-    store: new PgRedemptionStore(new Db(ds)),
+    store: new PgRedemptionStore(new Db(ds), clock),
+    clock,
     tenantId,
     otherTenantId,
     addItem: (o) =>

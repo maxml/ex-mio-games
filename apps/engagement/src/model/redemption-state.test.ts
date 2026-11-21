@@ -39,6 +39,7 @@ describe('redemption transition table', () => {
     const outOf = (s: string) => ORACLE_TRANSITIONS.filter(([f]) => f === s).map(([, t]) => t);
     expect(outOf('REFUNDED')).toEqual([]);
     expect(outOf('REJECTED_FUNDS')).toEqual([]);
+    expect(outOf('REQUESTED').sort()).toEqual(['NEEDS_REVIEW', 'REJECTED_FUNDS', 'RESERVED']);
     expect(outOf('RELEASED')).toEqual(['NEEDS_REVIEW']);
     expect(outOf('COMPLETED').sort()).toEqual(['NEEDS_REVIEW', 'REFUNDED']);
   });

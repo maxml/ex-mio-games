@@ -62,26 +62,28 @@ payload }`; `tenant_id` is mandatory; the payload schema is registered per (type
   transaction.
 - **pinned:** `packages/idempotency/src/idempotency.test.ts`; `tests/compose/src/tenancy.compose.test.ts`
 
-## Redemption saga: hold commands and events
+## Redemption saga: the coin reserve (payments, synchronous)
 
-- **provider:** `packages/contracts` (`src/store.ts`), semantics in `docs/specs/engagement-store.md` ·
-  **consumers:** `engagement` (sends commands, consumes hold events), `payments` (consumes commands, publishes
-  hold events)
-- **spec:** commands `engagement.hold.place|capture|release|refund` carry `operation_id` (`hold:{id}`,
-  `capture:{id}`, `release:{id}`, `refund:{id}`), `redemption_id`, `player_id`, `sandbox`; payments answers with
-  `payments.hold.placed|rejected|captured|released|refunded|command_rejected`. Each command is idempotent by
-  `operation_id`; a conflicting command (capture after release, release after capture) is answered with
-  `command_rejected`, never applied.
-- **pinned:** `packages/contracts/src/store.contracts.test.ts`; `apps/engagement/src/services/redemption-saga.test.ts`
+- **provider:** the payments service (`POST /internal/v1/coins/reserve|capture|release|refund`, schemas in its
+  contracts), semantics in `docs/specs/engagement-store.md` · **consumers:** `engagement` (the redemption saga)
+- **spec:** the saga calls the four routes with the service identity and `Idempotency-Key` `hold:{id}`,
+  `capture:{id}`, `release:{id}`, `refund:{id}`; `reserve_id` is the redemption id. `409 insufficient_funds` on the
+  reserve is returned to the player as 409. Capture, release and refund are idempotent by the state of the reserve;
+  a conflicting transition is `409 invalid_reserve_transition`. A timeout is retried with the same key by the
+  sweeper. The store registers no hold command and no hold event; it consumes none of the payments coin events.
+- **pinned:** `packages/contracts/src/store.contracts.test.ts` (nothing re-registered);
+  `apps/engagement/src/services/redemption-saga.test.ts` (against a fake of the HTTP table)
 
 ## Casino reward adapter port
 
-- **provider:** `packages/contracts` (`RewardAdapter`) implemented by the integrations module ·
+- **provider:** `packages/contracts` (`casino-adapter.ts`, `CasinoRewardPort`), owned by the integrations module ·
   **consumers:** `engagement` (redemption saga)
-- **spec:** `issueReward` and `getRewardStatus` take OUR idempotency key `redeem:{redemption_id}`, identical on every
-  attempt; the adapter classifies (`issued`, `rejected` only for codes on its final list, `unknown` for everything
-  else, including timeouts); `getRewardStatus` answers `issued`, `rejected`, `not_found` or `unknown`.
-- **pinned:** `apps/engagement/src/services/redemption-saga.test.ts` (saga side); adapter side: epic ingest
+- **spec:** `issueReward(request, key)` and `getRewardStatus(key, request)` take OUR idempotency key
+  `redeem:{redemption_id}`, identical on every attempt, and the frozen request; issue answers `issued`, `pending`,
+  `rejected` or `unknown`; the lookup answers `issued`, `pending`, `rejected`, `not_found` or `unknown`. A refund of
+  coins is allowed only after `rejected`; never after `unknown`.
+- **pinned:** `apps/engagement/src/services/redemption-saga.test.ts` (saga side); adapter side: the integrations
+  module's contract tests
 
 ## Health endpoints
 
