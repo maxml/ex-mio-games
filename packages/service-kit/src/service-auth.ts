@@ -11,8 +11,9 @@ import {
   type NestInterceptor,
   SetMetadata,
 } from '@nestjs/common';
-import type { ModuleRef, Reflector } from '@nestjs/core';
-import { APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
+// Value imports on purpose: Nest reads `Reflector` and `ModuleRef` from the emitted constructor metadata.
+// eslint-disable-next-line @typescript-eslint/consistent-type-imports
+import { APP_GUARD, APP_INTERCEPTOR, ModuleRef, Reflector } from '@nestjs/core';
 import { Observable } from 'rxjs';
 import {
   createEvent,
