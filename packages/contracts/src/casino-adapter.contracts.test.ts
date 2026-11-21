@@ -121,14 +121,15 @@ describe('casino adapter port', () => {
 });
 
 describe('spin.completed (D-1: payments credits coins from this event)', () => {
-  it('INV-SPIN-EVENT-CONTRACT: carries spin_id, player_id, reward_coins and the optional table_version', () => {
+  it('INV-SPIN-EVENT-CONTRACT: carries spin_id, player_id, reward_coins and the REQUIRED table_version (X-16)', () => {
     const base = { spin_id: SPIN, player_id: USER, reward_coins: 25 };
-    for (const payload of [base, { ...base, table_version: 6 }]) {
-      const ev = parseEvent(
-        createEvent({ type: 'engagement.spin.completed', tenantId: T, payload }),
-      );
-      expect(ev.payload).toEqual(payload);
-    }
+    const payload = { ...base, table_version: 6 };
+    const ev = parseEvent(createEvent({ type: 'engagement.spin.completed', tenantId: T, payload }));
+    expect(ev.payload).toEqual(payload);
+    // X-16: a spin without its table version cannot be audited; it is not an event.
+    expect(() =>
+      createEvent({ type: 'engagement.spin.completed', tenantId: T, payload: base as never }),
+    ).toThrow();
     expect(() =>
       parseEvent(
         createEvent({

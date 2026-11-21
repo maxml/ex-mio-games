@@ -163,15 +163,17 @@ describe('ingest: the raw casino player id is not stored (D-12, MIO-107)', () =>
       expect(row.external_player_hmac).toBe(hmac(T1.hashKey, `casino-a\n${raw}`));
       expect(row.external_player_hmac).not.toContain(raw);
       // Erasure (MIO-107) deletes the identity mapping row. What remains in engagement must hold no
-      // raw id: scan every row of every public table except `outbox` (a transport buffer; the event
-      // payload still carries the id to the consumer that resolves the player, see spec section 10).
+      // raw id: scan every row of every public table INCLUDING `outbox` (D-12, review F1: the
+      // deposit.confirmed payload carries only the internal player_id; an outbox row is durable and
+      // unreachable by erasure).
       const tables = (
         await admin.query<{ table_name: string }>(
           `SELECT table_name FROM information_schema.tables
-            WHERE table_schema = 'public' AND table_type = 'BASE TABLE' AND table_name <> 'outbox'`,
+            WHERE table_schema = 'public' AND table_type = 'BASE TABLE'`,
         )
       ).rows.map((r) => r.table_name);
       expect(tables).toContain('inbound_events');
+      expect(tables).toContain('outbox');
       for (const t of tables) {
         const hit = await admin.query(`SELECT 1 FROM "${t}" x WHERE x::text LIKE $1 LIMIT 1`, [
           `%${raw}%`,

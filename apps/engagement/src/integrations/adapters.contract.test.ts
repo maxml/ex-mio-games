@@ -42,6 +42,17 @@ const SECRET = 'whsec-test';
 const hmac = (secret: string, msg: string) =>
   createHmac('sha256', secret).update(msg).digest('hex');
 
+/**
+ * Casino B's signed message (F4). It must be injective: the fields are signed as a JSON array, so no
+ * choice of field values can be re-split into another set of values with the same message. The old
+ * dotted string `${sent_at}.${type}.${txn_id}.${customer_ref}...` is NOT acceptable.
+ */
+const signedB = (
+  sentAt: string,
+  type: string,
+  d: { txn_id: unknown; customer_ref: unknown; amount_cents: unknown; ccy: unknown },
+) => JSON.stringify([sentAt, type, d.txn_id, d.customer_ref, d.amount_cents, d.ccy]);
+
 interface WebhookOpts {
   id?: string;
   player?: string;
@@ -142,7 +153,7 @@ const PROFILES: Record<string, Profile> = {
       };
       const type = o.success === false ? 'payment.refunded' : 'payment.completed';
       const sent_at = at.toISOString();
-      const signed = `${sent_at}.${type}.${data.txn_id}.${data.customer_ref}.${data.amount_cents}.${data.ccy}`;
+      const signed = signedB(sent_at, type, data);
       const body: Record<string, unknown> = { type, data, sent_at };
       if (!o.omitSignature) body.signature = o.signature ?? hmac(o.secret ?? SECRET, signed);
       return { raw: JSON.stringify(body), headers: {} };
@@ -156,7 +167,7 @@ const PROFILES: Record<string, Profile> = {
         return { raw, headers: {} }; // malformed on purpose: nothing to wrap
       }
       const sent_at = at.toISOString();
-      const signed = `${sent_at}.payment.completed.${data.txn_id}.${data.customer_ref}.${data.amount_cents}.${data.ccy}`;
+      const signed = signedB(sent_at, 'payment.completed', data);
       return {
         raw: JSON.stringify({
           type: 'payment.completed',

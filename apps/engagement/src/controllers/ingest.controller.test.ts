@@ -10,6 +10,7 @@ import {
   ADAPTER_REGISTRY,
   CLOCK,
   InboundEventsRepository,
+  PLAYER_DIRECTORY,
   TENANT_INTEGRATIONS,
   type InboundEventRow,
   type TenantIntegration,
@@ -39,6 +40,7 @@ const T1 = '0190a1b2-c3d4-4e5f-8a6b-000000000001';
 const T2 = '0190a1b2-c3d4-4e5f-8a6b-000000000002';
 const T3 = '0190a1b2-c3d4-4e5f-8a6b-000000000003';
 const T4 = '0190a1b2-c3d4-4e5f-8a6b-000000000004';
+const INTERNAL_PLAYER = '0190a1b2-c3d4-4e5f-8a6b-0000000000a1';
 const hmac = (secret: string, msg: string) =>
   createHmac('sha256', secret).update(msg).digest('hex');
 const HASH_KEYS = { acme: 'hk-acme', globex: 'hk-globex', bravo: 'hk-bravo', frozen: 'hk-frozen' };
@@ -64,9 +66,17 @@ function signedA(
 function signedB(secret: string, o: { id?: string } = {}) {
   const data = { txn_id: o.id ?? 'evt-1', customer_ref: 'pl-1', amount_cents: 5000, ccy: 'EUR' };
   const sent_at = NOW.toISOString();
+  // F4: an injective encoding (JSON array), not a dotted string two different bodies can share.
   const signature = hmac(
     secret,
-    `${sent_at}.payment.completed.${data.txn_id}.${data.customer_ref}.${data.amount_cents}.${data.ccy}`,
+    JSON.stringify([
+      sent_at,
+      'payment.completed',
+      data.txn_id,
+      data.customer_ref,
+      data.amount_cents,
+      data.ccy,
+    ]),
   );
   return {
     raw: JSON.stringify({ type: 'payment.completed', data, sent_at, signature }),
@@ -164,6 +174,8 @@ describe('ingestion endpoint', () => {
         },
         { provide: ADAPTER_REGISTRY, useValue: createDefaultRegistry() },
         { provide: CLOCK, useValue: { now: () => NOW } },
+        // F1: the player is resolved through identity at ingest, before the transaction
+        { provide: PLAYER_DIRECTORY, useValue: { resolveOrCreate: async () => INTERNAL_PLAYER } },
       ],
     }).compile();
     app = mod.createNestApplication<NestFastifyApplication>(new FastifyAdapter());
@@ -244,10 +256,12 @@ describe('ingestion endpoint', () => {
         inbound_event_id: ack.inbound_event_id,
         source: slug === 'acme' ? 'casino-a' : 'casino-b',
         external_event_id: 'evt-1',
-        external_player_id: 'pl-1',
+        player_id: INTERNAL_PLAYER, // D-12 / F1: the internal id, resolved through identity
         amount_minor: 5000,
         currency: 'EUR',
       });
+      expect(event.payload).not.toHaveProperty('external_player_id');
+      expect(JSON.stringify(published[0])).not.toContain('pl-1"');
     });
   });
 

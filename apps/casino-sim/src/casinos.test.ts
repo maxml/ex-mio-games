@@ -86,9 +86,47 @@ describe('casino simulators: deposit webhooks', () => {
       data: { txn_id: 'txn-7', customer_ref: 'pl-9', amount_cents: 750, ccy: 'USD' },
     });
     expect(new Date(body.sent_at).toISOString()).toBe(body.sent_at);
-    const signed = `${body.sent_at}.payment.completed.txn-7.pl-9.750.USD`;
+    // F4: an injective encoding (JSON array of the fields), not a dotted string
+    const signed = JSON.stringify([body.sent_at, 'payment.completed', 'txn-7', 'pl-9', 750, 'USD']);
     expect(body.signature).toBe(hmac(SECRET, signed));
     expect(sent[0]!.headers['x-a-signature']).toBeUndefined();
+    await app.close();
+  });
+
+  // F5. The engagement adapter's default timeout is 5000 ms (casino-http.ts DEFAULT_TIMEOUT_MS). A
+  // `timeout` fault with no delay_ms must outlast it, or L4's "timeout" is a slow success.
+  // Mutation: restore `.default(1000)` on delay_ms for every kind.
+  it('SIM-FAULT-TIMEOUT-DEFAULT: a timeout fault without delay_ms sleeps longer than the adapter default timeout', async () => {
+    const { app } = makeSim();
+    await app.inject({
+      method: 'POST',
+      url: '/__faults',
+      payload: { casino: 'a', kind: 'timeout', times: 1 },
+    });
+    const real = globalThis.setTimeout;
+    const delays: number[] = [];
+    const spy = jest.spyOn(globalThis, 'setTimeout').mockImplementation(((
+      fn: () => void,
+      ms?: number,
+      ...rest: unknown[]
+    ) => {
+      delays.push(ms ?? 0);
+      return real(fn, Math.min(ms ?? 0, 5), ...(rest as []));
+    }) as typeof setTimeout);
+    try {
+      await app.inject({
+        method: 'POST',
+        url: '/casino-a/bonuses',
+        payload: {
+          idempotencyKey: 'redeem:t',
+          playerId: 'pl-1',
+          bonus: { type: 'bonus', amount: 500, currency: 'EUR' },
+        },
+      });
+    } finally {
+      spy.mockRestore();
+    }
+    expect(Math.max(0, ...delays)).toBeGreaterThan(5_000);
     await app.close();
   });
 

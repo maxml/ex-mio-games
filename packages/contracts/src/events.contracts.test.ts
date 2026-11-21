@@ -15,6 +15,26 @@ describe('uuidv7', () => {
   });
 });
 
+// F3 / X-3 / D-13. Mutation: drop `sandbox` from EventEnvelope or from createEvent.
+describe('event envelope: sandbox flag (D-13)', () => {
+  const input = {
+    type: 'identity.tenant.created',
+    tenantId: TENANT,
+    payload: { name: 'A', slug: 'a' },
+  } as const;
+
+  it('INV-ENV-SANDBOX: the producer can mark an envelope sandbox; absent means production', () => {
+    const sandboxOf = (e: object) => (e as { sandbox?: boolean }).sandbox;
+    expect(sandboxOf(createEvent({ ...input, sandbox: true } as never))).toBe(true);
+    expect(sandboxOf(createEvent(input))).toBeUndefined();
+  });
+
+  it('INV-ENV-SANDBOX-TYPED: a non-boolean sandbox is not an envelope', () => {
+    const e = createEvent({ ...input, sandbox: true } as never);
+    expect(() => parseEvent({ ...e, sandbox: 'yes' })).toThrow(InvalidEventError);
+  });
+});
+
 describe('event envelope', () => {
   it('createEvent builds an envelope with all required fields', () => {
     const e = createEvent({

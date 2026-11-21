@@ -48,13 +48,32 @@ describe('ingest contracts', () => {
         inbound_event_id: W,
         source: 'casino-a',
         external_event_id: 'e1',
-        external_player_id: 'p1',
+        player_id: W, // D-12 / F1: the internal id only
         amount_minor: 5000,
         currency: 'EUR',
         occurred_at: canonical.occurred_at,
       },
     });
     expect(parseEvent(e).tenant_id).toBe(T);
+    // F1 choke point: the raw casino id cannot be put on the event at all (strict payload).
+    const deposit = {
+      inbound_event_id: W,
+      source: 'casino-a',
+      external_event_id: 'e1',
+      player_id: W,
+      amount_minor: 5000,
+      currency: 'EUR',
+      occurred_at: canonical.occurred_at,
+    };
+    for (const bad of [
+      { ...deposit, external_player_id: 'p1' },
+      { ...deposit, player_id: 'p1' }, // a raw id in the player_id slot
+      { ...deposit, player_id: undefined },
+    ]) {
+      expect(() =>
+        createEvent({ type: 'engagement.deposit.confirmed', tenantId: T, payload: bad as never }),
+      ).toThrow();
+    }
     expect(() =>
       createEvent({
         type: 'engagement.spin.granted',
