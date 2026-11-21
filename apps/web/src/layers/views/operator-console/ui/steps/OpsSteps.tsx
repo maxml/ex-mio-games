@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { useMioMutation } from '@/layers/shared/api';
 import type { RedemptionStatus } from '@/layers/shared/types';
 import {
@@ -83,9 +83,10 @@ export function RedemptionsStep({ s, nav }: StepProps) {
 
 export function BillingStep({ s, nav }: StepProps) {
   const [paying, setPaying] = useState(false);
-  const start = useMioMutation<string, unknown>((a, last4) =>
-    a.operator.startPayment(s.plan, last4),
+  const start = useMioMutation<{ last4: string; number?: string }, unknown>((a, c) =>
+    a.operator.startPayment(s.plan, c.last4, c.number),
   );
+  const card = useRef<string | undefined>(undefined);
   const cancel = useMioMutation<string>((a, id) => a.operator.cancelPayment(id));
   const [attempted, setAttempted] = useState(false);
   const inv = s.invoice;
@@ -125,9 +126,12 @@ export function BillingStep({ s, nav }: StepProps) {
               ? 'The card was declined by the test provider. Use 4242 4242 4242 4242 instead.'
               : undefined
           }
+          onSubmitCard={(digits) => {
+            card.current = digits;
+          }}
           onSubmit={(last4) => {
             setAttempted(true);
-            start.mutate(last4);
+            start.mutate({ last4, number: card.current });
           }}
           onCancel={() => {
             if (s.payment?.status === 'processing') cancel.mutate(s.payment.id);

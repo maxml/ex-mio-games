@@ -142,7 +142,10 @@ export function createMockApi({ store = appStore }: MockApiOptions = {}): MioApi
         if (!r) throw new MioApiError('redeem_refused', 'This item cannot be redeemed now');
         return { ...r, status: r.status as 'pending' };
       },
-      simulateDeposit: async (eur = 40) => ({ granted: simulateDeposit(store, eur) }),
+      simulateDeposit: async (eur = 40) => ({
+        accepted: true,
+        granted: simulateDeposit(store, eur),
+      }),
       setCasinoDown: async (on) => store.dispatch({ type: 'player/casinoDown', on }),
     },
     operator: {

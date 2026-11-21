@@ -214,9 +214,11 @@ export function PlayerWidgetView({
     if (!r) return setToast({ text: 'The deposit could not be simulated.', tone: 'danger' });
     setToast({
       text:
-        r.granted > 0
-          ? `Deposit of 40 EUR confirmed by the casino: ${r.granted} ${r.granted === 1 ? 'spin' : 'spins'} added.`
-          : 'Deposit of 40 EUR confirmed, but it earns no spins under the casino rules (minimum deposit or daily cap).',
+        r.granted === undefined
+          ? 'Deposit of 40 EUR sent to the casino. Your spins appear here in a moment.'
+          : r.granted > 0
+            ? `Deposit of 40 EUR confirmed by the casino: ${r.granted} ${r.granted === 1 ? 'spin' : 'spins'} added.`
+            : 'Deposit of 40 EUR confirmed, but it earns no spins under the casino rules (minimum deposit or daily cap).',
       tone: 'info',
     });
   }

@@ -13,8 +13,14 @@ export interface CardFormProps {
   failure?: string;
   /** Shows the "no real money moves" banner of the fake provider. */
   testMode?: boolean;
-  /** Called with the last four digits only; the full number never leaves the form. */
+  /** Called with the last four digits only; the full number leaves the form only through `onSubmitCard`. */
   onSubmit: (last4: string) => void;
+  /**
+   * Test mode only (W-9): the payments service takes the provider's test card number to run its fake
+   * provider and keeps only last4 and brand. Called just before `onSubmit`; a real provider's hosted
+   * fields never expose the number, so this prop goes away with the fake provider.
+   */
+  onSubmitCard?: (digits: string) => void;
   onCancel?: () => void;
 }
 
@@ -29,6 +35,7 @@ export function CardForm({
   failure,
   testMode,
   onSubmit,
+  onSubmitCard,
   onCancel,
 }: CardFormProps) {
   const [number, setNumber] = useState('4242 4242 4242 4242');
@@ -46,6 +53,7 @@ export function CardForm({
     if (!/^\d{2}\s*\/\s*\d{2}$/.test(expiry)) return setError('Enter the expiry as MM / YY.');
     if (!/^\d{3,4}$/.test(cvc)) return setError('Enter the 3 or 4 digit security code.');
     setError('');
+    onSubmitCard?.(digits);
     onSubmit(digits.slice(-4));
   }
 

@@ -1,7 +1,7 @@
 'use client';
 
 import { useRef, useState } from 'react';
-import { useMioMutation } from '@/layers/shared/api';
+import { useMioMutation, type SignupInput } from '@/layers/shared/api';
 import {
   Alert,
   Button,
@@ -21,7 +21,9 @@ import {
 import type { StepProps } from './types';
 
 export function SignupStep({ s, nav }: StepProps) {
-  const create = useMioMutation<void>((a) => a.operator.createAccount());
+  const create = useMioMutation<SignupInput>((a, input) => a.operator.createAccount(input));
+  const [company, setCompany] = useState('Cherry Row Ltd');
+  const [password, setPassword] = useState('correct horse');
   const [email, setEmail] = useState('');
   const bad = email !== '' && !/^\S+@\S+\.\S+$/.test(email);
   const created = s.accountCreated;
@@ -34,11 +36,13 @@ export function SignupStep({ s, nav }: StepProps) {
         className="grid max-w-md gap-4"
         onSubmit={(e) => {
           e.preventDefault();
-          if (!bad && email && !created) create.mutate();
+          if (!bad && email && !created) create.mutate({ companyName: company, email, password });
         }}
       >
         <Field label="Company name">
-          {({ id }) => <Input id={id} defaultValue="Cherry Row Ltd" />}
+          {({ id }) => (
+            <Input id={id} value={company} onChange={(e) => setCompany(e.target.value)} />
+          )}
         </Field>
         <Field
           label="Work email"
@@ -57,7 +61,14 @@ export function SignupStep({ s, nav }: StepProps) {
           )}
         </Field>
         <Field label="Password">
-          {({ id }) => <Input id={id} type="password" defaultValue="correct horse" />}
+          {({ id }) => (
+            <Input
+              id={id}
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+            />
+          )}
         </Field>
         <Button type="submit" disabled={created} loading={create.isPending}>
           {created ? 'Account created' : 'Create account'}
@@ -86,15 +97,19 @@ function Checkout({
   description: string;
   onCancel: () => void;
 }) {
-  const start = useMioMutation<string, unknown>((a, last4) =>
-    a.operator.startPayment(planId, last4),
+  const start = useMioMutation<{ last4: string; number?: string }, unknown>((a, c) =>
+    a.operator.startPayment(planId, c.last4, c.number),
   );
   const cancel = useMioMutation<string>((a, id) => a.operator.cancelPayment(id));
   const [attempted, setAttempted] = useState(false);
+  const card = useRef<string | undefined>(undefined);
   const processing = s.payment?.status === 'processing' || start.isPending;
   const declined = attempted && s.payment?.status === 'declined';
   return (
     <CardForm
+      onSubmitCard={(digits) => {
+        card.current = digits;
+      }}
       amount={amount}
       description={description}
       testMode
@@ -106,7 +121,7 @@ function Checkout({
       }
       onSubmit={(last4) => {
         setAttempted(true);
-        start.mutate(last4);
+        start.mutate({ last4, number: card.current });
       }}
       onCancel={() => {
         if (s.payment?.status === 'processing') cancel.mutate(s.payment.id);

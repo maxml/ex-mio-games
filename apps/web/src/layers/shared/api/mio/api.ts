@@ -57,11 +57,19 @@ export interface PlayerApi {
   setCasinoDown(on: boolean): Promise<void>;
 }
 
+export interface SignupInput {
+  companyName: string;
+  email: string;
+  password: string;
+}
+
 export interface OperatorApi {
   getState(): Promise<OperatorState>;
-  createAccount(): Promise<void>;
+  /** W-11: what L1's signup needs. The mock ignores it. */
+  createAccount(input: SignupInput): Promise<void>;
   selectPlan(planId: string): Promise<void>;
-  startPayment(planId: string, last4: string): Promise<PaymentAttemptView>;
+  /** W-9: `cardNumber` is the provider's test card; only the BFF forwards it, L2 keeps last4 and brand. */
+  startPayment(planId: string, last4: string, cardNumber?: string): Promise<PaymentAttemptView>;
   cancelPayment(attemptId: string): Promise<void>;
   runSandbox(): Promise<void>;
   startGoLive(): Promise<void>;

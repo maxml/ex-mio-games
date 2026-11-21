@@ -77,7 +77,15 @@ export type PlayerState = z.infer<typeof PlayerState>;
 export const RedeemRequest = z.object({ itemId: z.string().min(1) });
 export type RedeemRequest = z.infer<typeof RedeemRequest>;
 
-export const DepositResult = z.object({ granted: z.number().int().nonnegative() });
+/**
+ * W-8: a real deposit reaches the wallet asynchronously (casino -> ingest -> consumer -> `spin.granted`), so the
+ * answer is "accepted" and the widget refetches `GET /v1/me/spins`. `granted` exists only in the mock, which
+ * can count synchronously.
+ */
+export const DepositResult = z.object({
+  accepted: z.boolean(),
+  granted: z.number().int().nonnegative().optional(),
+});
 export type DepositResult = z.infer<typeof DepositResult>;
 
 // --- operator console -------------------------------------------------------

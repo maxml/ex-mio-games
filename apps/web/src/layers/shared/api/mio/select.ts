@@ -1,5 +1,6 @@
 import type { MioApi } from './api';
 import { createHttpApi } from './http';
+import { createHybridApi } from './hybrid';
 import { createMockApi } from './mock';
 
 export type MioApiMode = 'mock' | 'http';
@@ -16,6 +17,9 @@ let singleton: { mode: MioApiMode; api: MioApi } | null = null;
 /** One adapter per tab: the mock's shared store must not be recreated between screens. */
 export function getMioApi(mode: MioApiMode = resolveMioApiMode()): MioApi {
   if (!singleton || singleton.mode !== mode)
-    singleton = { mode, api: mode === 'http' ? createHttpApi() : createMockApi() };
+    singleton = {
+      mode,
+      api: mode === 'http' ? createHybridApi(createHttpApi(), createMockApi()) : createMockApi(),
+    };
   return singleton.api;
 }

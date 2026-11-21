@@ -15,7 +15,7 @@ import {
   WIRE,
 } from '../../types';
 import { http as defaultHttp, isHttpError, type HttpClient, type ResponseSchema } from '../http';
-import { MioApiError, type MioApi } from './api';
+import { isOutcomeUnknown, MioApiError, type MioApi } from './api';
 
 const idempotencyKey = (): string => globalThis.crypto.randomUUID();
 const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
@@ -46,9 +46,36 @@ function spinError(e: unknown): unknown {
     : new MioApiError('retryable', e.message, e.detail);
 }
 
+/**
+ * W-6: the store's 409s. `idempotency_in_progress` is the same key still being processed (retry with it);
+ * every other one is a definite business answer: the order was refused, nothing was reserved.
+ */
+const REDEEM_BUSINESS_CODES = new Set([
+  'insufficient_funds',
+  'out_of_stock',
+  'limit_reached',
+  'item_inactive',
+  'illegal_transition',
+]);
+
+function redeemError(e: unknown): unknown {
+  if (!(e instanceof MioApiError) || e.code !== 'invalid' || e.detail?.status !== 409) return e;
+  if (e.detail.serverCode === 'idempotency_in_progress')
+    return new MioApiError('retryable', e.message, e.detail);
+  if (REDEEM_BUSINESS_CODES.has(e.detail.serverCode))
+    return new MioApiError('redeem_refused', e.message, e.detail);
+  return e;
+}
+
 export function createHttpApi(client: HttpClient = defaultHttp): MioApi {
   /** The key of a spin whose outcome is not known yet; the next spin call re-asks with the same one. */
   let spinKey: string | null = null;
+  /** The same, per item, for a redemption: a retry after a lost reply must not become a second order. */
+  const redeemKeys = new Map<string, string>();
+  /** And per attempt for a payment cancel (L2 requires the key). */
+  const cancelKeys = new Map<string, string>();
+  /** And per (plan, card) for starting a payment attempt. */
+  const paymentKeys = new Map<string, string>();
   const post = <T>(
     path: string,
     body: unknown,
@@ -91,24 +118,78 @@ export function createHttpApi(client: HttpClient = defaultHttp): MioApi {
           }
         }
       },
-      redeem: (itemId) =>
-        post('/api/player/redemptions', { itemId }, PlayerRedemptionView, {
-          [HEADER_IDEMPOTENCY_KEY]: idempotencyKey(),
-        }),
+      redeem: async (itemId) => {
+        const key = redeemKeys.get(itemId) ?? idempotencyKey();
+        redeemKeys.set(itemId, key);
+        for (let attempt = 0; ; attempt++) {
+          try {
+            const result = await post('/api/player/redemptions', { itemId }, PlayerRedemptionView, {
+              [HEADER_IDEMPOTENCY_KEY]: key,
+            });
+            redeemKeys.delete(itemId);
+            return result;
+          } catch (raw) {
+            const e = redeemError(raw);
+            const code = e instanceof MioApiError ? e.code : null;
+            if (code === 'retryable' && attempt < IN_FLIGHT_BACKOFF_MS.length) {
+              await sleep(IN_FLIGHT_BACKOFF_MS[attempt]!);
+              continue;
+            }
+            const unknown =
+              code === null ||
+              code === 'retryable' ||
+              code === 'network-or-server' ||
+              code === 'bad_response';
+            // A definite answer ends the action; an unknown outcome keeps the key for the retry.
+            if (!unknown) redeemKeys.delete(itemId);
+            throw e;
+          }
+        }
+      },
       simulateDeposit: (eur = 40) => post('/api/sandbox/deposits', { eur }, DepositResult),
       setCasinoDown: (on) => send('/api/sandbox/casino-down', { on }),
     },
     operator: {
       getState: () =>
         call(() => client.get<OperatorState>('/api/operator/state', { schema: OperatorState })),
-      createAccount: () => send('/api/operator/account'),
-      selectPlan: (planId) => send('/api/operator/plan', { planId }),
-      startPayment: (planId, last4) =>
-        post('/api/operator/payments', { planId, last4 }, PaymentAttemptView, {
-          [HEADER_IDEMPOTENCY_KEY]: idempotencyKey(),
-        }),
-      cancelPayment: (attemptId) =>
-        send(`/api/operator/payments/${encodeURIComponent(attemptId)}/cancel`),
+      // W-11: the console's company name, e-mail and password reach L1's signup through the BFF.
+      createAccount: (input) => send('/api/operator/account', input),
+      // The plan choice is console state, not a service call (L2 has no "selected plan" before payment).
+      selectPlan: async () => undefined,
+      // W-9: the full test card number goes to the BFF (L2 keeps last4 and brand only). The key is minted per
+      // user action and kept while the outcome is unknown.
+      startPayment: async (planId, last4, cardNumber) => {
+        const slot = `${planId}:${last4}`;
+        const key = paymentKeys.get(slot) ?? idempotencyKey();
+        paymentKeys.set(slot, key);
+        try {
+          const result = await post(
+            '/api/operator/payments',
+            { planId, last4, cardNumber },
+            PaymentAttemptView,
+            { [HEADER_IDEMPOTENCY_KEY]: key },
+          );
+          paymentKeys.delete(slot);
+          return result;
+        } catch (e) {
+          if (!isOutcomeUnknown(e)) paymentKeys.delete(slot);
+          throw e;
+        }
+      },
+      // W-9: L2 refuses a cancel without an Idempotency-Key (400 `idempotency_key_required`).
+      cancelPayment: async (attemptId) => {
+        const key = cancelKeys.get(attemptId) ?? idempotencyKey();
+        cancelKeys.set(attemptId, key);
+        try {
+          await send(`/api/operator/payments/${encodeURIComponent(attemptId)}/cancel`, undefined, {
+            [HEADER_IDEMPOTENCY_KEY]: key,
+          });
+          cancelKeys.delete(attemptId);
+        } catch (e) {
+          if (!isOutcomeUnknown(e)) cancelKeys.delete(attemptId);
+          throw e;
+        }
+      },
       runSandbox: () => send('/api/operator/sandbox/run'),
       startGoLive: () => send('/api/operator/go-live'),
       confirmFirstLiveDeposit: () => send('/api/operator/go-live/first-deposit'),
