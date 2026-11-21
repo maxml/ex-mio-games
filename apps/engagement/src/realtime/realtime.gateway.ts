@@ -8,6 +8,8 @@ import {
 import { HttpAdapterHost } from '@nestjs/core';
 import { MIO_REALTIME_NAMESPACE, REALTIME_EVENTS, type EventEnvelope } from '@ex-mio/contracts';
 import { Server, type Namespace } from 'socket.io';
+import type { EntityManager } from 'typeorm';
+import { PostCommitPushes } from './post-commit-pushes';
 import { toPush } from './realtime.events';
 import { roomName, roomOf } from './rooms';
 import type { TicketRedeemer } from './ticket-redeemer';
@@ -38,6 +40,15 @@ export class RealtimeGateway implements OnApplicationBootstrap, OnApplicationShu
   private readonly log = new Logger('RealtimeGateway');
   private io: Server | undefined;
   private ns: Namespace | undefined;
+  private readonly postCommit = new PostCommitPushes((e) => this.publish(e));
+
+  /**
+   * What the bus handler calls: the push waits for the handler's transaction to commit and is
+   * dropped if it rolls back.
+   */
+  queue(tx: EntityManager, event: EventEnvelope): void {
+    this.postCommit.queue(tx, event);
+  }
 
   constructor(
     private readonly adapterHost: HttpAdapterHost,

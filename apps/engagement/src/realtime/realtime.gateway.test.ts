@@ -269,3 +269,63 @@ describe('realtime gateway', () => {
     expect(await back).toBe('connected');
   });
 });
+
+/*
+ * COMMIT-ONLY: pushes leave after the handler's transaction commits.
+ * Mutation: `queue()` in realtime.gateway.ts calls `this.publish(event)` inline -> both tests red.
+ * The fake runner replays what TypeORM does: the connection's subscribers get afterTransactionCommit
+ * or afterTransactionRollback with the transaction's query runner.
+ */
+type Sub = {
+  afterTransactionCommit?: (e: unknown) => void;
+  afterTransactionRollback?: (e: unknown) => void;
+};
+function txRunner() {
+  const connection = { subscribers: [] as Sub[] };
+  return async (fn: (manager: never) => Promise<void>): Promise<void> => {
+    const queryRunner = { isTransactionActive: true, connection };
+    const manager = { queryRunner, connection } as never;
+    try {
+      await fn(manager);
+    } catch (err) {
+      connection.subscribers.forEach((s) => s.afterTransactionRollback?.({ queryRunner }));
+      throw err;
+    }
+    connection.subscribers.forEach((s) => s.afterTransactionCommit?.({ queryRunner }));
+  };
+}
+
+describe('realtime push after commit', () => {
+  it('COMMIT-ONLY: a handler that throws after queueing an emit delivers no push', async () => {
+    const run = txRunner();
+    const s = open(w.url, { token: w.identity.ticketFor(T_A, P_1) });
+    const got = collect(s);
+    await settle(s);
+    await pause(50);
+    await expect(
+      run(async (tx) => {
+        w.gateway.queue(tx, spinEvent(T_A, P_1));
+        await pause(100); // a push sent inline would arrive while the transaction is still open
+        expect(got).toEqual([]);
+        throw new Error('handler failed after queueing');
+      }),
+    ).rejects.toThrow('handler failed');
+    await pause(150);
+    expect(got).toEqual([]);
+  });
+
+  it('COMMIT-ONLY: a committed handler pushes exactly once, and only after the commit', async () => {
+    const run = txRunner();
+    const s = open(w.url, { token: w.identity.ticketFor(T_A, P_1) });
+    const got = collect(s);
+    await settle(s);
+    await pause(50);
+    await run(async (tx) => {
+      w.gateway.queue(tx, spinEvent(T_A, P_1));
+      await pause(100);
+      expect(got).toEqual([]);
+    });
+    await pause(150);
+    expect(got).toHaveLength(1);
+  });
+});

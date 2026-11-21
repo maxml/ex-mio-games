@@ -90,8 +90,9 @@ export function createAppModule(config: Config): DynamicModule {
             await projections.onTenantCreated(tx, event);
             return;
           }
-          // Spin result, balance change, redemption status: pushed best-effort, at most once.
-          gateway.publish(event);
+          // Spin result, balance change, redemption status: queued, and pushed only after this
+          // transaction commits (at most once, best effort).
+          gateway.queue(tx, event);
         },
     },
   });
