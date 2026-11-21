@@ -210,35 +210,70 @@ describe('INV-I2 the same key with a changed body is refused and executes nothin
 
 describe('INV-I3 replay after the HTTP idempotency record expired still has no second effect', () => {
   // Mutation: drop UNIQUE (tenant_id, operation_type, operation_id), or derive operation_id from the key.
+  // Reviewer fix (Stage B): D-9 makes a command idempotent by the reserve's CURRENT state, and
+  // RESERVE_COMMAND_OUTCOMES is that rule. A late repeat replays only while the reserve still sits in the
+  // state the command leads to; once a later phase moved it on (capture, then refund), a late capture is
+  // the table's conflict code, never a second effect. The old version of this test replayed capture on a
+  // refunded reserve and so contradicted INV-T1 and the contract table.
   it('every phase, new key, record purged: the first transaction is returned (MIO-150-16)', async () => {
     const t = newTenant();
     const p = newPlayer();
     await h.fund(t, p, 20);
-    const a = uuidv7();
-    const b = uuidv7();
+    const a = uuidv7(); // ends captured
+    const b = uuidv7(); // ends released
+    const c = uuidv7(); // ends refunded
     const rsvA = await reserve(t, p, 4, a);
     const capA = await capture(t, a);
-    const refA = await refund(t, a);
     await reserve(t, p, 3, b);
     const relB = await release(t, b);
+    await reserve(t, p, 2, c);
+    await capture(t, c);
+    const refC = await refund(t, c);
+    const journal = await count('journal_transactions', t);
+    const wallet = await h.dbWallet(t, p);
+    const events = (await outbox(t)).length;
+    await h.admin.query(`DELETE FROM idempotency_keys WHERE tenant_id = $1`, [t]);
+    expect(await count('idempotency_keys', t)).toBe(0);
+
+    const again = {
+      reserve: await reserve(t, p, 4, a, key('late')),
+      capture: await capture(t, a, key('late')),
+      release: await release(t, b, key('late')),
+      refund: await refund(t, c, key('late')),
+    };
+    expect(again.reserve.body.transaction_id).toBe(rsvA.body.transaction_id);
+    expect(again.capture.body.transaction_id).toBe(capA.body.transaction_id);
+    expect(again.release.body.transaction_id).toBe(relB.body.transaction_id);
+    expect(again.refund.body.transaction_id).toBe(refC.body.transaction_id);
+    for (const r of Object.values(again)) expect(r.replayed).toBe(false); // the HTTP record is gone
+    expect(await count('journal_transactions', t)).toBe(journal);
+    expect(await h.dbWallet(t, p)).toEqual(wallet);
+    expect((await outbox(t)).length).toBe(events); // a state replay does not publish again
+  });
+
+  // Mutation: answer a late command from the journal alone ("was this phase ever applied?") instead of
+  // from the reserve's current state, or move the reserve without `WHERE state = <expected>`.
+  it('record purged, a later phase already applied: the late command gets the table code, no effect', async () => {
+    const t = newTenant();
+    const p = newPlayer();
+    await h.fund(t, p, 10);
+    const c = uuidv7();
+    await reserve(t, p, 4, c);
+    await capture(t, c);
+    await refund(t, c);
     const journal = await count('journal_transactions', t);
     const wallet = await h.dbWallet(t, p);
     const events = (await outbox(t)).length;
     await h.admin.query(`DELETE FROM idempotency_keys WHERE tenant_id = $1`, [t]);
 
-    const again = {
-      reserve: await reserve(t, p, 4, a, key('late')),
-      capture: await capture(t, a, key('late')),
-      refund: await refund(t, a, key('late')),
-      release: await release(t, b, key('late')),
-    };
-    expect(again.reserve.body.transaction_id).toBe(rsvA.body.transaction_id);
-    expect(again.capture.body.transaction_id).toBe(capA.body.transaction_id);
-    expect(again.refund.body.transaction_id).toBe(refA.body.transaction_id);
-    expect(again.release.body.transaction_id).toBe(relB.body.transaction_id);
+    for (const cmd of ['capture', 'release'] as const) {
+      await expect(COMMANDS[cmd](t, c, key('late'))).rejects.toMatchObject({
+        code: RESERVE_COMMAND_OUTCOMES.refunded[cmd],
+      });
+    }
     expect(await count('journal_transactions', t)).toBe(journal);
     expect(await h.dbWallet(t, p)).toEqual(wallet);
-    expect((await outbox(t)).length).toBe(events); // a state replay does not publish again
+    expect((await outbox(t)).length).toBe(events);
   });
 
   // Mutation: return the first result without comparing the parameters.

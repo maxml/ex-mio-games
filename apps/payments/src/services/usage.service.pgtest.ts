@@ -1,4 +1,4 @@
-import type { EventEnvelope } from '@ex-mio/contracts';
+import { uuidv7, type EventEnvelope } from '@ex-mio/contracts';
 import {
   activateSubscription,
   newPlayer,
@@ -36,6 +36,48 @@ describe('INV-M1 a redelivered event is counted once', () => {
       spins: 1,
       monthly_active_players: 1,
     });
+  });
+});
+
+describe('INV-M6 one spin is metered once, whatever event carries it (reviewer, Stage B gap b)', () => {
+  // D-1: engagement may re-publish the same spin under a NEW event_id (outbox replay, D1-4). The ledger
+  // dedupes that by spin_id; metering deduped by event_id only, so the tenant was billed twice.
+  // Mutation: dedupe usage by `event_id` instead of the business key `(tenant_id, spin_id)`.
+  it('the same spin_id under three event ids, also in parallel, is one spin and one MAU', async () => {
+    const t = newTenant();
+    const p = newPlayer();
+    const spinId = uuidv7();
+    const at = '2026-11-05T10:00:00.000Z';
+    const copies = [0, 1, 2].map(() => spinCompleted(t, p, 5, { spinId, at }));
+    expect(new Set(copies.map((e) => e.event_id)).size).toBe(3);
+    await Promise.allSettled([deliver(t, copies[0]!), deliver(t, copies[1]!)]);
+    await deliver(t, copies[2]!);
+    expect(await report(t, '2026-11')).toEqual({
+      period: '2026-11',
+      spins: 1,
+      monthly_active_players: 1,
+    });
+  });
+
+  // Mutation: scope the business key by period (a re-publish stamped in the next month bills again).
+  it('a re-publish stamped in the next month does not add a spin to that month', async () => {
+    const t = newTenant();
+    const p = newPlayer();
+    const spinId = uuidv7();
+    await deliver(t, spinCompleted(t, p, 5, { spinId, at: '2026-11-30T23:59:59.000Z' }));
+    await deliver(t, spinCompleted(t, p, 5, { spinId, at: '2026-12-01T00:00:01.000Z' }));
+    expect(await report(t, '2026-11')).toMatchObject({ spins: 1 });
+    expect(await report(t, '2026-12')).toMatchObject({ spins: 0, monthly_active_players: 0 });
+  });
+
+  // Guard against over-correction: different spins of one player are still each metered.
+  it('two different spins are two spins', async () => {
+    const t = newTenant();
+    const p = newPlayer();
+    const at = '2026-11-05T10:00:00.000Z';
+    await deliver(t, spinCompleted(t, p, 5, { at }));
+    await deliver(t, spinCompleted(t, p, 5, { at }));
+    expect(await report(t, '2026-11')).toMatchObject({ spins: 2, monthly_active_players: 1 });
   });
 });
 
@@ -153,14 +195,17 @@ describe('INV-M5 the sandbox flag comes from the producer, never from the payloa
     expect(rows[0].n).toBe(0);
   });
 
-  it('through the inbox a sandbox spin still credits its coins but meters nothing', async () => {
+  // Reviewer fix (Stage B): this test used to assert the sandbox coins in `h.dbWallet`, the wallet linked
+  // to the player, i.e. the production wallet. D-15 (X-2) forbids exactly that; where the sandbox coins
+  // must NOT go is pinned in spin-credit.consumer.pgtest.ts, "X-2".
+  it('through the inbox a sandbox spin is applied and acked but meters nothing', async () => {
     const t = newTenant();
     const p = newPlayer();
     const d = await h.consume(
       spinCompleted(t, p, 5, { at: '2026-11-05T10:00:00.000Z', sandbox: true }),
     );
     expect(d.outcome).toBe('applied');
-    expect((await h.dbWallet(t, p)).available).toBe(5);
+    expect(d.acked).toBe(true);
     expect(await report(t, '2026-11')).toMatchObject({ spins: 0, monthly_active_players: 0 });
   });
 });

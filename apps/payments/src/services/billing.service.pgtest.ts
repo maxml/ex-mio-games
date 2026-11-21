@@ -1,3 +1,4 @@
+import { createHmac } from 'node:crypto';
 import { uuidv7 } from '@ex-mio/contracts';
 import { IdempotencyMismatchError } from '@ex-mio/idempotency';
 import { key, newTenant, openHarness, snapshotBody, type Harness } from '../testing/harness';
@@ -26,6 +27,12 @@ const subscribe = (t: string, planId: string, method = OK, k = key('sub')) =>
 
 /** Deliver a signed webhook the way the provider's HTTP call would reach the service: no tenant context. */
 const webhook = (raw: string, signature = h.sign(raw)) => h.billing.handleWebhook(raw, signature);
+/**
+ * Deliver with EXACTLY this signature, no default. `webhook(raw, undefined)` cannot express "no
+ * signature": a default parameter replaces `undefined` with a valid one (reviewer fix, Stage B).
+ */
+const webhookAs = (raw: string, signature: string | undefined) =>
+  h.billing.handleWebhook(raw, signature);
 
 const count = async (table: string, t: string, where = '') =>
   (
@@ -332,10 +339,14 @@ describe('INV-W1 webhooks: verified, deduplicated, ordered, and never swallowed'
     const out = await subscribe(t, (await plan('pro')).id);
     const raw = snapshotBody(t, out.body.provider_subscription_id, 'active', 1);
     const sig = h.sign(raw);
+    const otherSecret = createHmac('sha256', 'whsec_some_other_secret').update(raw).digest('hex');
     for (const attempt of [
-      () => webhook(raw, 'nope'),
-      () => webhook(raw, undefined as unknown as string),
-      () => webhook(raw.replace('"version":1', '"version":2'), sig),
+      () => webhookAs(raw, 'nope'),
+      () => webhookAs(raw, undefined),
+      () => webhookAs(raw, ''),
+      () => webhookAs(raw, sig.slice(0, 32)), // a prefix of the right signature
+      () => webhookAs(raw, otherSecret), // well-formed, signed with another secret
+      () => webhookAs(raw.replace('"version":1', '"version":2'), sig),
     ]) {
       await expect(attempt()).rejects.toMatchObject({ code: 'invalid_signature' });
     }

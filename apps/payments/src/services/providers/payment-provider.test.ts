@@ -1,3 +1,4 @@
+import { createHmac } from 'node:crypto';
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { FakePaymentProvider } from './fake.provider';
@@ -162,6 +163,44 @@ describe('INV-PP2 the stripe adapter is a stub behind config', () => {
     expect(selectPaymentProvider({}).kind).toBe('fake');
     expect(selectPaymentProvider({ STRIPE_SECRET_KEY: '' }).kind).toBe('fake');
     expect(selectPaymentProvider({ STRIPE_SECRET_KEY: 'sk_test_x' }).kind).toBe('stripe');
+  });
+
+  // Reviewer test (Stage B, finding R-3): webhook verification must fail CLOSED in production. Today a
+  // production process without FAKE_PROVIDER_WEBHOOK_SECRET falls back to a secret written in the
+  // source, so anyone who reads the repository can sign an `active` webhook and get a paid plan.
+  // Mutation: fall back to a source-code secret when NODE_ENV=production.
+  it('production without a webhook secret never verifies a webhook signed with a secret from the source', () => {
+    const body = JSON.stringify({
+      eventId: 'evt_forged',
+      tenantId: TENANT,
+      subscriptionId: 'sub_x',
+      status: 'active',
+      version: 99,
+      amountMinor: 0,
+      currency: 'USD',
+      periodStart: '2026-11-01T00:00:00.000Z',
+      periodEnd: '2026-12-01T00:00:00.000Z',
+    });
+    const sources = ['select-provider.ts', 'fake.provider.ts', 'payment-provider.ts']
+      .map((f) => readFileSync(join(__dirname, f), 'utf8'))
+      .join('\n');
+    const literals = [...sources.matchAll(/['"`]([^'"`\s]{8,})['"`]/g)].map((m) => m[1]!);
+    expect(literals.length).toBeGreaterThan(0); // the scan reads real source, not an empty string
+    for (const env of [
+      { NODE_ENV: 'production' },
+      { NODE_ENV: 'production', FAKE_PROVIDER_WEBHOOK_SECRET: '' },
+    ]) {
+      let p: PaymentProvider;
+      try {
+        p = selectPaymentProvider(env);
+      } catch {
+        continue; // refusing to start is failing closed too
+      }
+      for (const secret of literals) {
+        const forged = createHmac('sha256', secret).update(body).digest('hex');
+        expect(() => p.verifyWebhook(body, forged)).toThrow();
+      }
+    }
   });
 });
 
