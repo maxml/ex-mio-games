@@ -6,7 +6,7 @@ priority: P1
 money_impact: direct
 risk_class: ownership
 status: todo
-depends_on: [MIO-044, MIO-063, MIO-066, MIO-067, MIO-083, MIO-085]
+depends_on: [MIO-044, MIO-063, MIO-066, MIO-067, MIO-083, MIO-085, MIO-092]
 size: M
 ---
 
@@ -41,6 +41,9 @@ All requests below are made with player A's valid session in the same tenant as 
   with the task id).
 - A launch token for B's external id signed by the casino gives B's session, not A's; A cannot exchange
   A's session for B's by sending B's external id anywhere.
+- Sandbox and production inside one tenant (MIO-092): a sandbox player's session cannot read or spend a
+  production player's spins, coins or redemptions, and the reverse; a sandbox launch token never maps to
+  a production player.
 - An operator analyst of the same tenant can read B's balance and history (allowed) but cannot spin or
   redeem for B (403).
 - Mutations the reviewer re-applies: drop `user_id` from the spin-credit consume query (the first test goes
