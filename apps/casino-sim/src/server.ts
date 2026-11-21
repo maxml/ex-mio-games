@@ -15,10 +15,20 @@ import type { AppLogger } from '@ex-mio/logger';
  * `error` (HTTP 500), `timeout` (no answer within the caller's timeout),
  * `slow` (answers after 1.5 s). Both casinos are idempotent on `reference`.
  */
+/** Outbound webhook delivery; injected so tests need no network. Default is `fetch` POST. */
+export type DeliverFn = (
+  url: string,
+  init: { headers: Record<string, string>; body: string },
+) => Promise<{ status: number }>;
+
 export interface SimOptions {
   logger?: AppLogger;
   keyA?: string;
   secretB?: string;
+  /** STAGE A STUB (type only): see docs/specs/engagement-ingest.md section 3. Not yet used. */
+  deliver?: DeliverFn;
+  /** Serves /__faults, /__reset and /__issued. Default false: the control routes then do not exist. */
+  faultsEnabled?: boolean;
 }
 
 const CreditA = z.object({
