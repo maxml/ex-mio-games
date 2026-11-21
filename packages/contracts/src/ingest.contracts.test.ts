@@ -3,6 +3,10 @@ import {
   PublicWheel,
   RewardTableDefinition,
   RuleDefinition,
+  MySpinsResponse,
+  SPIN_CONFLICT_CODES,
+  SpinConflictBody,
+  SpinResponse,
   SpinRequest,
   createEvent,
   parseEvent,
@@ -109,6 +113,35 @@ describe('ingest contracts', () => {
     for (const extra of ['weights', 'segment', 'seed', 'table_version', 'table_id', 'user_id']) {
       expect(SpinRequest.safeParse({ [extra]: 1 }).success).toBe(false);
     }
+  });
+
+  // INV-SPIN-RESPONSE-INDEX. Mutation: drop segment_index from SpinResponse or make it optional.
+  it('INV-SPIN-RESPONSE-INDEX: a spin response carries the winning segment_index, label and coins', () => {
+    const ok = { spin_id: W, segment_index: 2, segment_label: 'Win', reward_coins: 25 };
+    expect(SpinResponse.safeParse(ok).success).toBe(true);
+    const { segment_index: _drop, ...without } = ok;
+    expect(SpinResponse.safeParse(without).success).toBe(false);
+    expect(SpinResponse.safeParse({ ...ok, segment_index: -1 }).success).toBe(false);
+    expect(SpinResponse.safeParse({ ...ok, segment_index: 0.5 }).success).toBe(false);
+    expect(SpinResponse.safeParse({ ...ok, weight: 3 }).success).toBe(false);
+  });
+
+  // INV-ME-SPINS-SHAPE. Mutation: allow extra fields (a user id, a credit list) or a negative count.
+  it('INV-ME-SPINS-SHAPE: GET /v1/me/spins answers a non-negative integer count and nothing else', () => {
+    expect(MySpinsResponse.safeParse({ available: 0 }).success).toBe(true);
+    expect(MySpinsResponse.safeParse({ available: 3 }).success).toBe(true);
+    for (const bad of [{ available: -1 }, { available: 1.5 }, {}, { available: 1, user_id: W }]) {
+      expect(MySpinsResponse.safeParse(bad).success).toBe(false);
+    }
+  });
+
+  // INV-SPIN-CONFLICT-CODE (R2-5). Mutation: add a third code, or make `code` optional.
+  it('INV-SPIN-CONFLICT-CODE: a spin 409 is `in_progress` (retry) or `no_credit` (stop), nothing else', () => {
+    expect([...SPIN_CONFLICT_CODES]).toEqual(['in_progress', 'no_credit']);
+    expect(SpinConflictBody.safeParse({ message: 'm', code: 'in_progress' }).success).toBe(true);
+    expect(SpinConflictBody.safeParse({ message: 'm', code: 'no_credit' }).success).toBe(true);
+    expect(SpinConflictBody.safeParse({ message: 'm' }).success).toBe(false);
+    expect(SpinConflictBody.safeParse({ message: 'm', code: 'conflict' }).success).toBe(false);
   });
 
   // INV-WHEEL-PUBLIC-NO-WEIGHTS. Mutation: remove .strict() on PublicWheel segments.

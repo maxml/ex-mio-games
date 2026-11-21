@@ -146,11 +146,30 @@ export type SpinRequest = z.infer<typeof SpinRequest>;
 export const SpinResponse = z
   .object({
     spin_id: Uuid,
+    /** Index into the wheel's public segment list: the web wheel animates to the server's result. */
+    segment_index: z.number().int().nonnegative(),
     segment_label: z.string(),
     reward_coins: z.number().int().nonnegative(),
   })
   .strict();
 export type SpinResponse = z.infer<typeof SpinResponse>;
+
+/** `GET /v1/me/spins`: how many spin credits the calling player can still use. Owner-only. */
+export const MySpinsResponse = z
+  .object({ available: z.number().int().nonnegative().safe() })
+  .strict();
+export type MySpinsResponse = z.infer<typeof MySpinsResponse>;
+
+/**
+ * The two reasons a spin is 409, and they must be told apart (D-3, review R2-5): `in_progress` is
+ * a duplicate of an Idempotency-Key whose first request has not finished (the client retries with
+ * the same key); `no_credit` means the player has nothing to spin (the client stops).
+ */
+export const SPIN_CONFLICT_CODES = ['in_progress', 'no_credit'] as const;
+export const SpinConflictCode = z.enum(SPIN_CONFLICT_CODES);
+export type SpinConflictCode = z.infer<typeof SpinConflictCode>;
+export const SpinConflictBody = z.object({ message: z.string(), code: SpinConflictCode }).strict();
+export type SpinConflictBody = z.infer<typeof SpinConflictBody>;
 
 /** The wheel as a player sees it: labels only, never weights, seeds or versions. */
 export const PublicWheel = z
