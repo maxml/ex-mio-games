@@ -1,7 +1,9 @@
 /**
  * Reviewer property tests (foundation r1). They run the REAL choke-point code
  * (tenancy, bus, idempotency) against the compose Postgres and RabbitMQ, in a
- * scratch database owned by the `payments` role, so a mutation in a package's
+ * scratch database laid out like production: `payments_owner` owns the database
+ * and runs the DDL; the code under test connects as `payments_app` (runtime role,
+ * not the owner, NOBYPASSRLS) with DML grants only. A mutation in a package's
  * src shows up here without rebuilding an image.
  *
  * Tests named `FINDING` assert the property the review asks for; they are red
@@ -35,19 +37,21 @@ import {
 const PG_PORT = Number(process.env.POSTGRES_PORT ?? 54329);
 const AMQP = `amqp://mio:mio-dev@localhost:${process.env.RABBITMQ_PORT ?? 55672}`;
 const DB = `prop_${Date.now()}`;
-const appUrl = `postgresql://payments:payments-dev@localhost:${PG_PORT}/${DB}`;
+const ownerUrl = `postgresql://payments_owner:payments-owner-dev@localhost:${PG_PORT}/${DB}`;
+const appUrl = `postgresql://payments_app:payments-app-dev@localhost:${PG_PORT}/${DB}`;
+const SCRATCH_TABLES = ['outbox', 'inbox', 'idempotency_keys', 'effects'];
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 const A = uuidv7();
 const B = uuidv7();
 
-let ds: DataSource; // replica 1, as the owning app role
+let ds: DataSource; // replica 1, as payments_app (the runtime role, not the owner)
 let ds2: DataSource; // replica 2, same role
 let oracle: Client; // superuser view of the scratch DB, bypasses RLS: counts only
 
-const open = () =>
+const open = (url = appUrl) =>
   createDataSource({
-    env: { DATABASE_URL: appUrl, NODE_ENV: 'test' },
+    env: { DATABASE_URL: url, NODE_ENV: 'test' },
     entities: [],
     migrations: [],
   }).initialize();
@@ -66,12 +70,14 @@ beforeAll(async () => {
     database: 'postgres',
   });
   await admin.connect();
-  await admin.query(`CREATE DATABASE "${DB}" OWNER payments`);
+  await admin.query(`CREATE DATABASE "${DB}" OWNER payments_owner`);
   await admin.query(`REVOKE ALL ON DATABASE "${DB}" FROM PUBLIC`);
+  await admin.query(`GRANT CONNECT ON DATABASE "${DB}" TO payments_app`);
   await admin.end();
-  ds = await open();
-  ds2 = await open();
-  const q = ds.createQueryRunner();
+  // DDL as the owner, as a migration would run it.
+  const owner = await open(ownerUrl);
+  const q = owner.createQueryRunner();
+  await q.query(`REVOKE CREATE ON SCHEMA public FROM PUBLIC`);
   await createBusTables(q);
   await createIdempotencyTable(q);
   await q.query(`CREATE TABLE "effects" (
@@ -79,7 +85,14 @@ beforeAll(async () => {
     "tenant_id" uuid NOT NULL,
     "tag" text NOT NULL)`);
   await enableTenantRls(q, 'effects');
+  // DML only for the runtime role (DELETE: R1 cleans up its outbox rows).
+  for (const t of SCRATCH_TABLES) {
+    await q.query(`GRANT SELECT, INSERT, UPDATE, DELETE ON "${t}" TO payments_app`);
+  }
   await q.release();
+  await owner.destroy();
+  ds = await open();
+  ds2 = await open();
   oracle = new Client({
     host: 'localhost',
     port: PG_PORT,
@@ -295,7 +308,13 @@ const call = (
   key: string,
   body: unknown,
   tag: string,
-  opts: { dsx?: DataSource; fail?: () => boolean; noBody?: boolean; holdMs?: number } = {},
+  opts: {
+    dsx?: DataSource;
+    fail?: () => boolean;
+    noBody?: boolean;
+    holdMs?: number;
+    status?: number;
+  } = {},
 ) =>
   runWithTenant({ tenantId: tenant, principalId: principal }, () =>
     runIdempotent<{ tag: string } | undefined>({
@@ -308,7 +327,10 @@ const call = (
         await m.query(`INSERT INTO "effects" ("tenant_id", "tag") VALUES ($1, $2)`, [tenant, tag]);
         await sleep(opts.holdMs ?? 20);
         if (opts.fail?.()) throw new Error('boom');
-        return { status: opts.noBody ? 204 : 201, body: opts.noBody ? undefined : { tag } };
+        return {
+          status: opts.status ?? (opts.noBody ? 204 : 201),
+          body: opts.noBody ? undefined : { tag },
+        };
       },
     }),
   );
@@ -344,8 +366,10 @@ describe('idempotency (runIdempotent)', () => {
   it('D3 crash after the effect, before the record: nothing is committed', async () => {
     const key = `k-${uuidv7()}`;
     const tag = `d3-${key}`;
-    // A body-less (204) result makes the record INSERT fail after the effect ran.
-    await expect(call(A, 'p1', key, { amount: 5 }, tag, { noBody: true })).rejects.toThrow();
+    // A status outside Postgres `integer` (2^31) makes the record INSERT fail after
+    // the effect ran and returned; the effect itself does not throw. (Was a 204,
+    // which D6 requires to succeed.)
+    await expect(call(A, 'p1', key, { amount: 5 }, tag, { status: 2 ** 31 })).rejects.toThrow();
     expect(await effects(tag)).toBe(0);
     expect(await count(`SELECT count(*) AS n FROM idempotency_keys WHERE key = $1`, [key])).toBe(0);
   });
