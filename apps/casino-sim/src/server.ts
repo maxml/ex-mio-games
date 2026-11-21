@@ -115,7 +115,8 @@ export function buildServer(options: SimOptions = {}): FastifyInstance {
     return { result: { code: 0, balance_cents: balancesB.get(player_id) ?? 0 } };
   });
 
-  registerCasinos(app, {
+  // The instance may carry the app's pino logger type; the routes only need the base type.
+  registerCasinos(app as unknown as FastifyInstance, {
     ...(options.deliver ? { deliver: options.deliver } : {}),
     ...(options.faultsEnabled !== undefined ? { faultsEnabled: options.faultsEnabled } : {}),
   });
