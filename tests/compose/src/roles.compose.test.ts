@@ -20,6 +20,13 @@ const EXPECTED_GRANTS: Record<Service, Record<string, string[]>> = {
     spin_credits: ['INSERT', 'SELECT'],
     spins: ['INSERT', 'SELECT'],
     tenant_projections: ['INSERT', 'SELECT', 'UPDATE'],
+    // The store tables (Store1732300000000, StageBFixes1732400000000).
+    item_player_usage: ['INSERT', 'SELECT', 'UPDATE'],
+    redemption_history: ['INSERT', 'SELECT'],
+    redemption_inbox: ['INSERT', 'SELECT'],
+    redemption_work_queue: ['DELETE', 'INSERT', 'SELECT', 'UPDATE'],
+    redemptions: ['INSERT', 'SELECT', 'UPDATE'],
+    store_items: ['INSERT', 'SELECT', 'UPDATE'],
   },
   payments: {
     coin_credits: ['INSERT', 'SELECT'],

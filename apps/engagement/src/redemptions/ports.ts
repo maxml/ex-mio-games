@@ -157,6 +157,11 @@ export interface RedemptionStore {
   dueForSweep(now: Date): Promise<{ tenantId: string; id: string }[]>;
 }
 
+/** W-5: the caller's own redemptions. Implemented by the Postgres store; not part of the frozen contract. */
+export interface OwnRedemptionLister {
+  listOwn(scope: Scope): Promise<RedemptionRecord[]>;
+}
+
 export interface Clock {
   now(): Date;
 }

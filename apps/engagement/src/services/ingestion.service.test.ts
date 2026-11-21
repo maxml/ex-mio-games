@@ -66,7 +66,7 @@ function signedB(secret: string, player = RAW) {
 const integration = (over: Record<string, unknown>): TenantIntegration =>
   ({
     tenant_id: T1,
-    casino: 'casino-a',
+    platform: 'casino-a', // X-7: identity's TenantIntegration names the adapter key `platform`
     status: 'active',
     webhook_secrets: ['sec'],
     player_hash_key: 'hk',
@@ -96,7 +96,7 @@ describe('IngestionService (fix round)', () => {
     });
     integrations = {
       acme: integration({ webhook_secrets: ['sec-acme'] }),
-      bravo: integration({ tenant_id: T2, casino: 'casino-b', webhook_secrets: ['sec-bravo'] }),
+      bravo: integration({ tenant_id: T2, platform: 'casino-b', webhook_secrets: ['sec-bravo'] }),
     };
     const inbound = {
       async insertIfAbsent(_tx: unknown, row: InboundEventRow) {
@@ -217,7 +217,7 @@ describe('IngestionService (fix round)', () => {
       }
       integrations.bravo = integration({
         tenant_id: T2,
-        casino: 'casino-b',
+        platform: 'casino-b',
         webhook_secrets: [''],
       });
       const forgedB = signedB('');

@@ -23,6 +23,7 @@ import {
   nonEmptyString,
   requestHeaders,
   sandboxMismatch,
+  usableSecret,
 } from './casino-http';
 
 /**
@@ -51,9 +52,13 @@ const WebhookB = z
   })
   .strict();
 
-/** The signed message of a webhook, from the fields as they appear on the wire. */
+/**
+ * The signed message of a webhook, from the fields as they appear on the wire. F4: a JSON array, so
+ * the encoding is injective (a dotted string let `tx-1`+`player.42` and `tx-1.player`+`42` share one
+ * MAC). The casino simulator signs with the same encoding.
+ */
 const signedMessage = (sentAt: string, type: string, d: Record<string, unknown>): string =>
-  `${sentAt}.${type}.${d.txn_id}.${d.customer_ref}.${d.amount_cents}.${d.ccy}`;
+  JSON.stringify([sentAt, type, d.txn_id, d.customer_ref, d.amount_cents, d.ccy]);
 
 export function createCasinoB(config: AdapterConfig): CasinoAdapter {
   const reasonOf = (body: unknown, fallback: string): string =>
@@ -111,6 +116,7 @@ export function createCasinoB(config: AdapterConfig): CasinoAdapter {
   return {
     verifySignature(raw: string, _headers: Headers, secret: string, now: Date): SignatureVerdict {
       try {
+        if (!usableSecret(secret)) return 'invalid';
         let body: unknown;
         try {
           body = JSON.parse(raw);

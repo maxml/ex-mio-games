@@ -25,13 +25,21 @@ export const FAULT_KINDS = [
 ] as const;
 type FaultKind = (typeof FAULT_KINDS)[number];
 
+/**
+ * A `timeout` must outlast the engagement adapter's call timeout (5000 ms, casino-http.ts), or the
+ * fault is a slow success and the saga never sees `unknown` (review F5). Other kinds keep 1 s.
+ */
+export const TIMEOUT_FAULT_DEFAULT_MS = 10_000;
+const DEFAULT_DELAY_MS = 1000;
+
 const FaultPlan = z
   .object({
     casino: z.enum(['a', 'b']),
     kind: z.enum(FAULT_KINDS),
     times: z.number().int().positive().default(1),
     player_id: z.string().min(1).optional(),
-    delay_ms: z.number().int().min(0).max(120_000).default(1000),
+    // No schema default: the default depends on the kind (see DEFAULT_DELAY_MS).
+    delay_ms: z.number().int().min(0).max(120_000).optional(),
     copies: z.number().int().min(1).max(100).default(2),
   })
   .strict();
@@ -154,9 +162,11 @@ export function registerCasinos(
     }
     const type = 'payment.completed';
     const sentAt = new Date().toISOString();
+    // F4: an injective message (a JSON array of the fields), not a dotted string two different
+    // bodies can share. Must stay identical to the engagement adapter's `signedMessage`.
     const signature = hmac(
       d.secret,
-      `${sentAt}.${type}.${eventId}.${d.player_id}.${d.amount_minor}.${d.currency}`,
+      JSON.stringify([sentAt, type, eventId, d.player_id, d.amount_minor, d.currency]),
     );
     const body = JSON.stringify({
       type,
@@ -327,7 +337,7 @@ export function registerCasinos(
       kind: p.kind,
       remaining: p.times,
       ...(p.player_id !== undefined ? { player_id: p.player_id } : {}),
-      delay_ms: p.delay_ms,
+      delay_ms: p.delay_ms ?? (p.kind === 'timeout' ? TIMEOUT_FAULT_DEFAULT_MS : DEFAULT_DELAY_MS),
       copies: p.copies,
     });
     return { ok: true };

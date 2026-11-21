@@ -39,7 +39,7 @@ function setup(opts: { stock?: number | null; limit?: number | null } = {}) {
 
 const scope = (w: W, sandbox = false): Scope => ({ tenantId: w.tenant, playerId: P1, sandbox });
 const rec = (w: W, id: string): RedemptionRecord => w.store.redemptions.get(id)!;
-const operator = { id: 'op-1', role: 'admin' as const };
+const operator = { id: 'op-1', role: 'operator_admin' as const }; // identity's vocabulary (X-15)
 
 // ---------------------------------------------------------------------------------------------
 describe('F1: a refused coin reserve leaves no exit for the operator', () => {

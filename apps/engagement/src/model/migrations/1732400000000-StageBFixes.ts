@@ -1,4 +1,5 @@
 import type { MigrationInterface, QueryRunner } from 'typeorm';
+import { appRoleName, grantAppRole } from '@ex-mio/service-kit';
 import { disableTenantRls, enableTenantRls } from '@ex-mio/tenancy';
 
 /**
@@ -11,6 +12,11 @@ export class StageBFixes1732400000000 implements MigrationInterface {
   name = 'StageBFixes1732400000000';
 
   async up(q: QueryRunner): Promise<void> {
+    // X-6: the casino request is built once, at RESERVED -> ISSUING, and frozen on the order (a later
+    // erasure of the player link changes nothing); the issue deadline counts from the first ISSUING.
+    await q.query(
+      `ALTER TABLE "redemptions" ADD COLUMN "reward_request" jsonb, ADD COLUMN "first_issuing_at" timestamptz`,
+    );
     await q.query(
       `ALTER TABLE "redemptions" DROP CONSTRAINT "redemptions_tenant_id_player_id_operation_key_key"`,
     );
@@ -27,6 +33,7 @@ export class StageBFixes1732400000000 implements MigrationInterface {
         PRIMARY KEY ("tenant_id", "consumer", "event_id")
       )`);
     await enableTenantRls(q, 'redemption_inbox');
+    await grantAppRole(q, appRoleName('engagement'), { redemption_inbox: ['SELECT', 'INSERT'] });
   }
 
   async down(q: QueryRunner): Promise<void> {
@@ -36,6 +43,9 @@ export class StageBFixes1732400000000 implements MigrationInterface {
     await q.query(
       `ALTER TABLE "redemptions" ADD CONSTRAINT "redemptions_tenant_id_player_id_operation_key_key"
          UNIQUE ("tenant_id", "player_id", "operation_key")`,
+    );
+    await q.query(
+      `ALTER TABLE "redemptions" DROP COLUMN "reward_request", DROP COLUMN "first_issuing_at"`,
     );
   }
 }

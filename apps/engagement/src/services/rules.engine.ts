@@ -19,7 +19,8 @@ export interface Grant {
  */
 export function evaluateRules(
   rules: readonly StoredRule[],
-  event: CanonicalDepositEvent,
+  // No player id of any kind: the rules judge the deposit (amount, currency, time), never the casino id.
+  event: Omit<CanonicalDepositEvent, 'external_player_id'>,
   priorGrants: Readonly<Record<string, number>>,
 ): Grant[] {
   const at = Date.parse(event.occurred_at);

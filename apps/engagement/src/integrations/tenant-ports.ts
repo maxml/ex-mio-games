@@ -25,7 +25,7 @@ export function createTenantCasinoPorts(deps: {
     async forTenant(tenantId, opts) {
       const integration = await deps.integrations.lookupById(tenantId);
       if (!integration || integration.status !== 'active') return undefined;
-      const entry = deps.registry.get(integration.casino);
+      const entry = deps.registry.get(integration.platform);
       const api = integration.reward_api;
       if (!entry || !api) return undefined;
       const baseUrl = opts.sandbox ? api.sandbox_base_url : api.base_url;

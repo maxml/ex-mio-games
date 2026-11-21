@@ -18,8 +18,10 @@ import {
   ADAPTER_REGISTRY,
   CLOCK,
   InboundEventsRepository,
+  PLAYER_DIRECTORY,
   TENANT_INTEGRATIONS,
   type Clock,
+  type PlayerDirectoryPort,
   type TenantIntegration,
   type TenantIntegrationPort,
 } from '../integrations/ports';
@@ -38,6 +40,11 @@ const noTransport = async (): Promise<never> => {
  * ONE tenant transaction that inserts the inbound row and, only if it was new, writes the outbox
  * message. The signature precedes parsing and the suspended check, so a stranger learns nothing about
  * schemas or tenant state. Logs carry the reason code and the slug, never the body or a secret.
+ *
+ * D-12 / X-1: the casino's player id is resolved to the internal `player_id` through identity BEFORE
+ * the transaction opens, so the outbox row (durable, unreachable by erasure) never holds the raw id.
+ * Identity down is 503 with nothing written: the casino retries and there is no dedupe hole.
+ * X-3 / D-13: the envelope `sandbox` flag comes from the credential's `environment`, never the request.
  */
 @Injectable()
 export class IngestionService {
@@ -49,11 +56,12 @@ export class IngestionService {
     @Inject(TENANT_INTEGRATIONS) private readonly integrations: TenantIntegrationPort,
     @Inject(ADAPTER_REGISTRY) private readonly registry: AdapterRegistry,
     @Inject(CLOCK) private readonly clock: Clock,
+    @Inject(PLAYER_DIRECTORY) private readonly players: PlayerDirectoryPort,
   ) {}
 
   async ingest(slug: string, raw: string, headers: Headers): Promise<IngestAck> {
     const integration = await this.integrations.lookup(slug);
-    const entry = integration ? this.registry.get(integration.casino) : undefined;
+    const entry = integration ? this.registry.get(integration.platform) : undefined;
     if (!integration || !entry) {
       this.refuse(slug, 'unknown_tenant');
       throw reject('unknown_tenant', 'unknown tenant');
@@ -90,6 +98,19 @@ export class IngestionService {
     const externalPlayerHmac = createHmac('sha256', integration.player_hash_key)
       .update(`${e.source}\n${e.external_player_id}`)
       .digest('hex');
+    const sandbox = integration.environment === 'sandbox';
+
+    let playerId: string;
+    try {
+      playerId = await this.players.resolveOrCreate(tenantId, e.source, e.external_player_id);
+    } catch {
+      // Not logged with the player id: the log line carries the slug only.
+      this.log.warn(`ingest refused: identity unavailable (tenant slug ${slug})`);
+      throw new HttpException(
+        { message: 'identity unavailable, retry', code: 'identity_unavailable' },
+        503,
+      );
+    }
 
     // The route is public, so there is no ambient tenant yet: the verified tenant opens one.
     return runWithTenant({ tenantId }, () =>
@@ -109,11 +130,12 @@ export class IngestionService {
             createEvent({
               type: 'engagement.deposit.confirmed',
               tenantId,
+              ...(sandbox ? { sandbox: true } : {}),
               payload: {
                 inbound_event_id: id,
                 source: e.source,
                 external_event_id: e.external_event_id,
-                external_player_id: e.external_player_id,
+                player_id: playerId,
                 amount_minor: e.amount_minor,
                 currency: e.currency,
                 occurred_at: e.occurred_at,
@@ -136,6 +158,8 @@ export class IngestionService {
     const now = this.clock.now();
     let best: SignatureVerdict = 'invalid';
     for (const secret of integration.webhook_secrets) {
+      // F6: an empty secret is no key (anyone can sign with it); an empty list verifies nothing.
+      if (secret === '') continue;
       const verdict = adapter.verifySignature(raw, headers, secret, now);
       if (verdict === 'valid') return 'valid';
       if (verdict === 'stale') best = 'stale';

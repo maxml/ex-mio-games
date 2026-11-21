@@ -1,4 +1,10 @@
-import type { IssueResult, RewardRequest, RewardStatus } from '@ex-mio/contracts';
+import type {
+  IssueResult,
+  ResolvedRewardPort,
+  RewardRequest,
+  RewardStatus,
+} from '@ex-mio/contracts';
+import { rewardOfOrder } from '../redemptions/reward-request';
 import {
   StoreRejection,
   type ApplyResult,
@@ -104,7 +110,8 @@ export class RedemptionSagaService implements RedemptionSaga {
         throw new StoreRejection('insufficient_funds');
       return res.redemption;
     }
-    return (await this.toReview(r, 'REQUESTED', 'reserve_refused')).redemption;
+    return (await this.toReview(r, 'REQUESTED', 'reserve_refused', `reserve_refused:${reply.code}`))
+      .redemption;
   }
 
   // ---- the sweeper ---------------------------------------------------------------------------
@@ -158,26 +165,86 @@ export class RedemptionSagaService implements RedemptionSaga {
     }
   }
 
-  /** RESERVED -> ISSUING (committed, attempt counted, lease) BEFORE the adapter is called. */
+  /**
+   * The port of the order's tenant and ENVIRONMENT (X-6, D-12). `undefined` from the registry is
+   * NEEDS_REVIEW `no_adapter` with the coins held (never the production adapter as a fallback); a
+   * REJECTED promise (identity down) is transport: the same attempt is rescheduled, never a review
+   * and never a refund. `'moved'` means the step is over for this pass.
+   */
+  private async portFor(
+    r: RedemptionRecord,
+    from: RedemptionRecord['state'],
+    now: Date,
+  ): Promise<ResolvedRewardPort | 'moved'> {
+    let resolved: ResolvedRewardPort | undefined;
+    try {
+      resolved = await this.deps.ports.forTenant(r.tenantId, { sandbox: r.sandbox });
+    } catch {
+      await this.deps.store.reschedule(
+        r.tenantId,
+        r.id,
+        from,
+        new Date(now.getTime() + PAYMENTS_RETRY_MS),
+      );
+      return 'moved';
+    }
+    if (!resolved) {
+      await this.toReview(r, from, 'no_adapter');
+      return 'moved';
+    }
+    return resolved;
+  }
+
+  /** RESERVED -> ISSUING (committed, attempt counted, lease, request frozen) BEFORE the adapter is called. */
   private async issue(r: RedemptionRecord, now: Date): Promise<boolean> {
-    const request = await this.deps.rewardRequest(r);
+    const resolved = await this.portFor(r, 'RESERVED', now);
+    if (resolved === 'moved') return true;
+    // The casino's own id of the player comes from identity's link (D-20); `undefined` means erased
+    // or never created: the coins stay held and a person decides. No id is ever guessed.
+    let request: RewardRequest | undefined;
+    try {
+      request = await this.deps.requests.build({
+        tenantId: r.tenantId,
+        userId: r.playerId,
+        reward: rewardOfOrder(r),
+        sandbox: r.sandbox,
+      });
+    } catch {
+      await this.deps.store.reschedule(
+        r.tenantId,
+        r.id,
+        'RESERVED',
+        new Date(now.getTime() + PAYMENTS_RETRY_MS),
+      );
+      return true;
+    }
+    if (!request) {
+      await this.toReview(r, 'RESERVED', 'player_unmapped');
+      return true;
+    }
     const won = await this.apply(r, {
       expectFrom: ['RESERVED'],
       to: 'ISSUING',
       cause: 'issue_attempt',
       attemptsIncrement: true,
+      rewardRequest: request,
       nextAttemptAt: new Date(now.getTime() + ISSUING_LEASE_MS),
     });
     if (!won.applied) return false; // another sweeper holds this attempt
-    await this.callAdapter(won.redemption, request, now);
+    await this.callAdapter(won.redemption, request, resolved, now);
     return true;
   }
 
   /** The adapter call for a row that is ISSUING with its attempt committed, and what it answered. */
-  private async callAdapter(r: RedemptionRecord, request: RewardRequest, now: Date): Promise<void> {
+  private async callAdapter(
+    r: RedemptionRecord,
+    request: RewardRequest,
+    resolved: ResolvedRewardPort,
+    now: Date,
+  ): Promise<void> {
     let result: IssueResult;
     try {
-      result = await this.deps.adapterFor(r.tenantId, r.sandbox).issueReward(request, keyOf(r.id));
+      result = await resolved.port.issueReward(request, keyOf(r.id));
     } catch {
       result = { kind: 'unknown' };
     }
@@ -237,8 +304,11 @@ export class RedemptionSagaService implements RedemptionSaga {
 
   /** UNKNOWN: ask the casino by OUR key, with the frozen request, and act on the answer. */
   private async inquire(r: RedemptionRecord, now: Date): Promise<boolean> {
-    const request = await this.deps.rewardRequest(r);
-    const status = await this.lookup(r, request);
+    const request = r.rewardRequest;
+    if (!request) return (await this.toReview(r, 'UNKNOWN', 'request_missing')).applied;
+    const resolved = await this.portFor(r, 'UNKNOWN', now);
+    if (resolved === 'moved') return true;
+    const status = await this.lookup(resolved, r, request);
     switch (status.kind) {
       case 'issued':
         return (
@@ -265,7 +335,7 @@ export class RedemptionSagaService implements RedemptionSaga {
           return (await this.toReview(r, 'UNKNOWN', 'attempts_exhausted')).applied;
         if (this.tooOld(r, now))
           return (await this.toReview(r, 'UNKNOWN', 'unknown_too_long')).applied;
-        return this.retrySameKey(r, request, now);
+        return this.retrySameKey(r, request, resolved, now);
       case 'pending':
       case 'unknown':
         if (this.tooOld(r, now))
@@ -284,6 +354,7 @@ export class RedemptionSagaService implements RedemptionSaga {
   private async retrySameKey(
     r: RedemptionRecord,
     request: RewardRequest,
+    resolved: ResolvedRewardPort,
     now: Date,
   ): Promise<boolean> {
     const won = await this.apply(r, {
@@ -294,7 +365,7 @@ export class RedemptionSagaService implements RedemptionSaga {
       nextAttemptAt: new Date(now.getTime() + ISSUING_LEASE_MS),
     });
     if (!won.applied) return false;
-    await this.callAdapter(won.redemption, request, now);
+    await this.callAdapter(won.redemption, request, resolved, now);
     return true;
   }
 
@@ -303,11 +374,13 @@ export class RedemptionSagaService implements RedemptionSaga {
     return now.getTime() - since.getTime() >= MAX_UNKNOWN_AGE_MS;
   }
 
-  private async lookup(r: RedemptionRecord, request: RewardRequest): Promise<RewardStatus> {
+  private async lookup(
+    resolved: ResolvedRewardPort,
+    r: RedemptionRecord,
+    request: RewardRequest,
+  ): Promise<RewardStatus> {
     try {
-      return await this.deps
-        .adapterFor(r.tenantId, r.sandbox)
-        .getRewardStatus(keyOf(r.id), request);
+      return await resolved.port.getRewardStatus(keyOf(r.id), request);
     } catch {
       return { kind: 'unknown' }; // a lookup that fails is never a decision
     }
@@ -339,8 +412,17 @@ export class RedemptionSagaService implements RedemptionSaga {
           nextAttemptAt: null,
         })
       ).applied;
-    // Payments does not say which state it holds (D-9), so the reason is ours.
-    return (await this.toReview(r, 'ISSUED', 'capture_refused')).applied;
+    // D-20: `reserve_already_refunded` on a capture is CONSISTENT when our own order is already
+    // RELEASED or REFUNDED (a concurrent path settled it first): nothing to review. In any other
+    // state it is a real disagreement and goes to review. The row is re-read, never trusted from
+    // the sweep's earlier read.
+    if (reply.code === 'reserve_already_refunded') {
+      const current = await this.deps.store.getForOperator(r.tenantId, r.id);
+      if (current && (current.state === 'RELEASED' || current.state === 'REFUNDED')) return false;
+    }
+    // Payments says which conflicting state it holds (D-9): the code is kept in the history cause.
+    return (await this.toReview(r, 'ISSUED', 'capture_refused', `capture_refused:${reply.code}`))
+      .applied;
   }
 
   /**
@@ -386,7 +468,8 @@ export class RedemptionSagaService implements RedemptionSaga {
           nextAttemptAt: null,
         })
       ).applied;
-    return (await this.toReview(r, 'REJECTED', 'release_refused')).applied;
+    return (await this.toReview(r, 'REJECTED', 'release_refused', `release_refused:${reply.code}`))
+      .applied;
   }
 
   // ---- late and conflicting news -----------------------------------------------------------------
@@ -464,7 +547,7 @@ export class RedemptionSagaService implements RedemptionSaga {
     await this.apply(r, {
       expectFrom: ['COMPLETED'],
       to: 'NEEDS_REVIEW',
-      cause: 'refund_refused',
+      cause: `refund_refused:${reply.code}`,
       failureReason: 'refund_refused',
       nextAttemptAt: null,
       dedupe,
@@ -491,22 +574,24 @@ export class RedemptionSagaService implements RedemptionSaga {
     id: string,
     input: { outcome: 'issued' | 'not_issued'; reason: string; operator: Operator },
   ): Promise<RedemptionRecord> {
-    if (input.operator.role !== 'owner' && input.operator.role !== 'admin')
-      throw new SagaError('forbidden');
+    if (input.operator.role !== 'operator_admin') throw new SagaError('forbidden'); // X-15
     const r = await this.deps.store.getForOperator(tenantId, id);
     if (!r) throw new SagaError('redemption_not_found');
     if (r.state !== 'NEEDS_REVIEW') throw new SagaError('illegal_transition');
     const origin = [...r.history].reverse().find((h) => h.to === 'NEEDS_REVIEW')?.from ?? null;
+    // F1 (L4 review): "the casino was never asked" is a property of the WHOLE history (no ISSUING
+    // row), not of the latest review entry, so it survives a second round of review.
+    const neverAsked = !r.history.some((h) => h.to === 'ISSUING');
     const audit = `${input.operator.id}: ${input.reason}`;
     const now = this.deps.clock.now();
 
     if (input.outcome === 'issued') {
-      // A review entered from REQUESTED never reached the casino: nothing to confirm.
-      if (origin === 'REQUESTED') throw new SagaError('illegal_transition');
+      // A review of an order the casino never saw has nothing to confirm.
+      if (neverAsked) throw new SagaError('illegal_transition');
       // D-18: the operator's word alone never moves coins. A fresh lookup by our key must say
       // `issued`; `unknown`, `pending` and the rest leave the row in review.
-      const status = await this.lookup(r, await this.deps.rewardRequest(r));
-      if (status.kind !== 'issued')
+      const status = await this.lookupForReview(r, origin);
+      if (!status || status.kind !== 'issued')
         throw new SagaError('illegal_transition', 'issue_not_confirmed');
       return (
         await this.applyOrRefuse(r, {
@@ -519,7 +604,7 @@ export class RedemptionSagaService implements RedemptionSaga {
       ).redemption;
     }
 
-    if (origin !== 'REQUESTED') await this.requireBackedRelease(r);
+    if (!neverAsked) await this.requireBackedRelease(r, origin);
     return (
       await this.applyOrRefuse(r, {
         expectFrom: ['NEEDS_REVIEW'],
@@ -532,17 +617,42 @@ export class RedemptionSagaService implements RedemptionSaga {
   }
 
   /**
-   * The operator's word alone never releases coins. A fresh lookup must say `rejected`, or
-   * `not_found` made at or after the issue deadline (the first ISSUING row + 24 h).
+   * A fresh lookup for an operator decision, or `undefined` when none may be made (Q-6, D-15): on an
+   * `idempotent_replay` casino a lookup RE-SENDS the issue, so it can issue the reward; for a review
+   * entered after RELEASED, COMPLETED or a refused capture the coins are no longer held, so no
+   * lookup is made at all. No adapter for the order's environment is also `undefined`. A rejected
+   * registry promise (identity down) is transport and propagates: the operator retries.
    */
-  private async requireBackedRelease(r: RedemptionRecord): Promise<void> {
+  private async lookupForReview(
+    r: RedemptionRecord,
+    origin: RedemptionRecord['state'] | null,
+  ): Promise<RewardStatus | undefined> {
+    const request = r.rewardRequest;
+    if (!request) return undefined;
+    const resolved = await this.deps.ports.forTenant(r.tenantId, { sandbox: r.sandbox });
+    if (!resolved) return undefined;
+    const coinsGone = origin === 'RELEASED' || origin === 'COMPLETED' || origin === 'ISSUED';
+    if (resolved.info.recovery_mode === 'idempotent_replay' && coinsGone) return undefined;
+    return this.lookup(resolved, r, request);
+  }
+
+  /**
+   * The operator's word alone never releases coins. A fresh lookup must say `rejected`, or
+   * `not_found` made at or after the issue deadline: the order's `firstIssuingAt` plus the tenant's
+   * `info.issue_deadline_ms` (X-6), not a fixed 24 h.
+   */
+  private async requireBackedRelease(
+    r: RedemptionRecord,
+    origin: RedemptionRecord['state'] | null,
+  ): Promise<void> {
     const lookupAt = this.deps.clock.now();
-    const request = await this.deps.rewardRequest(r);
-    const status = await this.lookup(r, request);
+    const resolved = await this.deps.ports.forTenant(r.tenantId, { sandbox: r.sandbox });
+    const status = resolved ? await this.lookupForReview(r, origin) : undefined;
+    if (!resolved || !status) throw new SagaError('release_not_allowed');
     if (status.kind === 'rejected') return;
     if (status.kind === 'not_found') {
-      const first = r.history.find((h) => h.to === 'ISSUING');
-      if (first && lookupAt.getTime() >= first.at.getTime() + MAX_UNKNOWN_AGE_MS) return;
+      const first = r.firstIssuingAt ?? r.history.find((h) => h.to === 'ISSUING')?.at;
+      if (first && lookupAt.getTime() >= first.getTime() + resolved.info.issue_deadline_ms) return;
     }
     throw new SagaError('release_not_allowed');
   }
@@ -561,11 +671,12 @@ export class RedemptionSagaService implements RedemptionSaga {
     r: RedemptionRecord,
     from: RedemptionRecord['state'],
     reason: string,
+    cause: string = reason,
   ): Promise<ApplyResult> {
     return this.apply(r, {
       expectFrom: [from],
       to: 'NEEDS_REVIEW',
-      cause: reason,
+      cause,
       failureReason: reason,
       nextAttemptAt: null,
     });

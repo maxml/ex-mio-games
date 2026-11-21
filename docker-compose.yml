@@ -195,6 +195,9 @@ services:
     environment:
       PORT: '4004'
       LOG_LEVEL: info
+      # Fault injection and issued-reward inspection (/__faults, /__reset, /__issued, /casino-b/__settle).
+      # The simulator exists only in this dev stack; it is never deployed.
+      SIM_FAULTS: '1'
     ports:
       - '${CASINO_SIM_PORT:-4004}:4004'
     healthcheck:

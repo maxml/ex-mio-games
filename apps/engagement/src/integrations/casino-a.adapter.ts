@@ -23,6 +23,7 @@ import {
   nonEmptyString,
   requestHeaders,
   sandboxMismatch,
+  usableSecret,
 } from './casino-http';
 
 /**
@@ -51,6 +52,7 @@ export function createCasinoA(config: AdapterConfig): CasinoAdapter {
   return {
     verifySignature(raw: string, headers: Headers, secret: string, now: Date): SignatureVerdict {
       try {
+        if (!usableSecret(secret)) return 'invalid';
         const given = headers['x-a-signature'];
         if (!given) return 'missing';
         const ts = headers['x-a-timestamp'];

@@ -1,4 +1,4 @@
-import { Inject, Injectable } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import {
   createEvent,
   DepositConfirmedV1,
@@ -8,7 +8,6 @@ import {
   type EventEnvelope,
 } from '@ex-mio/contracts';
 import { Db, type Tx } from '@ex-mio/service-kit';
-import { PLAYER_DIRECTORY, type PlayerDirectoryPort } from '../integrations/ports';
 import { RulesRepository, SpinCreditsRepository, type NewCredit } from '../model/repositories';
 import { evaluateRules } from './rules.engine';
 
@@ -17,7 +16,9 @@ const DEPOSIT_CONFIRMED = 'engagement.deposit.confirmed';
 /**
  * Grants spin credits from `engagement.deposit.confirmed` (spec section 7). It runs inside the inbox
  * transaction, so a redelivered message never reaches it, and every write below uses that `tx`.
- * `user_id` comes only from the player directory, never from the event.
+ * X-1 / D-12: `user_id` is the event's internal `player_id`, which ingest resolved through identity
+ * before the outbox write; this consumer never sees the casino's raw id and never asks identity.
+ * X-3 / D-13: a deposit event marked `sandbox` grants sandbox credits and sandbox `spin.granted` events.
  */
 @Injectable()
 export class SpinCreditsService {
@@ -25,7 +26,6 @@ export class SpinCreditsService {
     private readonly db: Db,
     private readonly rules: RulesRepository,
     private readonly credits: SpinCreditsRepository,
-    @Inject(PLAYER_DIRECTORY) private readonly players: PlayerDirectoryPort,
   ) {}
 
   /** Throws on an event that is not a valid deposit.confirmed: the inbox parks it in the DLQ. */
@@ -37,17 +37,13 @@ export class SpinCreditsService {
     const deposit = DepositConfirmedV1.parse(event.payload);
     const tenantId = event.tenant_id;
 
-    const userId = await this.players.resolveOrCreate(
-      tenantId,
-      deposit.source,
-      deposit.external_player_id,
-    );
-    const canonical: CanonicalDepositEvent = {
+    const userId = deposit.player_id;
+    const sandbox = event.sandbox === true;
+    const canonical: Omit<CanonicalDepositEvent, 'external_player_id'> = {
       tenant_id: tenantId,
       source: deposit.source,
       external_event_id: deposit.external_event_id,
       type: 'deposit.succeeded',
-      external_player_id: deposit.external_player_id,
       amount_minor: deposit.amount_minor,
       currency: deposit.currency,
       occurred_at: deposit.occurred_at,
@@ -68,6 +64,7 @@ export class SpinCreditsService {
         ruleId: g.rule_id,
         ruleVersion: g.rule_version,
         seq,
+        ...(sandbox ? { sandbox: true } : {}),
       })),
     );
     if (rows.length === 0) return;
@@ -80,6 +77,7 @@ export class SpinCreditsService {
         createEvent({
           type: 'engagement.spin.granted',
           tenantId,
+          ...(sandbox ? { sandbox: true } : {}),
           correlationId: event.correlation_id,
           causationId: event.event_id,
           payload: {

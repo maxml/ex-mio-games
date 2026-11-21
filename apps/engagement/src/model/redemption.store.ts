@@ -45,6 +45,10 @@ interface RedemptionRow {
   casino_reference: string | null;
   failure_reason: string | null;
   reservation: RedemptionRecord['reservation'];
+  /** X-6: the casino request frozen at RESERVED -> ISSUING; null before. */
+  reward_request: RedemptionRecord['rewardRequest'];
+  /** When the order FIRST entered ISSUING (set once, never reset by a replay). */
+  first_issuing_at: Date | null;
   created_at: Date;
   updated_at: Date;
 }
@@ -59,7 +63,7 @@ interface HistoryRow {
 
 const COLUMNS = `"id", "tenant_id", "player_id", "sandbox", "item_id", "item_version", "price", "reward",
   "operation_key", "state", "attempts", "next_attempt_at", "unknown_since", "casino_reference",
-  "failure_reason", "reservation", "created_at", "updated_at"`;
+  "failure_reason", "reservation", "reward_request", "first_issuing_at", "created_at", "updated_at"`;
 
 const toRecord = (row: RedemptionRow, history: HistoryRow[]): RedemptionRecord => ({
   id: row.id,
@@ -78,6 +82,8 @@ const toRecord = (row: RedemptionRow, history: HistoryRow[]): RedemptionRecord =
   casinoReference: row.casino_reference,
   failureReason: row.failure_reason,
   reservation: row.reservation,
+  rewardRequest: row.reward_request ?? null,
+  firstIssuingAt: row.first_issuing_at ?? null,
   history: history.map((h) => ({ from: h.from_state, to: h.to_state, cause: h.cause, at: h.at })),
   createdAt: row.created_at,
   updatedAt: row.updated_at,
@@ -110,8 +116,10 @@ export class PgRedemptionStore implements RedemptionStore {
     return runWithTenant({ tenantId }, () => this.db.tenantTx(fn));
   }
 
+  /** X-13 / D-13: the sandbox flag is on the ENVELOPE, set by the producer; never in a payload. */
   private event(
     tenantId: string,
+    sandbox: boolean,
     type: string,
     payload: Record<string, unknown>,
     causationId?: string | null,
@@ -120,6 +128,7 @@ export class PgRedemptionStore implements RedemptionStore {
       type: type as never,
       tenantId,
       payload: payload as never,
+      ...(sandbox ? { sandbox: true } : {}),
       ...(causationId ? { causationId } : {}),
     });
   }
@@ -267,10 +276,9 @@ export class PgRedemptionStore implements RedemptionStore {
       );
       await this.db.publish(
         tx,
-        this.event(scope.tenantId, 'engagement.redemption.status_changed', {
+        this.event(scope.tenantId, scope.sandbox, 'engagement.redemption.status_changed', {
           redemption_id: id,
           player_id: scope.playerId,
-          sandbox: scope.sandbox,
           from: null,
           to: 'REQUESTED',
           cause: 'order_placed',
@@ -313,6 +321,9 @@ export class PgRedemptionStore implements RedemptionStore {
       if (change.nextAttemptAt !== undefined) next.nextAttemptAt = change.nextAttemptAt;
       if (change.casinoReference !== undefined) next.casinoReference = change.casinoReference;
       if (change.failureReason !== undefined) next.failureReason = change.failureReason;
+      if (change.rewardRequest !== undefined)
+        next.rewardRequest = structuredClone(change.rewardRequest);
+      if (change.to === 'ISSUING' && next.firstIssuingAt === null) next.firstIssuingAt = at;
       if (change.to === 'UNKNOWN' && next.unknownSince === null) next.unknownSince = at;
       if (change.to === 'ISSUED' || change.to === 'REJECTED' || change.to === 'NEEDS_REVIEW')
         next.unknownSince = null;
@@ -324,10 +335,11 @@ export class PgRedemptionStore implements RedemptionStore {
 
       // Build every event before writing anything (an invalid payload throws here and the
       // transaction rolls back whatever was written, the inbox row included).
-      const base = { redemption_id: rec.id, player_id: rec.playerId, sandbox: rec.sandbox };
+      const base = { redemption_id: rec.id, player_id: rec.playerId };
+      const sbx = rec.sandbox;
       const reason = change.failureReason ?? change.cause;
       const events: EventEnvelope[] = [
-        this.event(tenantId, 'engagement.redemption.status_changed', {
+        this.event(tenantId, sbx, 'engagement.redemption.status_changed', {
           ...base,
           from,
           to: change.to,
@@ -336,20 +348,22 @@ export class PgRedemptionStore implements RedemptionStore {
       ];
       if (change.to === 'ISSUED' && change.casinoReference)
         events.push(
-          this.event(tenantId, 'engagement.redemption.issued', {
+          this.event(tenantId, sbx, 'engagement.redemption.issued', {
             ...base,
             casino_reference: change.casinoReference,
             price: rec.price,
           }),
         );
       if (change.to === 'REJECTED' || change.to === 'REJECTED_FUNDS')
-        events.push(this.event(tenantId, 'engagement.redemption.rejected', { ...base, reason }));
+        events.push(
+          this.event(tenantId, sbx, 'engagement.redemption.rejected', { ...base, reason }),
+        );
       if (change.to === 'NEEDS_REVIEW')
         events.push(
-          this.event(tenantId, 'engagement.redemption.needs_review', { ...base, reason }),
+          this.event(tenantId, sbx, 'engagement.redemption.needs_review', { ...base, reason }),
         );
       for (const m of change.outbox ?? [])
-        events.push(this.event(tenantId, m.type, { ...m.payload, ...base }, m.causationId));
+        events.push(this.event(tenantId, sbx, m.type, { ...m.payload, ...base }, m.causationId));
 
       if (change.dedupe) {
         const fresh: unknown[] = await tx.query(
@@ -363,7 +377,7 @@ export class PgRedemptionStore implements RedemptionStore {
       await tx.query(
         `UPDATE "redemptions" SET "state" = $2, "attempts" = $3, "next_attempt_at" = $4,
            "unknown_since" = $5, "casino_reference" = $6, "failure_reason" = $7,
-           "reservation" = $8, "updated_at" = $9
+           "reservation" = $8, "updated_at" = $9, "reward_request" = $10, "first_issuing_at" = $11
          WHERE "id" = $1`,
         [
           rec.id,
@@ -375,6 +389,8 @@ export class PgRedemptionStore implements RedemptionStore {
           next.failureReason,
           next.reservation,
           at,
+          next.rewardRequest === null ? null : JSON.stringify(next.rewardRequest),
+          next.firstIssuingAt,
         ],
       );
       await tx.query(
@@ -432,6 +448,19 @@ export class PgRedemptionStore implements RedemptionStore {
         [redemptionId, scope.tenantId, scope.playerId, scope.sandbox],
       );
       return (await this.hydrate(tx, rows))[0] ?? null;
+    });
+  }
+
+  /** W-5: the caller's own redemptions, newest first. The key is (tenant, player, sandbox). */
+  listOwn(scope: Scope): Promise<RedemptionRecord[]> {
+    return this.inTenant(scope.tenantId, async (tx) => {
+      const rows: RedemptionRow[] = await tx.query(
+        `SELECT ${COLUMNS} FROM "redemptions"
+         WHERE "tenant_id" = $1 AND "player_id" = $2 AND "sandbox" = $3
+         ORDER BY "created_at" DESC, "id" DESC LIMIT 100`,
+        [scope.tenantId, scope.playerId, scope.sandbox],
+      );
+      return this.hydrate(tx, rows);
     });
   }
 

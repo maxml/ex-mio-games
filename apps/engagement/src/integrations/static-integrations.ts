@@ -1,25 +1,17 @@
 import { z } from 'zod';
-import { CasinoRewardApiConfig, Uuid } from '@ex-mio/contracts';
+import { TenantIntegration as TenantIntegrationSchema } from '@ex-mio/contracts';
 import type { Transport } from './adapter';
 import type { PlayerDirectoryPort, TenantIntegration, TenantIntegrationPort } from './ports';
 
 /**
  * Development stand-in for the identity service's integration credentials (spec section 10): the
- * `INGEST_STATIC_TENANTS` JSON, keyed by tenant slug. The real identity client replaces it.
+ * `INGEST_STATIC_TENANTS` JSON, keyed by tenant slug. Every record is parsed with identity's own
+ * `TenantIntegration` contract (X-7), so the dev path enforces the same shape the identity client
+ * returns: 1..2 non-empty webhook secrets, `platform`, `environment`. The real identity client
+ * replaces it.
  */
-const StaticTenant = z
-  .object({
-    tenant_id: Uuid,
-    casino: z.string().min(1),
-    status: z.enum(['active', 'suspended']),
-    webhook_secrets: z.array(z.string().min(1)).min(1).max(2),
-    player_hash_key: z.string().min(1),
-    reward_api: CasinoRewardApiConfig.optional(),
-  })
-  .strict();
-
 export function staticTenantIntegrations(raw: string | undefined): TenantIntegrationPort {
-  const parsed = z.record(StaticTenant).parse(raw ? JSON.parse(raw) : {});
+  const parsed = z.record(TenantIntegrationSchema).parse(raw ? JSON.parse(raw) : {});
   const bySlug = new Map<string, TenantIntegration>(Object.entries(parsed));
   const byId = new Map<string, TenantIntegration>(
     [...bySlug.values()].map((t) => [t.tenant_id, t]),

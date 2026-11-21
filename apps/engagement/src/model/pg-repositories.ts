@@ -35,6 +35,7 @@ const toCredit = (r: Row): SpinCredit => ({
   userId: r.user_id as string,
   wheelId: r.wheel_id as string,
   status: r.status as 'available' | 'used',
+  ...(r.sandbox === true ? { sandbox: true } : {}),
 });
 
 @Injectable()
@@ -115,14 +116,15 @@ export class PgSpinCreditsRepository extends SpinCreditsRepository {
         r.ruleId,
         r.ruleVersion,
         r.seq,
+        r.sandbox === true,
       );
       const p = (n: number) => `$${base + n}`;
-      return `(${p(1)}, ${p(2)}, ${p(3)}, ${p(4)}, ${p(5)}, ${p(6)}, ${p(7)}, ${p(8)}, 'available')`;
+      return `(${p(1)}, ${p(2)}, ${p(3)}, ${p(4)}, ${p(5)}, ${p(6)}, ${p(7)}, ${p(8)}, ${p(9)}, 'available')`;
     });
     const inserted = rowsOf(
       await tx.query(
         `INSERT INTO spin_credits
-           (id, tenant_id, user_id, wheel_id, source_event_id, rule_id, rule_version, seq, status)
+           (id, tenant_id, user_id, wheel_id, source_event_id, rule_id, rule_version, seq, sandbox, status)
          VALUES ${values.join(', ')}
          ON CONFLICT (tenant_id, source_event_id, rule_id, seq) DO NOTHING
          RETURNING id`,
@@ -151,7 +153,7 @@ export class PgSpinCreditsRepository extends SpinCreditsRepository {
                        ORDER BY created_at, id
                        FOR UPDATE SKIP LOCKED LIMIT 1)
             AND status = 'available'
-          RETURNING id, user_id, wheel_id, status`,
+          RETURNING id, user_id, wheel_id, status, sandbox`,
         params,
       ),
     );
@@ -175,7 +177,7 @@ export class PgSpinCreditsRepository extends SpinCreditsRepository {
   ): Promise<SpinCredit | undefined> {
     const rows = rowsOf(
       await tx.query(
-        `SELECT id, user_id, wheel_id, status FROM spin_credits
+        `SELECT id, user_id, wheel_id, status, sandbox FROM spin_credits
           WHERE tenant_id = $1 AND user_id = $2 AND id = $3`,
         [tenantId(), input.userId, input.creditId],
       ),

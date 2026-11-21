@@ -39,6 +39,13 @@ export const isRecord = (v: unknown): v is Record<string, unknown> =>
 
 export const nonEmptyString = (v: unknown): v is string => typeof v === 'string' && v.length > 0;
 
+/**
+ * F6: an empty secret makes the HMAC forgeable by anyone, so it is never a key. Adapters refuse it
+ * (`invalid`) before computing a MAC, whatever the caller's secret list holds.
+ */
+export const usableSecret = (secret: unknown): secret is string =>
+  typeof secret === 'string' && secret.length > 0;
+
 export const hmacHex = (secret: string, message: string): string =>
   createHmac('sha256', secret).update(message).digest('hex');
 
