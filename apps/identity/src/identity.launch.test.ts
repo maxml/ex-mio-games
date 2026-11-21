@@ -178,6 +178,94 @@ describe('INV-LAUNCH: a launch token becomes a player session only when every ch
     });
     await expect(exchange(forged)).rejects.toMatchObject({ code: 'LAUNCH_TOKEN_INVALID' });
   });
+
+  // F6. Mutation: LaunchService looks the key up without the status filter (a revoked or
+  // grace-expired key still verifies launches, although CredentialsService refuses it for webhooks).
+  it('INV-LAUNCH-10 a revoked key launches nothing; a retiring key launches until its grace ends', async () => {
+    const { k, a, keyA, sign, exchange } = await world();
+    const admin = k.subjectOf(
+      await k.verify(
+        (
+          await k.sessions.login(a.tenant.id, {
+            email: 'boss@a.test',
+            password: PW,
+            audience: 'identity',
+          })
+        ).access_token,
+        'identity',
+      ),
+    );
+    // grace 0: the old key is revoked at once
+    const next = await k.credentials.rotate(admin, keyA.key_id, { graceSeconds: 0 });
+    await expect(exchange(sign())).rejects.toMatchObject({ code: 'LAUNCH_TOKEN_INVALID' });
+    await untouched(k, a.tenant.id);
+    await expect(
+      exchange(sign({ keyId: next.key_id, secret: next.hmac_secret })),
+    ).resolves.toBeDefined();
+
+    // grace 3600: the old key (now `next`) still launches, then stops
+    const graceful = await k.credentials.rotate(admin, next.key_id, { graceSeconds: 3600 });
+    await expect(
+      exchange(sign({ keyId: next.key_id, secret: next.hmac_secret, externalPlayerId: 'ext-2' })),
+    ).resolves.toBeDefined();
+    await expect(
+      exchange(
+        sign({ keyId: graceful.key_id, secret: graceful.hmac_secret, externalPlayerId: 'ext-3' }),
+      ),
+    ).resolves.toBeDefined();
+    k.advance(3601);
+    await expect(
+      exchange(sign({ keyId: next.key_id, secret: next.hmac_secret, externalPlayerId: 'ext-4' })),
+    ).rejects.toMatchObject({ code: 'LAUNCH_TOKEN_INVALID' });
+    expect((await k.players.links(a.tenant.id)).map((l) => l.external_player_id).sort()).toEqual([
+      'ext-1',
+      'ext-2',
+      'ext-3',
+    ]);
+  });
+
+  // F7. The platform comes from the key (credentials are per tenant AND platform), like the
+  // tenant does. Mutation: take `platform` from the `plat` claim of the token.
+  it("INV-LAUNCH-11 a token whose plat claim disagrees with its key's platform is LAUNCH_TOKEN_INVALID and links nothing", async () => {
+    const { k, a, sign, exchange } = await world();
+    await expect(exchange(sign({ platform: 'other-casino' }))).rejects.toMatchObject({
+      code: 'LAUNCH_TOKEN_INVALID',
+    });
+    await untouched(k, a.tenant.id);
+    const ok = await exchange(sign({ platform: 'sim-casino' }));
+    expect(await k.players.links(a.tenant.id)).toEqual([
+      { user_id: ok.user_id, platform: 'sim-casino', external_player_id: 'ext-1' },
+    ]);
+  });
+
+  // F7, second half. Mutation: same, with a second key for another platform in the same tenant.
+  it('INV-LAUNCH-11 each platform key links only under its own platform, in the same tenant', async () => {
+    const { k, a, exchange } = await world();
+    const other = await k.credentials.issue(a.tenant.id, 'other-casino');
+    const viaOther = await exchange(
+      signLaunchToken({
+        keyId: other.key_id,
+        secret: other.hmac_secret,
+        now: k.now(),
+        externalPlayerId: 'ext-1',
+        platform: 'other-casino',
+      }),
+    );
+    await expect(
+      exchange(
+        signLaunchToken({
+          keyId: other.key_id,
+          secret: other.hmac_secret,
+          now: k.now(),
+          externalPlayerId: 'ext-2',
+          platform: 'sim-casino',
+        }),
+      ),
+    ).rejects.toMatchObject({ code: 'LAUNCH_TOKEN_INVALID' });
+    expect(await k.players.links(a.tenant.id)).toEqual([
+      { user_id: viaOther.user_id, platform: 'other-casino', external_player_id: 'ext-1' },
+    ]);
+  });
 });
 
 describe('INV-PLAYER: (tenant, platform, external_player_id) -> exactly one player user', () => {

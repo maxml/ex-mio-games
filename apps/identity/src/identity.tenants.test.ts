@@ -1,3 +1,4 @@
+import { PLATFORM_TENANT_ID } from '@ex-mio/contracts';
 import { buildKernel } from './testing/kernel'; // RED: module does not exist yet
 
 /*
@@ -17,6 +18,26 @@ describe('INV-TEN: tenant registry', () => {
     ).rejects.toMatchObject({ code: 'TENANT_PLATFORM_EXISTS' });
     // seeding again is idempotent: same tenant, not a second one
     expect((await k.tenants.platformTenant()).id).toBe(platform.id);
+  });
+
+  // F8. Mutation: seed the platform tenant under a generated id (the verifier and `can()` compare
+  // against the fixed constant, so the two would disagree and no platform admin could act).
+  it('INV-TEN-1 the platform tenant has the fixed id PLATFORM_TENANT_ID, and its admin token carries it', async () => {
+    const k = await buildKernel();
+    expect((await k.tenants.platformTenant()).id).toBe(PLATFORM_TENANT_ID);
+    await k.staff.createPlatformAdmin({
+      email: 'root@mio.test',
+      password: 'correct horse battery',
+    });
+    const login = await k.sessions.login(PLATFORM_TENANT_ID, {
+      email: 'root@mio.test',
+      password: 'correct horse battery',
+      audience: 'identity',
+    });
+    expect(await k.verify(login.access_token, 'identity')).toMatchObject({
+      tid: PLATFORM_TENANT_ID,
+      roles: ['platform_admin'],
+    });
   });
 
   // Mutation: let operator signup read `type` from the request.

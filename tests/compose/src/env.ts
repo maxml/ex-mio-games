@@ -10,6 +10,18 @@ export const urls = {
   payments: `http://localhost:${port('PAYMENTS_PORT', 4003)}`,
   casinoSim: `http://localhost:${port('CASINO_SIM_PORT', 4004)}`,
   amqp: `amqp://mio:mio-dev@localhost:${port('RABBITMQ_PORT', 55672)}`,
+  /** Firebase Auth Emulator (already in the compose file); D-7 contract test talks to it directly. */
+  firebaseAuth: `http://localhost:${port('FIREBASE_AUTH_PORT', 9099)}`,
+};
+
+/**
+ * Dev defaults of the service-to-service client secrets (D-4). They are the values in
+ * `.env.example` and `docker-compose.yml`: each caller reads its own as `SERVICE_CLIENT_SECRET`,
+ * identity holds the registry as `SERVICE_CLIENT_SECRETS` (JSON, service name -> secret).
+ */
+export const serviceSecrets = {
+  engagement: 'engagement-dev-secret-0000',
+  payments: 'payments-dev-secret-00000',
 };
 
 export const PLATFORM_TOKEN = 'dev-platform-token-0000';

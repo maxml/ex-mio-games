@@ -20,8 +20,26 @@ export const SERVICE_AUDIENCES = ['identity', 'engagement', 'payments', 'web'] a
 export const Audience = z.enum(SERVICE_AUDIENCES);
 export type Audience = z.infer<typeof Audience>;
 
+/**
+ * The platform tenant has a fixed id, seeded by the identity migration. The token
+ * verifier (not only the database) binds the `platform_admin` role to it: a token
+ * carrying that role for any other tenant is refused by every service.
+ */
+export const PLATFORM_TENANT_ID = '00000000-0000-7000-8000-000000000001';
+
 export const TOKEN_ISSUER = 'ex-mio-identity';
 export const ACCESS_TTL_MAX_SECONDS = 900;
+/** Leeway on `exp`, `nbf` and `iat` of access and service tokens (coordinator decision D-6, Q3). */
+export const ACCESS_TOKEN_CLOCK_SKEW_SECONDS = 30;
+/** JWKS cache policy of the service-kit verifier (spec section 1.4). */
+export const JWKS_CACHE_TTL_SECONDS = 300;
+export const JWKS_REFETCH_MIN_INTERVAL_SECONDS = 30;
+/** The verifier's cached tenant status is at most this stale (D-6, Q1). */
+export const TENANT_STATUS_CACHE_SECONDS = 30;
+/** Service-to-service tokens (D-4). */
+export const SERVICE_TOKEN_TTL_MAX_SECONDS = 300;
+export const SERVICE_TOKEN_SCOPE = 'internal';
+export const INTERNAL_PATH_PREFIX = '/internal/v1/';
 export const ACTING_TTL_MAX_SECONDS = 900;
 export const LAUNCH_TOKEN_MAX_TTL_SECONDS = 300;
 export const LAUNCH_TOKEN_CLOCK_SKEW_SECONDS = 60;
@@ -90,6 +108,8 @@ export const IDENTITY_ERRORS = {
   SLUG_TAKEN: 409,
   TENANT_PLATFORM_EXISTS: 409,
   PROVIDER_UNAVAILABLE: 503,
+  INVALID_SERVICE_CREDENTIALS: 401,
+  TENANT_STATUS_UNAVAILABLE: 503,
 } as const;
 export type IdentityErrorCode = keyof typeof IDENTITY_ERRORS;
 
@@ -109,18 +129,112 @@ export const ActingClaim = z.object({
 });
 export type ActingClaim = z.infer<typeof ActingClaim>;
 
-export const AccessTokenClaims = z.object({
-  iss: z.literal(TOKEN_ISSUER),
-  sub: Uuid,
-  tid: Uuid,
-  roles: z.array(Role).min(1),
-  aud: Audience,
-  iat: z.number().int(),
-  exp: z.number().int(),
-  jti: z.string().min(8),
-  act: ActingClaim.optional(),
-});
+/**
+ * `platform_admin` exists only on the platform tenant and only alone: a token with
+ * that role for another tenant, or mixed with another role, is not a claim set we
+ * ever issue, so it is refused where it enters a service (the verifier). The
+ * platform tenant, in turn, carries nothing but `platform_admin`.
+ */
+export const AccessTokenClaims = z
+  .object({
+    iss: z.literal(TOKEN_ISSUER),
+    sub: Uuid,
+    tid: Uuid,
+    roles: z.array(Role).min(1),
+    aud: Audience,
+    iat: z.number().int(),
+    exp: z.number().int(),
+    jti: z.string().min(8),
+    act: ActingClaim.optional(),
+  })
+  .superRefine((c, ctx) => {
+    const isAdmin = c.roles.includes('platform_admin');
+    const onPlatform = c.tid.toLowerCase() === PLATFORM_TENANT_ID;
+    const onlyAdmin = c.roles.length === 1 && c.roles[0] === 'platform_admin';
+    if (isAdmin !== onPlatform || (isAdmin && !onlyAdmin)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['roles'],
+        message: 'platform_admin is bound to the platform tenant and is never combined',
+      });
+    }
+  });
 export type AccessTokenClaims = z.infer<typeof AccessTokenClaims>;
+
+// ---- service-to-service tokens (coordinator decision D-4) ---------------------
+
+export const SERVICE_NAMES = ['identity', 'engagement', 'payments'] as const;
+export const ServiceName = z.enum(SERVICE_NAMES);
+export type ServiceName = z.infer<typeof ServiceName>;
+
+/**
+ * A service token is minted through client credentials (`POST /v1/auth/service-token`).
+ * It carries NO tenant, no roles and no `act`: `.strict()` refuses any extra claim.
+ * Internal endpoints (`/internal/v1/...`) accept only this token, with the right `aud`,
+ * and take `tenant_id` from the path or the body.
+ */
+export const ServiceTokenClaims = z
+  .object({
+    iss: z.literal(TOKEN_ISSUER),
+    sub: z.string().regex(/^svc:(identity|engagement|payments)$/),
+    aud: ServiceName,
+    scope: z.literal(SERVICE_TOKEN_SCOPE),
+    iat: z.number().int(),
+    exp: z.number().int(),
+    jti: z.string().min(8),
+  })
+  .strict();
+export type ServiceTokenClaims = z.infer<typeof ServiceTokenClaims>;
+
+export const ServiceTokenRequest = z
+  .object({
+    client_id: ServiceName,
+    client_secret: z.string().min(16).max(200),
+    audience: ServiceName,
+  })
+  .strict();
+export type ServiceTokenRequest = z.infer<typeof ServiceTokenRequest>;
+
+/** Internal endpoints that identity serves (service token with aud=identity). */
+export const INTERNAL_ROUTES = {
+  /** `GET`, tenant in the path; the verifier's cached tenant_status reads it. */
+  tenantStatus: '/internal/v1/tenants/:tenantId/status',
+  /** `POST`, tenant in the path. */
+  resolvePlayer: '/internal/v1/tenants/:tenantId/players/resolve',
+  /** `POST`, the only tenant-less internal route: the tenant is the tenant of the key. */
+  verifyWebhook: '/internal/v1/webhooks/verify',
+} as const;
+
+export const TenantStatusResponse = z.object({ tenant_id: Uuid, status: TenantStatus });
+export type TenantStatusResponse = z.infer<typeof TenantStatusResponse>;
+
+export const InternalResolvePlayerRequest = z
+  .object({
+    platform: z.string().trim().min(1).max(64),
+    external_player_id: z.string().trim().min(1).max(128),
+  })
+  .strict();
+export type InternalResolvePlayerRequest = z.infer<typeof InternalResolvePlayerRequest>;
+
+export const InternalResolvePlayerResponse = z.object({ user_id: Uuid, created: z.boolean() });
+export type InternalResolvePlayerResponse = z.infer<typeof InternalResolvePlayerResponse>;
+
+export const InternalVerifyWebhookRequest = z
+  .object({
+    api_key: z.string().min(1).max(200),
+    timestamp: z.number().int(),
+    signature: z.string().min(1).max(200),
+    raw_body: z.string().max(1_000_000),
+  })
+  .strict();
+export type InternalVerifyWebhookRequest = z.infer<typeof InternalVerifyWebhookRequest>;
+
+export const InternalVerifyWebhookResponse = z.object({
+  tenant_id: Uuid,
+  key_id: z.string(),
+  platform: z.string(),
+});
+export type InternalVerifyWebhookResponse = z.infer<typeof InternalVerifyWebhookResponse>;
 
 export const TokenResponse = z.object({
   access_token: z.string(),
@@ -210,3 +324,39 @@ export const CredentialIssued = z.object({
   hmac_secret: z.string(),
 });
 export type CredentialIssued = z.infer<typeof CredentialIssued>;
+
+// ---- HTTP response DTOs (L5 and L3 build against these) -----------------------
+
+export const TenantView = z.object({
+  id: Uuid,
+  type: TenantType,
+  name: z.string(),
+  slug: z.string(),
+  status: TenantStatus,
+});
+export type TenantView = z.infer<typeof TenantView>;
+
+export const StaffMember = z.object({
+  id: Uuid,
+  email: z.string().email(),
+  roles: z.array(z.enum(['operator_admin', 'operator_staff'])).min(1),
+});
+export type StaffMember = z.infer<typeof StaffMember>;
+
+export const SignupResponse = z.object({ tenant: TenantView, user: StaffMember });
+export type SignupResponse = z.infer<typeof SignupResponse>;
+
+/** A launch exchange answers with a player session: the token plus who and where. */
+export const LaunchResponse = TokenResponse.extend({ user_id: Uuid, tenant_id: Uuid });
+export type LaunchResponse = z.infer<typeof LaunchResponse>;
+
+/** Credential list item: never the key or the secret, those are shown once at issue. */
+export const CredentialSummary = z
+  .object({
+    key_id: z.string(),
+    platform: z.string(),
+    status: z.enum(['active', 'retiring', 'revoked']),
+    created_at: z.string().datetime(),
+  })
+  .strict();
+export type CredentialSummary = z.infer<typeof CredentialSummary>;

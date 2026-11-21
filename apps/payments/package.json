@@ -60,6 +60,7 @@
       "^@ex-mio/tenancy$": "<rootDir>/../../packages/tenancy/src",
       "^@ex-mio/bus$": "<rootDir>/../../packages/bus/src",
       "^@ex-mio/idempotency$": "<rootDir>/../../packages/idempotency/src",
+      "^@ex-mio/service-kit/testing$": "<rootDir>/../../packages/service-kit/src/testing",
       "^@ex-mio/service-kit$": "<rootDir>/../../packages/service-kit/src"
     },
     "testTimeout": 30000,

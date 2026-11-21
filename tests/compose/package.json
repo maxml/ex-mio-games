@@ -39,7 +39,8 @@
       "**/*.compose.test.ts"
     ],
     "moduleNameMapper": {
-      "^@ex-mio/contracts$": "<rootDir>/../../packages/contracts/src"
+      "^@ex-mio/contracts$": "<rootDir>/../../packages/contracts/src",
+      "^@ex-mio/service-kit/testing$": "<rootDir>/../../packages/service-kit/src/testing"
     },
     "testTimeout": 60000
   },

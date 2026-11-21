@@ -94,6 +94,28 @@ export function accessClaims(over: {
   };
 }
 
+/** Service-to-service token claims as identity issues them: no tenant, no roles, scope `internal`. */
+export function serviceClaims(over: {
+  now: number; // seconds
+  service: string; // calling service name, `sub` becomes `svc:<service>`
+  aud: string;
+  ttl?: number;
+  scope?: string;
+  jti?: string;
+  extra?: Record<string, unknown>;
+}): Record<string, unknown> {
+  return {
+    iss: 'ex-mio-identity',
+    sub: `svc:${over.service}`,
+    aud: over.aud,
+    scope: over.scope ?? 'internal',
+    iat: over.now,
+    exp: over.now + (over.ttl ?? 300),
+    jti: over.jti ?? 'svc-jti-0000001',
+    ...over.extra,
+  };
+}
+
 /** What a casino does: sign a launch token with the HMAC secret issued to it (HS256 JWT, `kid` = key id). */
 export function signLaunchToken(opts: {
   keyId: string;

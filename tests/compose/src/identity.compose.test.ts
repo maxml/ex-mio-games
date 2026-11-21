@@ -1,7 +1,20 @@
 import { request } from 'node:http';
 import type { Client } from 'pg';
-import { JwksResponse, uuidv7 } from '@ex-mio/contracts';
-import { pgAs, urls } from './env';
+import {
+  accessClaims,
+  generateRsaKey,
+  signJwt,
+  signLaunchToken,
+} from '@ex-mio/service-kit/testing';
+import {
+  CredentialIssued,
+  INTERNAL_ROUTES,
+  InternalResolvePlayerResponse,
+  JwksResponse,
+  PLATFORM_TENANT_ID,
+  uuidv7,
+} from '@ex-mio/contracts';
+import { eventually, pgAs, serviceSecrets, urls } from './env';
 
 /*
  * Database and cross-service twins of the identity invariants (docs/specs/identity.md,
@@ -53,9 +66,10 @@ describe('INV-DB: identity schema enforces the invariants even if the applicatio
   it('INV-DB-1 the platform tenant is seeded and a second platform tenant violates a unique index', async () => {
     await inTx(null, async (c) => {
       const seeded = await c.query(
-        `SELECT count(*)::int AS n FROM tenants WHERE type = 'platform'`,
+        `SELECT count(*)::int AS n, min(id::text) AS id FROM tenants WHERE type = 'platform'`,
       );
       expect(seeded.rows[0].n).toBe(1);
+      expect(seeded.rows[0].id).toBe(PLATFORM_TENANT_ID); // the verifier binds platform_admin to this id (F8)
       await expect(insertTenant(c, uuidv7(), 'platform', `p-${uuidv7()}`)).rejects.toMatchObject({
         code: '23505',
       });
@@ -148,23 +162,42 @@ describe('INV-DB: identity schema enforces the invariants even if the applicatio
     }
   });
 
-  // Mutation: grant BYPASSRLS to the identity role, or forget SET LOCAL.
-  it('INV-DB-6 as the service role with no tenant set, every tenant table reads zero rows and refuses writes', async () => {
-    const c = await pgAs('identity');
-    try {
+  // F9. Mutation: grant BYPASSRLS to the identity role, or forget FORCE / SET LOCAL. The previous
+  // version read an empty table on a fresh stack (green with BYPASSRLS granted) and accepted a
+  // foreign-key error for the write. Here a row EXISTS and is visible with the tenant set, so
+  // "zero rows" after clearing the setting can only be the policy.
+  it('INV-DB-6 a row visible with the tenant set is invisible without it, in every tenant table; a write without it is refused by RLS (42501)', async () => {
+    const a = uuidv7();
+    await inTx(a, async (c) => {
+      await insertTenant(c, a, 'operator', `a-${a}`);
+      const userId = uuidv7();
+      await insertUser(c, a, userId, 'seen@x.test');
+      await c.query(
+        `INSERT INTO user_roles (tenant_id, user_id, role) VALUES ($1, $2, 'operator_admin')`,
+        [a, userId],
+      );
+      await c.query(
+        `INSERT INTO audit_log (tenant_id, id, actor_user_id, actor_tenant_id, acting_tenant_id, action, reason)
+         VALUES ($1, $2, $3, $1, $1, 'tenant.read', 'seed')`,
+        [a, uuidv7(), userId],
+      );
+      const count = async (table: string) =>
+        (await c.query(`SELECT count(*)::int AS n FROM ${table}`)).rows[0].n as number;
+      expect({ users: await count('users') }).toEqual({ users: 1 }); // visible with the tenant set
+      expect({ user_roles: await count('user_roles') }).toEqual({ user_roles: 1 });
+      await c.query(`SELECT set_config('app.tenant_id', '', true)`);
       for (const table of TENANT_TABLES) {
-        const rows = await c.query(`SELECT count(*)::int AS n FROM ${table}`);
-        expect({ table, n: rows.rows[0].n }).toEqual({ table, n: 0 });
+        expect({ table, n: await count(table) }).toEqual({ table, n: 0 });
       }
+      await c.query('SAVEPOINT w');
       await expect(
-        c.query(
-          `INSERT INTO users (tenant_id, id, email, kind) VALUES ($1, $2, 'x@x.test', 'staff')`,
-          [uuidv7(), uuidv7()],
-        ),
-      ).rejects.toThrow(/row-level security|foreign key|violates/);
-    } finally {
-      await c.end();
-    }
+        insertUser(c, a, uuidv7(), 'blocked@x.test'), // tenant `a` EXISTS: the only thing in the way is RLS
+      ).rejects.toMatchObject({
+        code: '42501',
+        message: expect.stringMatching(/row-level security/),
+      });
+      await c.query('ROLLBACK TO w');
+    });
   });
 
   // Mutation: use a single-column FK on player_links.user_id.
@@ -256,7 +289,320 @@ describe('INV-STACK: identity token is the only way into the other services', ()
     expect(login.status).toBe(200);
     const token = (login.json as { access_token: string }).access_token;
     const headers = { authorization: `Bearer ${token}` };
-    expect((await get(`${urls.engagement}/v1/tenant-projection`, headers)).status).not.toBe(401);
+    // F13: exactly 200 (a 500 is not "accepted"); the projection arrives over the bus, so wait for it.
+    await eventually(async () =>
+      (await get(`${urls.engagement}/v1/tenant-projection`, headers)).status === 200
+        ? true
+        : undefined,
+    );
     expect((await get(`${urls.payments}/v1/credits`, headers)).status).toBe(401);
+  });
+});
+
+interface Http {
+  status: number;
+  json: any; // eslint-disable-line @typescript-eslint/no-explicit-any
+}
+
+/** Any method, optional Host and headers, JSON in and out. */
+const call = (
+  method: 'GET' | 'POST',
+  base: string,
+  path: string,
+  opts: { host?: string; headers?: Record<string, string>; body?: unknown } = {},
+): Promise<Http> =>
+  new Promise((resolve, reject) => {
+    const u = new URL(`${base}${path}`);
+    const req = request(
+      {
+        host: u.hostname,
+        port: u.port,
+        path,
+        method,
+        headers: {
+          ...(opts.host ? { host: opts.host } : {}),
+          ...(opts.body ? { 'content-type': 'application/json' } : {}),
+          ...opts.headers,
+        },
+      },
+      (res) => {
+        let data = '';
+        res.on('data', (d) => (data += d));
+        res.on('end', () => {
+          let json: unknown = null;
+          try {
+            json = data ? JSON.parse(data) : null;
+          } catch {
+            json = data;
+          }
+          resolve({ status: res.statusCode ?? 0, json });
+        });
+      },
+    );
+    req.on('error', reject);
+    req.end(opts.body ? JSON.stringify(opts.body) : undefined);
+  });
+
+const PW = 'correct horse battery';
+const uniq = () => `t${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
+
+/** Signs up an operator through the stack and returns who it is and a token for `audience`. */
+async function operator(
+  audience: 'identity' | 'engagement' | 'payments',
+  email?: string,
+  password = PW,
+) {
+  const slug = uniq();
+  const mail = email ?? `boss@${slug}.test`;
+  const signup = await call('POST', urls.identity, '/v1/operators/signup', {
+    host: 'localhost',
+    body: { tenant_name: slug, slug, email: mail, password },
+  });
+  expect(signup.status).toBe(201);
+  const login = (aud: string) =>
+    call('POST', urls.identity, '/v1/auth/login', {
+      host: `${slug}.mio.localhost`,
+      body: { email: mail, password, audience: aud },
+    });
+  const res = await login(audience);
+  expect(res.status).toBe(200);
+  return {
+    slug,
+    email: mail,
+    tenantId: signup.json.tenant.id as string,
+    token: res.json.access_token as string,
+    login,
+  };
+}
+const bearer = (t: string) => ({ authorization: `Bearer ${t}` });
+
+describe('INV-STACK-2b / 4: engagement and payments take the tenant from the token only (F2, F13)', () => {
+  // Mutation: any service reads x-tenant-id (or passes its own resolver) next to the token.
+  it('INV-STACK-2b token for A + x-tenant-id: B is served as A, in engagement and in payments', async () => {
+    const a = await operator('payments');
+    const b = await operator('payments');
+    const aEng = (await a.login('engagement')).json.access_token as string;
+    // engagement: the projection that comes back is A's, not the header's B
+    const projection = await eventually(async () => {
+      const r = await get(`${urls.engagement}/v1/tenant-projection`, {
+        ...bearer(aEng),
+        'x-tenant-id': b.tenantId,
+      });
+      return r.status === 200 ? ((await r.json()) as { tenant_id: string }) : undefined;
+    });
+    expect(projection.tenant_id).toBe(a.tenantId);
+    // payments: a credit made as A (header names B) lists for A and never for B
+    const player = uuidv7();
+    const made = await call('POST', urls.payments, '/v1/credits', {
+      headers: {
+        ...bearer(a.token),
+        'x-tenant-id': b.tenantId,
+        'idempotency-key': `key-${uniq()}`,
+      },
+      body: { player_id: player, amount: 5 },
+    });
+    expect(made.status).toBe(201);
+    const asA = await call('GET', urls.payments, '/v1/credits', {
+      headers: { ...bearer(a.token), 'x-tenant-id': b.tenantId },
+    });
+    expect((asA.json as Array<{ player_id: string }>).map((c) => c.player_id)).toEqual([player]);
+    const asB = await call('GET', urls.payments, '/v1/credits', {
+      headers: { ...bearer(b.token), 'x-tenant-id': a.tenantId },
+    });
+    expect(asB.json).toEqual([]);
+  });
+
+  // Mutation: any service accepts a well-formed token without checking the signature against identity's JWKS.
+  it.each([
+    ['engagement', `${urls.engagement}/v1/tenant-projection`],
+    ['payments', `${urls.payments}/v1/credits`],
+  ])(
+    'INV-STACK-4 a token signed by a key identity does not publish is 401 at %s',
+    async (name, url) => {
+      const stranger = generateRsaKey('k1');
+      const now = Math.floor(Date.now() / 1000);
+      for (const kid of ['k1', 'unknown-kid']) {
+        const forged = signJwt({
+          alg: 'RS256',
+          key: stranger.privateKey,
+          kid,
+          claims: accessClaims({ now, sub: uuidv7(), tid: uuidv7(), aud: name, ttl: 600 }),
+        });
+        expect((await get(url, bearer(forged))).status).toBe(401);
+      }
+      const unsigned = signJwt({
+        alg: 'none',
+        kid: 'k1',
+        claims: accessClaims({ now, sub: uuidv7(), tid: uuidv7(), aud: name, ttl: 600 }),
+      });
+      expect((await get(url, bearer(unsigned))).status).toBe(401);
+    },
+  );
+});
+
+describe('INV-STACK-5 service-to-service tokens over the real stack (D-4)', () => {
+  const serviceToken = async (who: 'engagement' | 'payments', audience = 'identity') =>
+    call('POST', urls.identity, '/v1/auth/service-token', {
+      body: { client_id: who, client_secret: serviceSecrets[who], audience },
+    });
+
+  // Mutation: identity stops issuing service tokens, or serves /internal/v1 to user tokens.
+  it('a service token reads the tenant status of a tenant; a user token on the same route is 401', async () => {
+    const a = await operator('identity');
+    const svc = await serviceToken('engagement');
+    expect(svc.status).toBe(200);
+    const url = INTERNAL_ROUTES.tenantStatus.replace(':tenantId', a.tenantId);
+    const ok = await call('GET', urls.identity, url, { headers: bearer(svc.json.access_token) });
+    expect(ok.status).toBe(200);
+    expect(ok.json).toEqual({ tenant_id: a.tenantId, status: 'active' });
+    expect((await call('GET', urls.identity, url, { headers: bearer(a.token) })).status).toBe(401);
+  });
+
+  // Mutation: a service token is accepted on a user route of another service.
+  it('a service token is refused on the user routes of engagement and payments', async () => {
+    const forPayments = await serviceToken('engagement', 'payments');
+    expect(forPayments.status).toBe(200);
+    expect(
+      (await get(`${urls.payments}/v1/credits`, bearer(forPayments.json.access_token))).status,
+    ).toBe(401);
+    const forEngagement = await serviceToken('payments', 'engagement');
+    expect(
+      (
+        await get(
+          `${urls.engagement}/v1/tenant-projection`,
+          bearer(forEngagement.json.access_token),
+        )
+      ).status,
+    ).toBe(401);
+  });
+
+  // Mutation: accept any secret.
+  it('a wrong client secret is 401 INVALID_SERVICE_CREDENTIALS', async () => {
+    const res = await call('POST', urls.identity, '/v1/auth/service-token', {
+      body: { client_id: 'engagement', client_secret: 'x'.repeat(30), audience: 'identity' },
+    });
+    expect(res.status).toBe(401);
+    expect(res.json).toMatchObject({ code: 'INVALID_SERVICE_CREDENTIALS' });
+  });
+
+  // Mutation: a service token with another audience is accepted by identity's internal routes.
+  it('a service token minted for payments is refused by identity internal routes', async () => {
+    const a = await operator('identity');
+    const forPayments = await serviceToken('engagement', 'payments');
+    const url = INTERNAL_ROUTES.tenantStatus.replace(':tenantId', a.tenantId);
+    expect(
+      (await call('GET', urls.identity, url, { headers: bearer(forPayments.json.access_token) }))
+        .status,
+    ).toBe(401);
+  });
+});
+
+describe('INV-STACK-6 launch and player mapping hold under real concurrency (F16, MIO-044)', () => {
+  const launchToken = (keyId: string, secret: string, ext: string, jti?: string) =>
+    signLaunchToken({
+      keyId,
+      secret,
+      now: Math.floor(Date.now() / 1000),
+      externalPlayerId: ext,
+      ...(jti ? { jti } : {}),
+    });
+
+  async function withKey() {
+    const a = await operator('identity');
+    const issued = await call('POST', urls.identity, '/v1/credentials', {
+      headers: bearer(a.token),
+      body: { platform: 'sim-casino' },
+    });
+    expect(issued.status).toBe(201);
+    return { a, key: CredentialIssued.parse(issued.json) };
+  }
+
+  // Mutation: the jti check is read-then-write without the unique key, or the 23505 is not mapped.
+  it('five parallel launches of one token: one 200, four 401 LAUNCH_TOKEN_REPLAYED', async () => {
+    const { key } = await withKey();
+    const token = launchToken(key.key_id, key.hmac_secret, 'ext-1');
+    const results = await Promise.all(
+      Array.from({ length: 5 }, () =>
+        call('POST', urls.identity, '/v1/auth/launch', { body: { token, audience: 'engagement' } }),
+      ),
+    );
+    expect(results.filter((r) => r.status === 200)).toHaveLength(1);
+    const rest = results.filter((r) => r.status !== 200);
+    expect(rest.map((r) => r.status)).toEqual([401, 401, 401, 401]);
+    for (const r of rest) expect(r.json).toMatchObject({ code: 'LAUNCH_TOKEN_REPLAYED' });
+  });
+
+  // Mutation: drop the UNIQUE on player_links / check-then-insert in resolveOrCreate.
+  it('parallel launches (different nonces) and internal resolves for one external id make one link and one user', async () => {
+    const { a, key } = await withKey();
+    const svc = (
+      await call('POST', urls.identity, '/v1/auth/service-token', {
+        body: {
+          client_id: 'engagement',
+          client_secret: serviceSecrets.engagement,
+          audience: 'identity',
+        },
+      })
+    ).json.access_token as string;
+    const launches = Array.from({ length: 4 }, (_, i) =>
+      call('POST', urls.identity, '/v1/auth/launch', {
+        body: {
+          token: launchToken(key.key_id, key.hmac_secret, 'ext-9', `nonce-par-${uniq()}-${i}`),
+          audience: 'engagement',
+        },
+      }),
+    );
+    const resolves = Array.from({ length: 4 }, () =>
+      call('POST', urls.identity, INTERNAL_ROUTES.resolvePlayer.replace(':tenantId', a.tenantId), {
+        headers: bearer(svc),
+        body: { platform: 'sim-casino', external_player_id: 'ext-9' },
+      }),
+    );
+    const all = await Promise.all([...launches, ...resolves]);
+    for (const r of all) expect(r.status).toBe(200);
+    const users = new Set([
+      ...all.slice(0, 4).map((r) => r.json.user_id as string),
+      ...all.slice(4).map((r) => InternalResolvePlayerResponse.parse(r.json).user_id),
+    ]);
+    expect(users.size).toBe(1);
+    const links = await inTx(a.tenantId, (c) =>
+      c.query(`SELECT count(*)::int AS n FROM player_links WHERE external_player_id = 'ext-9'`),
+    );
+    expect(links.rows[0].n).toBe(1);
+  });
+});
+
+describe('INV-STACK-7 Firebase emulator multi-tenancy (D-7, Q4): the same email in two tenants is two accounts', () => {
+  // Mutation: one provider namespace for all tenants (a plain project), or a global email namespace.
+  it('registers the same email in two tenants with different passwords; each logs in only to its own tenant', async () => {
+    const email = `shared-${uniq()}@x.test`;
+    const a = await operator('identity', email, 'password-for-tenant-a');
+    const b = await operator('identity', email, 'password-for-tenant-b');
+    expect(a.tenantId).not.toBe(b.tenantId);
+    const login = (slug: string, password: string) =>
+      call('POST', urls.identity, '/v1/auth/login', {
+        host: `${slug}.mio.localhost`,
+        body: { email, password, audience: 'web' },
+      });
+    expect((await login(a.slug, 'password-for-tenant-a')).status).toBe(200);
+    expect((await login(b.slug, 'password-for-tenant-b')).status).toBe(200);
+    expect((await login(a.slug, 'password-for-tenant-b')).status).toBe(401);
+    expect((await login(b.slug, 'password-for-tenant-a')).status).toBe(401);
+  });
+
+  // Mutation: stop creating one Identity Platform tenant per MIO tenant (createTenant skipped).
+  it('the emulator holds one Identity Platform tenant per MIO tenant', async () => {
+    const list = async () => {
+      const res = await fetch(
+        `${urls.firebaseAuth}/identitytoolkit.googleapis.com/v2/projects/demo-ex-mio/tenants?pageSize=1000`,
+        { headers: { authorization: 'Bearer owner' } },
+      );
+      expect(res.status).toBe(200);
+      return ((await res.json()) as { tenants?: unknown[] }).tenants?.length ?? 0;
+    };
+    const before = await list();
+    await operator('identity');
+    await operator('identity');
+    expect(await list()).toBe(before + 2);
   });
 });

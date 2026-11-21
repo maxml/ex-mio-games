@@ -1,5 +1,5 @@
 import type { Action, Role } from '@ex-mio/contracts';
-import { COIN_VALUE_ACTIONS } from '@ex-mio/contracts';
+import { PLATFORM_TENANT_ID } from '@ex-mio/contracts';
 import { buildKernel } from './testing/kernel'; // RED: module does not exist yet
 import type { Subject } from './services/access.service'; // RED: module does not exist yet
 
@@ -12,7 +12,10 @@ import type { Subject } from './services/access.service'; // RED: module does no
 const PW = 'correct horse battery';
 const TA = '0190a1b2-c3d4-7e5f-8a6b-0000000000aa';
 const TB = '0190a1b2-c3d4-7e5f-8a6b-0000000000bb';
-const PLATFORM = '0190a1b2-c3d4-7e5f-8a6b-0000000000cc';
+// The real, fixed platform tenant id (F8): an implementation that checks
+// `subject.tenantId === PLATFORM_TENANT_ID` must pass these tests; one that honours
+// `platform_admin` on any tenant must fail INV-RBAC-6.
+const PLATFORM = PLATFORM_TENANT_ID;
 const U1 = '0190a1b2-c3d4-7e5f-8a6b-000000000001';
 const U2 = '0190a1b2-c3d4-7e5f-8a6b-000000000002';
 
@@ -26,36 +29,120 @@ const subject = (roles: Role[], tenantId: string, over: Partial<Subject> = {}): 
 describe('INV-RBAC: can(subject, action, object) is default-deny and tenant-bound', () => {
   const k = buildKernel();
 
-  // Mutation: flip any single cell (e.g. let operator_staff invite) -> that row goes red.
-  const matrix: Array<[Role, Action, boolean]> = [
-    ['operator_admin', 'staff.invite', true],
-    ['operator_admin', 'staff.list', true],
-    ['operator_admin', 'credentials.rotate', true],
-    ['operator_admin', 'credentials.read', true],
-    ['operator_admin', 'audit.read', true],
-    ['operator_admin', 'players.read', true],
-    ['operator_admin', 'acting.start', false],
-    ['operator_admin', 'tenant.suspend', false],
-    ['operator_staff', 'players.read', true],
-    ['operator_staff', 'staff.list', true],
-    ['operator_staff', 'staff.invite', false],
-    ['operator_staff', 'credentials.rotate', false],
-    ['operator_staff', 'credentials.read', false],
-    ['operator_staff', 'audit.read', false],
-    ['operator_staff', 'acting.start', false],
-    ['player', 'player.self.read', true],
-    ['player', 'players.read', false],
-    ['player', 'staff.list', false],
-    ['player', 'credentials.read', false],
-    ['player', 'acting.start', false],
-    ['player', 'coins.credit', false],
-  ];
+  // F11: the FULL matrix, 4 roles x 16 actions, as a literal (not generated from ACTIONS), so a
+  // wrong "yes" in a cell nobody listed (operator_staff coins.adjust) cannot hide behind default deny.
+  // "Own tenant" for a platform_admin is the platform tenant; tenant.suspend is asked about an
+  // operator tenant. platform_admin NOT acting reaches nothing in an operator tenant (spec section 3).
+  // Mutation: flip any single cell -> that row goes red.
+  const CELLS: Record<Role, Record<Action, boolean>> = {
+    operator_admin: {
+      'tenant.read': true,
+      'tenant.suspend': false,
+      'staff.invite': true,
+      'staff.list': true,
+      'players.read': true,
+      'player.self.read': false,
+      'credentials.read': true,
+      'credentials.rotate': true,
+      'audit.read': true,
+      'acting.start': false,
+      'coins.credit': false,
+      'coins.hold': false,
+      'coins.capture': false,
+      'coins.release': false,
+      'coins.refund': false,
+      'coins.adjust': true,
+    },
+    operator_staff: {
+      'tenant.read': false,
+      'tenant.suspend': false,
+      'staff.invite': false,
+      'staff.list': true,
+      'players.read': true,
+      'player.self.read': false,
+      'credentials.read': false,
+      'credentials.rotate': false,
+      'audit.read': false,
+      'acting.start': false,
+      'coins.credit': false,
+      'coins.hold': false,
+      'coins.capture': false,
+      'coins.release': false,
+      'coins.refund': false,
+      'coins.adjust': false,
+    },
+    player: {
+      'tenant.read': false,
+      'tenant.suspend': false,
+      'staff.invite': false,
+      'staff.list': false,
+      'players.read': false,
+      'player.self.read': true,
+      'credentials.read': false,
+      'credentials.rotate': false,
+      'audit.read': false,
+      'acting.start': false,
+      'coins.credit': false,
+      'coins.hold': false,
+      'coins.capture': false,
+      'coins.release': false,
+      'coins.refund': false,
+      'coins.adjust': false,
+    },
+    platform_admin: {
+      'tenant.read': true,
+      'tenant.suspend': true,
+      'staff.invite': false,
+      'staff.list': false,
+      'players.read': false,
+      'player.self.read': false,
+      'credentials.read': false,
+      'credentials.rotate': false,
+      'audit.read': false,
+      'acting.start': true,
+      'coins.credit': false,
+      'coins.hold': false,
+      'coins.capture': false,
+      'coins.release': false,
+      'coins.refund': false,
+      'coins.adjust': false,
+    },
+  };
+  const matrix: Array<[Role, Action, boolean]> = (Object.keys(CELLS) as Role[]).flatMap((role) =>
+    (Object.keys(CELLS[role]) as Action[]).map((action): [Role, Action, boolean] => [
+      role,
+      action,
+      CELLS[role][action],
+    ]),
+  );
+
+  it('INV-RBAC-1 the literal matrix has all 64 cells', () => {
+    expect(matrix).toHaveLength(64);
+    expect(new Set(matrix.map(([r, a]) => `${r}/${a}`)).size).toBe(64);
+  });
 
   it.each(matrix)('INV-RBAC-1 %s / %s -> %s (own tenant)', async (role, action, allowed) => {
     const kernel = await k;
-    expect(kernel.access.can(subject([role], TA), action, { tenant_id: TA, user_id: U1 })).toBe(
-      allowed,
-    );
+    const own = role === 'platform_admin' ? PLATFORM : TA;
+    const objectTenant = role === 'platform_admin' && action === 'tenant.suspend' ? TA : own;
+    expect(
+      kernel.access.can(subject([role], own), action, { tenant_id: objectTenant, user_id: U1 }),
+    ).toBe(allowed);
+  });
+
+  // F8. Mutation: honour platform_admin on any tenant id (no `tenantId === PLATFORM_TENANT_ID` check).
+  it('INV-RBAC-6 a platform_admin subject whose tenant is not the platform tenant can do nothing', async () => {
+    const kernel = await k;
+    const stray = subject(['platform_admin'], TA);
+    for (const action of [
+      'tenant.suspend',
+      'acting.start',
+      'tenant.read',
+      'staff.list',
+    ] as Action[]) {
+      expect(kernel.access.can(stray, action, { tenant_id: TA })).toBe(false);
+      expect(kernel.access.can(stray, action, { tenant_id: TB })).toBe(false);
+    }
   });
 
   // Mutation: allow unknown actions (default-allow).
@@ -196,10 +283,20 @@ describe('INV-ACTAUTH: acting_tenant is the only way across, and it is audited',
     expect(await k.audit.list(TA)).toEqual([]);
   });
 
-  // Mutation: drop the COIN_VALUE_ACTIONS deny for acting subjects.
+  // Mutation: drop the COIN_VALUE_ACTIONS deny for acting subjects, or remove one action from the
+  // list. F4: the loop runs over a LITERAL, not over the constant it pins, so a shrunken constant
+  // fails here (and in the contracts test). The same ban is tested where coins move: payments
+  // (apps/payments/src/acting-ban.test.ts, D-5).
   it('INV-ACTAUTH-5 an acting session cannot call coin commands that move value; coins.adjust is the audited exception', async () => {
     const k = await buildKernel();
-    for (const action of COIN_VALUE_ACTIONS) {
+    const COIN_VALUE = [
+      'coins.credit',
+      'coins.hold',
+      'coins.capture',
+      'coins.release',
+      'coins.refund',
+    ] as Action[];
+    for (const action of COIN_VALUE) {
       expect(k.access.can(acting(TA), action, { tenant_id: TA })).toBe(false);
       await expect(k.access.authorize(acting(TA), action, { tenant_id: TA })).rejects.toMatchObject(
         { code: 'ACTING_FORBIDDEN' },
