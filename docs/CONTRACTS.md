@@ -96,9 +96,11 @@ payload }`; `tenant_id` is mandatory; the payload schema is registered per (type
 
 - **provider:** `payments` (`packages/contracts/src/payments.ts`) · **consumers:** `engagement` (commands),
   `web` and any service (balance read), any subscriber of `payments.coins.*`
-- **spec:** `docs/specs/payments.md`. Only `payments` changes a balance; `credit`, `reserve`, `capture`,
+- **spec:** `docs/specs/payments.md`. Only `payments` changes a balance; `reserve`, `capture`,
   `release`, `refund` are internal routes for the `engagement` service identity, each idempotent on its own
-  key and on a durable business-operation id. Amounts are integers `1..1_000_000_000_000`. Events
+  key and by the state of the reserve. There is no credit route: spin coins arrive by consuming
+  `engagement.spin.completed` (decision D-1). Rejection codes `reserve_already_captured|released|refunded`,
+  `reserve_not_captured`, `reserve_not_found`, `insufficient_funds` are payments' (L4 adopts them). Amounts are integers `1..1_000_000_000_000`. Events
   `payments.coins.credited|reserved|captured|released|refunded` v1 are written in the effect's transaction.
 - **pinned:** `packages/contracts/src/payments.contracts.test.ts`, `apps/payments/src/controllers/coins.controller.test.ts`,
   `apps/payments/src/**/*.pgtest.ts`
