@@ -77,6 +77,16 @@ payload }`; `tenant_id` is mandatory; the payload schema is registered per (type
   reason on stderr. The runtime image has no pnpm and no TypeORM CLI. The app never migrates on boot.
 - **pinned:** `packages/service-kit/src/postgres.test.ts` (options), compose start (`migrate && start`)
 
+## Identity token and tenant claim
+
+- **provider:** `identity` (issues), `packages/service-kit` (`auth.ts`, verifies), `packages/tenancy`
+  (`jwtTenantResolver`) · **consumers:** every service, `web`
+- **spec:** `docs/specs/identity.md`; claims in `packages/contracts/src/identity.ts`. RS256, `aud` is one service,
+  TTL at most 900 s, keys at `/.well-known/jwks.json`. The tenant of a request is the verified `tid` (or
+  `act.tenant_id` on a platform admin acting session) and nothing else.
+- **pinned:** `packages/service-kit/src/auth.test.ts`, `apps/identity/src/identity.*.test.ts`,
+  `tests/compose/src/identity.compose.test.ts`
+
 ## Postgres TLS
 
 - **provider:** `packages/service-kit` (`resolvePostgresSslMode`) · **consumers:** every service
