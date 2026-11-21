@@ -8,7 +8,11 @@
 #   IMAGE_TAG      tag to run (default: latest)
 #   DOCKER_NETWORK network the database is reachable on (default: bridge)
 #   DATABASE_SSL   disable | require | verify-full (required in production)
-#   IDENTITY_DATABASE_URL, ENGAGEMENT_DATABASE_URL, PAYMENTS_DATABASE_URL
+#   IDENTITY_MIGRATION_DATABASE_URL, ENGAGEMENT_MIGRATION_DATABASE_URL,
+#   PAYMENTS_MIGRATION_DATABASE_URL
+#                  URLs of each service's OWNER role (<svc>_owner), which owns the
+#                  schema. The running services use their separate, unprivileged
+#                  <svc>_app role (<SVC>_DATABASE_URL) and never see these.
 #
 # Exit 0 only if every service migrated; stops at the first failure.
 set -eu
@@ -20,14 +24,14 @@ network="${DOCKER_NETWORK:-bridge}"
 migrate() {
   svc="$1"
   upper=$(printf '%s' "$svc" | tr '[:lower:]' '[:upper:]')
-  url=$(printenv "${upper}_DATABASE_URL" || true)
+  url=$(printenv "${upper}_MIGRATION_DATABASE_URL" || true)
   if [ -z "$url" ]; then
-    echo "migrate-all: ${upper}_DATABASE_URL is not set" >&2
+    echo "migrate-all: ${upper}_MIGRATION_DATABASE_URL is not set" >&2
     exit 1
   fi
   echo "migrate-all: $svc"
   docker run --rm --network "$network" \
-    -e "DATABASE_URL=$url" -e "NODE_ENV=${NODE_ENV:-production}" -e "DATABASE_SSL=${DATABASE_SSL:-}" \
+    -e "MIGRATION_DATABASE_URL=$url" -e "NODE_ENV=${NODE_ENV:-production}" -e "DATABASE_SSL=${DATABASE_SSL:-}" \
     "${IMAGE_PREFIX}/${svc}:${tag}" node dist/migrate.js
 }
 

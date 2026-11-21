@@ -5,9 +5,14 @@ import { TenantEntity } from './tenant.entity';
 // `.ts` under tsx/ts-node, `.js` from the compiled dist: resolve either, next to this file.
 const ext = __filename.endsWith('.ts') ? 'ts' : 'js';
 
-/** One factory serves the running app and the one-off migrate process. */
-export const makeDataSource = () =>
-  createDataSource({
-    entities: [TenantEntity],
-    migrations: [join(__dirname, 'migrations', `*.${ext}`)],
-  });
+const options = {
+  entities: [TenantEntity],
+  migrations: [join(__dirname, 'migrations', `*.${ext}`)],
+};
+
+/** The running app: connects as `identity_app` (DATABASE_URL), which owns nothing. */
+export const makeDataSource = () => createDataSource(options);
+
+/** The one-off migrate process: connects as `identity_owner` (MIGRATION_DATABASE_URL). */
+export const makeMigrationDataSource = () =>
+  createDataSource({ ...options, urlEnv: 'MIGRATION_DATABASE_URL' });

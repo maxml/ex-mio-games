@@ -1,6 +1,6 @@
 import { Module, type DynamicModule } from '@nestjs/common';
 import { BusModule, BusRuntime, Db, HealthModule, probe } from '@ex-mio/service-kit';
-import { TenancyModule } from '@ex-mio/tenancy';
+import { headerTenantAllowed, TenancyModule } from '@ex-mio/tenancy';
 import type { Config } from './config';
 import { CreditsController } from './controllers/credits.controller';
 import { ModelModule } from './model/model.module';
@@ -31,7 +31,10 @@ export function createAppModule(config: Config): DynamicModule {
         }),
       }),
     ],
-    controllers: [CreditsController],
+    // The credit endpoint is a wiring demo behind the header tenant placeholder. Coins
+    // are credited only by the payments consumer (decision D-1), so where the header
+    // resolver is refused (production) the route does not exist at all.
+    controllers: headerTenantAllowed() ? [CreditsController] : [],
     providers: [CreditsService],
   };
 }

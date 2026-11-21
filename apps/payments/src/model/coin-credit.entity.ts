@@ -7,11 +7,12 @@ import { Column, CreateDateColumn, Entity, PrimaryColumn } from 'typeorm';
  */
 @Entity({ name: 'coin_credits' })
 export class CoinCreditEntity {
+  // Composite key (tenant_id, id): another tenant's id is not revealed by a duplicate-key error.
+  @PrimaryColumn({ name: 'tenant_id', type: 'uuid' })
+  tenantId!: string;
+
   @PrimaryColumn('uuid')
   id!: string;
-
-  @Column({ name: 'tenant_id', type: 'uuid' })
-  tenantId!: string;
 
   @Column({ name: 'player_id', type: 'uuid' })
   playerId!: string;

@@ -72,7 +72,9 @@ services:
       live: /healthz/live
       ready: /healthz/ready
     public:
-      paths: ['/v1/credits*', '/v1/payments*']
+      # No /v1/credits: coins are credited only by the payments consumer (D-1), and the
+      # demo endpoint trusts a caller-supplied tenant header, so it is not mounted in production.
+      paths: ['/v1/payments*']
     resources: { cpu: '0.5', memory: '512M' }
     depends_on: [db, rabbitmq]
   web:
@@ -117,13 +119,16 @@ domains:
 
 # Env inventory: names only. Values are injected by Deckhand from its host secret store.
 env:
-  required:
-    [
+  required: [
       'POSTGRES_USER',
       'POSTGRES_PASSWORD',
       'IDENTITY_DATABASE_URL',
       'ENGAGEMENT_DATABASE_URL',
       'PAYMENTS_DATABASE_URL',
+      # Owner-role URLs, for scripts/migrate-all.sh only. The services get the app-role URLs above.
+      'IDENTITY_MIGRATION_DATABASE_URL',
+      'ENGAGEMENT_MIGRATION_DATABASE_URL',
+      'PAYMENTS_MIGRATION_DATABASE_URL',
       'DATABASE_SSL',
       'AMQP_URL',
       'REDIS_URL',
@@ -139,7 +144,7 @@ version:
 
 # Each service ships its own migration entry point: `node dist/migrate.js` in its
 # image (the images have no pnpm and no TypeORM CLI). scripts/migrate-all.sh runs
-# the three in turn (needs IMAGE_PREFIX, the *_DATABASE_URL variables and
+# the three in turn (needs IMAGE_PREFIX, the *_MIGRATION_DATABASE_URL variables and
 # DATABASE_SSL); exit 0 = all applied, non-zero = stop the deploy. The migrations
 # are TypeScript, not SQL files, so the SQL linter has nothing to read: engine
 # `other` skips it.

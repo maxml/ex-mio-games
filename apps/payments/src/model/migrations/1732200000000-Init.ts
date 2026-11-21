@@ -9,11 +9,12 @@ export class Init1732200000000 implements MigrationInterface {
   async up(q: QueryRunner): Promise<void> {
     await q.query(`
       CREATE TABLE "coin_credits" (
-        "id" uuid PRIMARY KEY,
+        "id" uuid NOT NULL,
         "tenant_id" uuid NOT NULL,
         "player_id" uuid NOT NULL,
         "amount" integer NOT NULL CHECK ("amount" > 0),
-        "created_at" timestamptz NOT NULL DEFAULT now()
+        "created_at" timestamptz NOT NULL DEFAULT now(),
+        PRIMARY KEY ("tenant_id", "id")
       )`);
     await q.query(
       `CREATE INDEX "coin_credits_tenant_created" ON "coin_credits" ("tenant_id", "created_at")`,

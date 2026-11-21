@@ -26,9 +26,12 @@ services:
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres-dev}
-      IDENTITY_DB_PASSWORD: identity-dev
-      ENGAGEMENT_DB_PASSWORD: engagement-dev
-      PAYMENTS_DB_PASSWORD: payments-dev
+      IDENTITY_OWNER_DB_PASSWORD: identity-owner-dev
+      IDENTITY_APP_DB_PASSWORD: identity-app-dev
+      ENGAGEMENT_OWNER_DB_PASSWORD: engagement-owner-dev
+      ENGAGEMENT_APP_DB_PASSWORD: engagement-app-dev
+      PAYMENTS_OWNER_DB_PASSWORD: payments-owner-dev
+      PAYMENTS_APP_DB_PASSWORD: payments-app-dev
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./docker/postgres/init.sh:/docker-entrypoint-initdb.d/10-init.sh:ro
@@ -100,10 +103,16 @@ services:
     environment:
       <<: *service-env
       PORT: '4001'
-      DATABASE_URL: postgresql://identity:identity-dev@postgres:5432/identity
+      # Runtime role: not the table owner. The owner URL is given to the migrate step only.
+      DATABASE_URL: postgresql://identity_app:identity-app-dev@postgres:5432/identity
       PLATFORM_ADMIN_TOKEN: dev-platform-token-0000
-    # Migrations run as their own step (node dist/migrate.js), then the server starts.
-    command: ['sh', '-c', 'node dist/migrate.js && exec node dist/main.js']
+    # Migrations run as their own step (node dist/migrate.js, as the owner role), then the
+    # server starts as the app role. Replicas started together are serialized by an
+    # advisory lock in migrate.js.
+    command:
+      - sh
+      - -c
+      - MIGRATION_DATABASE_URL=postgresql://identity_owner:identity-owner-dev@postgres:5432/identity node dist/migrate.js && exec node dist/main.js
     ports:
       - '${IDENTITY_PORT:-4001}:4001'
     depends_on:
@@ -127,9 +136,12 @@ services:
     environment:
       <<: *service-env
       PORT: '4002'
-      DATABASE_URL: postgresql://engagement:engagement-dev@postgres:5432/engagement
+      DATABASE_URL: postgresql://engagement_app:engagement-app-dev@postgres:5432/engagement
       REDIS_URL: redis://redis:6379
-    command: ['sh', '-c', 'node dist/migrate.js && exec node dist/main.js']
+    command:
+      - sh
+      - -c
+      - MIGRATION_DATABASE_URL=postgresql://engagement_owner:engagement-owner-dev@postgres:5432/engagement node dist/migrate.js && exec node dist/main.js
     ports:
       - '${ENGAGEMENT_PORT:-4002}:4002'
     depends_on:
@@ -155,8 +167,11 @@ services:
     environment:
       <<: *service-env
       PORT: '4003'
-      DATABASE_URL: postgresql://payments:payments-dev@postgres:5432/payments
-    command: ['sh', '-c', 'node dist/migrate.js && exec node dist/main.js']
+      DATABASE_URL: postgresql://payments_app:payments-app-dev@postgres:5432/payments
+    command:
+      - sh
+      - -c
+      - MIGRATION_DATABASE_URL=postgresql://payments_owner:payments-owner-dev@postgres:5432/payments node dist/migrate.js && exec node dist/main.js
     ports:
       - '${PAYMENTS_PORT:-4003}:4003'
     depends_on:

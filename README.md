@@ -60,7 +60,14 @@ curl -s -X POST localhost:4003/v1/credits \
 ```
 
 The `x-tenant-id` header is a placeholder: the identity service will issue tokens, and the tenant will then
-come from a verified claim.
+come from a verified claim. Until then a service refuses to boot with `NODE_ENV=production` (set
+`ALLOW_INSECURE_HEADER_TENANT=true` only for a throwaway environment), and the demo `/v1/credits` route is
+not mounted there: coins are credited only by the payments consumer.
+
+Each service has two database roles: `<service>_owner` (owns the schema, used by `migrate.js` only) and
+`<service>_app` (runtime: not the owner, no DDL, exact grants listed in the `AppRoleGrants` migration).
+Dead-lettered messages wait in `<service>.dlq`; after fixing the cause, re-drive them with
+`node dist/dlq-replay.js [--dry-run] [--limit N] [--outbox]` in that service's container.
 
 ## Develop
 
