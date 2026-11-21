@@ -7,6 +7,10 @@ import type { QueryRunner } from 'typeorm';
  *
  * outbox: one row per event, written in the same transaction as the business
  *   change. `published_at` stays NULL until the broker confirmed the publish.
+ *   A row the broker cannot route is retried with a per-row backoff
+ *   (`attempts`, `next_attempt_at`) and, after the last attempt, parked
+ *   (`parked_at`) so it never blocks the rows behind it. A parked row waits for
+ *   an operator (`dlq-replay --outbox`).
  * inbox: one row per (consumer, event), written in the same transaction as the
  *   effect. The primary key is what makes a redelivery a no-op.
  */
@@ -17,9 +21,14 @@ export const BUS_TABLES_UP: readonly string[] = [
      "type" text NOT NULL,
      "envelope" jsonb NOT NULL,
      "created_at" timestamptz NOT NULL DEFAULT now(),
-     "published_at" timestamptz
+     "published_at" timestamptz,
+     "attempts" integer NOT NULL DEFAULT 0,
+     "next_attempt_at" timestamptz NOT NULL DEFAULT now(),
+     "parked_at" timestamptz,
+     "last_error" text
    )`,
-  `CREATE INDEX "outbox_unpublished" ON "outbox" ("created_at", "event_id") WHERE "published_at" IS NULL`,
+  `CREATE INDEX "outbox_due" ON "outbox" ("next_attempt_at", "created_at", "event_id")
+     WHERE "published_at" IS NULL AND "parked_at" IS NULL`,
   `CREATE TABLE "inbox" (
      "consumer" text NOT NULL,
      "event_id" uuid NOT NULL,

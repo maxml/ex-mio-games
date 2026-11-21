@@ -69,6 +69,13 @@ export interface DataSourceInput {
   entities: NonNullable<DataSourceOptions['entities']>;
   /** Glob of compiled or source migration files. */
   migrations: string[];
+  /**
+   * Which variable holds the connection URL. The running app uses `DATABASE_URL`
+   * (the runtime `<service>_app` role: not the table owner, no DDL). `migrate.js`
+   * uses `MIGRATION_DATABASE_URL` (the `<service>_owner` role that owns the schema).
+   * There is no fallback from one to the other: the app must not run as the owner.
+   */
+  urlEnv?: 'DATABASE_URL' | 'MIGRATION_DATABASE_URL';
 }
 
 /**
@@ -80,12 +87,13 @@ export interface DataSourceInput {
  */
 export function buildDataSourceOptions(input: DataSourceInput): DataSourceOptions {
   const env = input.env ?? process.env;
-  const url = env.DATABASE_URL;
-  if (!url) throw new Error('DATABASE_URL is required');
+  const urlEnv = input.urlEnv ?? 'DATABASE_URL';
+  const url = env[urlEnv];
+  if (!url) throw new Error(`${urlEnv} is required`);
   return {
     type: 'postgres',
     url: stripSslMode(url),
-    ssl: resolvePostgresSsl(env),
+    ssl: resolvePostgresSsl({ ...env, DATABASE_URL: url }),
     entities: input.entities,
     migrations: input.migrations,
     synchronize: false,

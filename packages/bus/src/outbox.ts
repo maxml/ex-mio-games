@@ -1,18 +1,57 @@
 import type { ConfirmChannel } from 'amqplib';
 import type { DataSource, EntityManager } from 'typeorm';
 import type { EventEnvelope } from '@ex-mio/contracts';
+import { TENANT_SETTING } from '@ex-mio/tenancy';
+import { backoffMs, type BackoffOptions } from './retry';
 import { EVENTS_EXCHANGE } from './topology';
+
+/** An event was enqueued inside a transaction of one tenant with another tenant's id. */
+export class OutboxTenantMismatchError extends Error {
+  constructor() {
+    super('event tenant differs from the transaction tenant: refusing to enqueue it');
+    this.name = 'OutboxTenantMismatchError';
+  }
+}
 
 /**
  * Record an event for publication. Call it with the EntityManager of the
  * transaction that makes the business change, so the change and the event
  * commit or roll back together. Nothing is sent to the broker here.
+ *
+ * Inside a tenant transaction (`app.tenant_id` set) the envelope must belong to
+ * that tenant: the outbox has no row-level security, so this is the choke point
+ * that stops one tenant's code from emitting another tenant's event. Platform
+ * transactions (no tenant setting) may enqueue for any tenant.
  */
 export async function enqueueEvent(manager: EntityManager, envelope: EventEnvelope): Promise<void> {
+  const rows: { tenant: string | null }[] = await manager.query(
+    `SELECT NULLIF(current_setting('${TENANT_SETTING}', true), '') AS "tenant"`,
+  );
+  const ambient = rows[0]?.tenant;
+  if (ambient && ambient.toLowerCase() !== envelope.tenant_id.toLowerCase()) {
+    throw new OutboxTenantMismatchError();
+  }
   await manager.query(
     `INSERT INTO "outbox" ("event_id", "tenant_id", "type", "envelope") VALUES ($1, $2, $3, $4)`,
     [envelope.event_id, envelope.tenant_id, envelope.type, JSON.stringify(envelope)],
   );
+}
+
+export interface RelayRetryOptions extends BackoffOptions {
+  /** After this many failed publishes a row is parked. */
+  maxAttempts: number;
+}
+
+export const DEFAULT_RELAY_RETRY: RelayRetryOptions = {
+  baseMs: 5_000,
+  maxMs: 300_000,
+  maxAttempts: 8,
+};
+
+export interface ParkedRow {
+  eventId: string;
+  type: string;
+  attempts: number;
 }
 
 export interface RelayOptions {
@@ -20,22 +59,28 @@ export interface RelayOptions {
   channel: ConfirmChannel;
   batchSize?: number;
   intervalMs?: number;
+  retry?: RelayRetryOptions;
   onError?: (err: unknown) => void;
+  /** Called when a row used its last attempt and was parked: alert on it. */
+  onParked?: (row: ParkedRow) => void;
 }
 
 interface OutboxRow {
   event_id: string;
   type: string;
   envelope: EventEnvelope;
+  attempts: number;
 }
 
 /**
- * Reads unpublished outbox rows and publishes them with publisher confirms.
- * A row is marked published only after the broker confirmed it AND did not
- * return it as unroutable (the publish is `mandatory`). Anything else stays in
- * the table and is retried, so delivery is at-least-once; consumers dedupe by
- * `event_id` (see InboxConsumer). `FOR UPDATE SKIP LOCKED` lets several relay
- * instances run side by side without publishing the same row twice at once.
+ * Reads due outbox rows and publishes them with publisher confirms. A row is
+ * marked published only after the broker confirmed it AND did not return it as
+ * unroutable (the publish is `mandatory`, so an event nobody is bound to yet is
+ * kept, not dropped). A returned row gets its own backoff (`next_attempt_at`) and
+ * attempt count; after `maxAttempts` it is parked. Either way it leaves the
+ * batch, so unroutable rows never starve the routable rows behind them.
+ * Delivery is at-least-once; consumers dedupe by `event_id` (see InboxConsumer).
+ * `FOR UPDATE SKIP LOCKED` lets several relay instances run side by side.
  */
 export class OutboxRelay {
   private timer: NodeJS.Timeout | undefined;
@@ -52,11 +97,13 @@ export class OutboxRelay {
 
   /** Publish one batch. Returns how many rows were confirmed and marked published. */
   async pollOnce(): Promise<number> {
-    const { dataSource, channel, batchSize = 50 } = this.options;
-    return dataSource.transaction(async (manager) => {
+    const { dataSource, channel, batchSize = 50, retry = DEFAULT_RELAY_RETRY } = this.options;
+    const parked: ParkedRow[] = [];
+    const published = await dataSource.transaction(async (manager) => {
       const rows: OutboxRow[] = await manager.query(
-        `SELECT "event_id", "type", "envelope" FROM "outbox"
-         WHERE "published_at" IS NULL ORDER BY "created_at", "event_id"
+        `SELECT "event_id", "type", "envelope", "attempts" FROM "outbox"
+         WHERE "published_at" IS NULL AND "parked_at" IS NULL AND "next_attempt_at" <= now()
+         ORDER BY "created_at", "event_id"
          LIMIT $1 FOR UPDATE SKIP LOCKED`,
         [batchSize],
       );
@@ -79,8 +126,30 @@ export class OutboxRelay {
           [done],
         );
       }
+      for (const row of rows.filter((r) => this.returned.has(r.event_id))) {
+        const attempts = row.attempts + 1;
+        const park = attempts >= retry.maxAttempts;
+        await manager.query(
+          `UPDATE "outbox"
+              SET "attempts" = $2,
+                  "last_error" = $3,
+                  "next_attempt_at" = now() + make_interval(secs => $4),
+                  "parked_at" = CASE WHEN $5::boolean THEN now() END
+            WHERE "event_id" = $1`,
+          [
+            row.event_id,
+            attempts,
+            'unroutable: no queue is bound to this event type',
+            backoffMs(attempts, retry) / 1000,
+            park,
+          ],
+        );
+        if (park) parked.push({ eventId: row.event_id, type: row.type, attempts });
+      }
       return done.length;
     });
+    for (const row of parked) this.options.onParked?.(row);
+    return published;
   }
 
   start(): void {
@@ -108,4 +177,30 @@ export class OutboxRelay {
     if (this.timer) clearTimeout(this.timer);
     while (this.running) await new Promise((r) => setTimeout(r, 10));
   }
+}
+
+export interface OutboxStats {
+  /** Rows still waiting to be published (including ones in backoff). */
+  pending: number;
+  /** Rows given up on: need an operator. */
+  parked: number;
+}
+
+/** The numbers an alert needs: a growing `parked` means events are not being delivered. */
+export async function outboxStats(dataSource: DataSource): Promise<OutboxStats> {
+  const rows: { pending: string; parked: string }[] = await dataSource.query(
+    `SELECT count(*) FILTER (WHERE "published_at" IS NULL AND "parked_at" IS NULL) AS "pending",
+            count(*) FILTER (WHERE "published_at" IS NULL AND "parked_at" IS NOT NULL) AS "parked"
+       FROM "outbox"`,
+  );
+  return { pending: Number(rows[0]?.pending ?? 0), parked: Number(rows[0]?.parked ?? 0) };
+}
+
+/** Give parked rows a fresh start (after the missing consumer was deployed). Returns how many. */
+export async function unparkOutbox(dataSource: DataSource): Promise<number> {
+  const result: [unknown[], number] = await dataSource.query(
+    `UPDATE "outbox" SET "parked_at" = NULL, "attempts" = 0, "next_attempt_at" = now()
+      WHERE "published_at" IS NULL AND "parked_at" IS NOT NULL`,
+  );
+  return result[1];
 }
