@@ -18,6 +18,16 @@ const Env = BaseEnv.extend({
   PAYMENTS_URL: z.string().url().default('http://localhost:4003'),
   // Redemption sweeper period in ms; 0 turns it off.
   SWEEPER_INTERVAL_MS: z.coerce.number().int().nonnegative().default(5000),
+  // Browser origins allowed to open the realtime socket cross-origin (comma separated). Empty: same-origin only.
+  REALTIME_ALLOWED_ORIGINS: z
+    .string()
+    .optional()
+    .transform((v) =>
+      (v ?? '')
+        .split(',')
+        .map((s) => s.trim())
+        .filter(Boolean),
+    ),
 }).superRefine((env, ctx) => {
   // Redis is optional; when configured in production it must use TLS.
   if (env.NODE_ENV === 'production' && env.REDIS_URL && !env.REDIS_URL.startsWith('rediss://')) {

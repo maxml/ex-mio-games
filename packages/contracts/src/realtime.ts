@@ -58,3 +58,17 @@ export const NotificationEnvelope = z.object({
   ts: z.number().int().nonnegative(),
 });
 export type NotificationEnvelope = z.infer<typeof NotificationEnvelope>;
+
+// --- MIO gateway (D-10, D-25) ------------------------------------------------
+
+/** Namespace of the MIO gateway hosted by engagement (the `notifications` one above is the generic example). */
+export const MIO_REALTIME_NAMESPACE = 'rt';
+
+/** `type` values of the `notification` frames the MIO gateway pushes to a player's own room. */
+export const MIO_REALTIME_TYPES = {
+  spinResult: 'spin.result',
+  balanceChanged: 'balance.changed',
+  redemptionStatus: 'redemption.status',
+} as const;
+
+export type MioRealtimeType = (typeof MIO_REALTIME_TYPES)[keyof typeof MIO_REALTIME_TYPES];
