@@ -25,8 +25,12 @@ vitest.config.*.timestamp*
 .vscode
 vite.config.*.timestamp*
 
-# Claude Code agent worktrees (transient; each is its own git worktree)
-.claude/
+# Claude Code local state and agent worktrees (transient). Only the role agent
+# wrappers are tracked; the directory itself must be un-ignored as /.claude/*,
+# because git cannot re-include a file under an ignored directory. **/ keeps nested
+# .claude/ state (apps/web/.claude/settings.local.json, worktrees) ignored at every depth.
+**/.claude/*
+!/.claude/agents/
 
 # husky regenerates its hook wrappers under .husky/_/ on install and drops its own
 # _/.gitignore there. Track that ignore here too so a fresh clone or a copy made

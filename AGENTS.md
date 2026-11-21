@@ -13,6 +13,7 @@ Routing only. Each row says where the answer lives; read that file instead of gu
 | Index of everything under `docs/`                    | `docs/README.md`                            |
 | How to run the stack and the tests                   | `README.md`                                 |
 | Security rules and reporting                         | `SECURITY.md`                               |
+| Process rules and role prompts for agent work        | `prompts/README.md`                         |
 
 ## Where code goes
 

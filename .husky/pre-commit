@@ -1,1 +1,4 @@
 pnpm exec lint-staged
+if git diff --cached --name-only | grep -qE '^(prompts/|\.claude/agents/|ci/check-prompts\.sh$)'; then
+  bash ci/check-prompts.sh || exit 1
+fi
