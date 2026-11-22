@@ -29,7 +29,9 @@ import { pgAs, type Service } from './env';
  *  - drop `sandbox` from `redemptions_order_key` (D-18) -> INV-ENV-SCHEMA-2 engagement.redemptions red;
  *  - drop `sandbox` from `wallet_owner_links (tenant_id, user_id, sandbox)` -> payments.wallet_owner_links red;
  *  - add `CREATE UNIQUE INDEX ON spin_credits (tenant_id, user_id, created_at)` -> spin_credits red;
- *  - create a new unclassified table -> INV-ENV-SCHEMA-1 red.
+ *  - create a new unclassified table -> INV-ENV-SCHEMA-1 red;
+ *  - reward_apis `PRIMARY KEY ("tenant_id", "platform")` (no environment) -> INV-ENV-SCHEMA-2
+ *    identity.reward_apis red; drop its `environment` column -> the same test red (MISSING).
  */
 
 const ENV_COLUMNS = ['sandbox', 'environment'];
@@ -253,7 +255,8 @@ describe.each(['identity', 'engagement', 'payments'] as const)(
     // The ENV tables found in the catalog at write time; a REQUIRES table joins this check once it
     // has the column. Listed statically so each table is its own named test.
     const envTables: Record<Service, string[]> = {
-      identity: ['integration_credentials'],
+      // reward_apis (D-27): PRIMARY KEY (tenant_id, platform, environment); one row per environment.
+      identity: ['integration_credentials', 'reward_apis'],
       engagement: ['spin_credits', 'redemptions'],
       payments: ['wallets', 'wallet_owner_links', 'accounts'],
     };

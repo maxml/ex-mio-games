@@ -6,7 +6,7 @@ import { newTenant, type PlayerSession, type TestTenant } from './player-session
 
 /**
  * Database-level guarantees of the ingest epic that an in-process fake cannot prove:
- * UNIQUE (tenant_id, source, external_event_id) under real parallelism, the atomic outbox row, and the
+ * UNIQUE (tenant_id, sandbox, source, external_event_id) under real parallelism, the atomic outbox row, and the
  * conditional UPDATE that consumes a spin credit. Needs the compose stack with the engagement service
  * configured as in docs/specs/engagement-ingest.md section 10 (static dev tenants, wheel seed, and the
  * runtime role `engagement_app`).
@@ -17,7 +17,8 @@ import { newTenant, type PlayerSession, type TestTenant } from './player-session
  * runtime role, except the catalog checks and the fault trigger, which use the admin.
  *
  * Mutations (re-applied by the reviewer):
- *  - drop UNIQUE (tenant_id, source, external_event_id) from inbound_events -> the parallel-dedupe test.
+ *  - drop UNIQUE (tenant_id, sandbox, source, external_event_id) from inbound_events -> the
+ *    parallel-dedupe test and INV-ING-DEDUPE-ENV-DB.
  *  - make the inbound insert and the outbox insert two transactions         -> INV-ING-ATOMIC-DB (a
  *    trigger makes the outbox insert fail for one event id; the inbound row must roll back with it).
  *  - replace `UPDATE ... WHERE status='available'` with read-then-write      -> INV-SPIN-ONE-WINNER-DB.
@@ -506,10 +507,14 @@ describe('ingest: atomic inbound row and outbox row', () => {
 });
 
 describe('engagement schema (catalog, as the admin)', () => {
+  // D-26 INV-ENV (EnvScopedKeys 1732800000000): the casino event id is deduped PER ENVIRONMENT, so
+  // the dedupe key names `sandbox`; the spin dedupe is the primary key (tenant_id, id) where the id is
+  // derived from the environment-scoped spin key (INV-ENV-SCHEMA SURROGATE_KEYS, SPIN-DEDUPE-1..3).
+  // "A duplicate in the same environment is rejected" is INV-ING-DEDUPE-ENV-DB below.
   const UNIQUES: Array<[string, string[]]> = [
-    ['inbound_events', ['tenant_id', 'source', 'external_event_id']],
+    ['inbound_events', ['tenant_id', 'sandbox', 'source', 'external_event_id']],
     ['spin_credits', ['tenant_id', 'source_event_id', 'rule_id', 'seq']],
-    ['spins', ['tenant_id', 'user_id', 'operation_id']],
+    ['spins', ['tenant_id', 'id']],
     ['reward_tables', ['tenant_id', 'wheel_id', 'version']],
     ['rules', ['tenant_id', 'rule_id', 'version']],
   ];
@@ -536,6 +541,38 @@ describe('engagement schema (catalog, as the admin)', () => {
     } finally {
       await admin.end();
     }
+  });
+
+  /*
+   * The property behind the key, as the runtime role with RLS on: a second row with the same
+   * (tenant, environment, source, casino event id) is REJECTED by the database (23505), and the same
+   * casino event id in the other environment is a separate row (D-26: a sandbox webhook cannot
+   * swallow the production deposit).
+   * Mutations: drop the UNIQUE from inbound_events -> the same-environment duplicate is accepted (red);
+   * the UNIQUE without `sandbox` (the old key) -> the other-environment insert fails (red).
+   */
+  it('INV-ING-DEDUPE-ENV-DB: a duplicate casino event in the same environment is rejected; the other environment is a separate row', async () => {
+    const eventId = `env-${randomUUID()}`;
+    const insert = (db: Client, sandbox: boolean) =>
+      db.query(
+        `INSERT INTO inbound_events
+           (id, tenant_id, sandbox, source, external_event_id, external_player_hmac, amount_minor, currency, occurred_at)
+         VALUES ($1, $2, $3, 'casino-a', $4, 'inv-ing-dedupe-env', 100, 'EUR', now())`,
+        [randomUUID(), T1.id, sandbox, eventId],
+      );
+    for (const sandbox of [false, true]) {
+      await asTenant(T1.id, (db) => insert(db, sandbox));
+      // the same key again, in its own transaction: the database refuses it
+      await expect(asTenant(T1.id, (db) => insert(db, sandbox))).rejects.toMatchObject({
+        code: '23505',
+      });
+    }
+    const rows = await asTenant(T1.id, (db) =>
+      db.query(`SELECT sandbox FROM inbound_events WHERE external_event_id = $1 ORDER BY sandbox`, [
+        eventId,
+      ]),
+    );
+    expect(rows.rows.map((r) => r.sandbox)).toEqual([false, true]);
   });
 
   it('INV-ENGAGEMENT-SCHEMA-DB: the runtime role engagement_app cannot UPDATE or DELETE the immutable tables, and can UPDATE only status and used_at of spin_credits', async () => {

@@ -33,6 +33,15 @@ const scopeOf = (h: StoreHarness, playerId: string, sandbox: boolean): Scope => 
  *      -> 'F3 inbox dedupe is per tenant'
  *  - the same-key advisory lock removed (Postgres only; the fake is single-threaded)
  *      -> 'F5 parallel placeOrder with one key: one order, every caller answered'
+ *
+ * D-28 (sandbox stock, test owner rewrite): a PRODUCTION order takes stock and counts against the
+ * per-player limit; a SANDBOX order skips both (they are production-only), and the order carries
+ * sandbox=true. Pinned on both stores, step by step, so the two directions cannot cancel out.
+ * Mutations:
+ *  - the `!scope.sandbox` guard around the stock step removed (either store)
+ *      -> F2 (stock after the sandbox order) and F5 (sandbox rounds) red;
+ *  - the stock step skipped for production too -> F2 (stock after the production order) and F5 red;
+ *  - the `!scope.sandbox` guard around the per-player counter removed -> F2b red.
  */
 export function stageBConformance(label: string, pair: PairSetup): void {
   describe(`L4 stage B fixes, store contract: ${label}`, () => {
@@ -43,16 +52,17 @@ export function stageBConformance(label: string, pair: PairSetup): void {
         operationKey: 'same-key',
         itemId,
       });
+      expect(await h.stockOf(itemId)).toBe(4); // D-28: the production order takes stock
       const test = await h.store.placeOrder(scopeOf(h, 'p-f2', true), {
         operationKey: 'same-key',
         itemId,
       });
+      expect(await h.stockOf(itemId)).toBe(4); // D-28: the sandbox order does not
       expect(live.created).toBe(true);
       expect(test.created).toBe(true);
       expect(test.redemption.id).not.toBe(live.redemption.id);
       expect(live.redemption.sandbox).toBe(false);
       expect(test.redemption.sandbox).toBe(true);
-      expect(await h.stockOf(itemId)).toBe(4); // D-28: only the production order took stock
       // each mode still dedupes inside itself
       const liveAgain = await h.store.placeOrder(scopeOf(h, 'p-f2', false), {
         operationKey: 'same-key',
@@ -67,6 +77,34 @@ export function stageBConformance(label: string, pair: PairSetup): void {
       expect(testAgain).toMatchObject({ created: false });
       expect(testAgain.redemption.id).toBe(test.redemption.id);
       expect(await h.stockOf(itemId)).toBe(4);
+    });
+
+    it('F2b D-28: the per-player limit binds production orders only; sandbox orders neither count nor are refused', async () => {
+      const [h] = await pair();
+      const itemId = await h.addItem({ price: 10, stock: null, perPlayerLimit: 1 });
+      // sandbox first: two sandbox orders over a limit of 1 are both placed and use no slot
+      for (const k of ['sbx-1', 'sbx-2']) {
+        const r = await h.store.placeOrder(scopeOf(h, 'p-f2b', true), { operationKey: k, itemId });
+        expect({ created: r.created, sandbox: r.redemption.sandbox }).toEqual({
+          created: true,
+          sandbox: true,
+        });
+      }
+      // the production slot is still free, then taken
+      const live = await h.store.placeOrder(scopeOf(h, 'p-f2b', false), {
+        operationKey: 'live-1',
+        itemId,
+      });
+      expect(live.created).toBe(true);
+      await expect(
+        h.store.placeOrder(scopeOf(h, 'p-f2b', false), { operationKey: 'live-2', itemId }),
+      ).rejects.toMatchObject({ code: 'limit_reached' });
+      // and a sandbox order after the production limit is reached is still placed
+      const after = await h.store.placeOrder(scopeOf(h, 'p-f2b', true), {
+        operationKey: 'sbx-3',
+        itemId,
+      });
+      expect(after.created).toBe(true);
     });
 
     it('F3 inbox dedupe is per tenant: the same event id in two tenants applies in both, and still dedupes inside one', async () => {
@@ -104,15 +142,15 @@ export function stageBConformance(label: string, pair: PairSetup): void {
       expect(repeat.redemption.state).toBe('REQUESTED');
     });
 
-    it('F5 parallel placeOrder with one key: one order, every caller answered, stock taken once', async () => {
+    it('F5 parallel placeOrder with one key: one order, every caller answered; production takes stock once per order, sandbox never (D-28)', async () => {
       const [h] = await pair();
       // Several rounds of one key each: a race is probabilistic, a lock-free store loses one of them.
       const ROUNDS = 12;
       const itemId = await h.addItem({ price: 10, stock: 100, perPlayerLimit: null });
-      for (let round = 0; round < ROUNDS; round++) {
+      const race = async (sandbox: boolean, round: number) => {
         const results = await Promise.allSettled(
           Array.from({ length: 30 }, () =>
-            h.store.placeOrder(scopeOf(h, 'p-f5', false), {
+            h.store.placeOrder(scopeOf(h, 'p-f5', sandbox), {
               operationKey: `race-${round}`,
               itemId,
             }),
@@ -122,11 +160,21 @@ export function stageBConformance(label: string, pair: PairSetup): void {
         expect(failed).toEqual([]);
         const ok = results.map(
           (r) =>
-            (r as PromiseFulfilledResult<{ redemption: { id: string }; created: boolean }>).value,
+            (
+              r as PromiseFulfilledResult<{
+                redemption: { id: string; sandbox: boolean };
+                created: boolean;
+              }>
+            ).value,
         );
         expect(new Set(ok.map((r) => r.redemption.id)).size).toBe(1);
         expect(ok.filter((r) => r.created)).toHaveLength(1);
-      }
+        expect(ok.every((r) => r.redemption.sandbox === sandbox)).toBe(true);
+      };
+      for (let round = 0; round < ROUNDS; round++) await race(false, round);
+      expect(await h.stockOf(itemId)).toBe(100 - ROUNDS);
+      // The same keys in sandbox: new orders (the key names the environment), and no stock taken.
+      for (let round = 0; round < ROUNDS; round++) await race(true, round);
       expect(await h.stockOf(itemId)).toBe(100 - ROUNDS);
     });
   });

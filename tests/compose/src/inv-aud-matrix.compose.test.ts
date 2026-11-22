@@ -288,7 +288,32 @@ const FIXTURES: Record<string, Fixture> = {
     body: { grace_seconds: 60 },
   }),
   'identity GET /v1/audit': () => ({ path: '/v1/audit' }),
+  // D-27: a VALID body, so the operator_admin leg of INV-AUD-MATRIX-4 can only pass by succeeding.
+  // https to a public test name: accepted in production without REWARD_API_ALLOW_HOSTS (D-30 F1).
+  'identity PUT /v1/operator/integrations/:casino/reward-api': () => ({
+    path: '/v1/operator/integrations/sim-casino/reward-api',
+    body: {
+      environment: 'production',
+      base_url: 'https://reward.inv-aud.example.test',
+      api_key: 'inv-aud-probe-secret',
+    },
+  }),
   // engagement
+  'engagement PUT /v1/operator/wheel': () => ({
+    path: '/v1/operator/wheel',
+    body: {
+      name: 'INV-AUD probe wheel',
+      segments: [
+        { label: 'one', weight: 1, reward: { type: 'coins', amount: 1 } },
+        { label: 'none', weight: 1, reward: { type: 'nothing' } },
+      ],
+    },
+  }),
+  // Its own rule id, so the walk never replaces the tenant's default deposit rule.
+  'engagement PUT /v1/operator/rules': () => ({
+    path: '/v1/operator/rules',
+    body: { rule_id: 'inv-aud-probe', name: 'INV-AUD probe rule', min_amount_minor: 100, spins: 1 },
+  }),
   'engagement GET /v1/tenant-projection': () => ({ path: '/v1/tenant-projection' }),
   'engagement GET /v1/store/items': () => ({ path: '/v1/store/items' }),
   'engagement GET /v1/operator/store/items': () => ({ path: '/v1/operator/store/items' }),
@@ -329,6 +354,7 @@ const FIXTURES: Record<string, Fixture> = {
   'payments GET /v1/platform/ledger/reconciliation': () => ({
     path: '/v1/platform/ledger/reconciliation',
   }),
+  'payments GET /v1/operator/plan': () => ({ path: '/v1/operator/plan' }),
   'payments GET /v1/me/balance': () => ({ path: '/v1/me/balance' }),
   'payments GET /v1/players/:player_id/balance': (w, v) => ({
     path: `/v1/players/${playerOf(w, v)}/balance`,
@@ -574,7 +600,9 @@ describe('INV-AUD-MATRIX-3 non-acting principals: walked on every route, no acti
         const seen: string[] = [];
         for (const r of userRoutes.filter((x) => x.service === s)) {
           for (const leg of legsOf(r)) {
-            const req = FIXTURES[keyOf(r)]!(w, leg);
+            const fixture = FIXTURES[keyOf(r)];
+            if (!fixture) throw new Error(`no fixture for ${keyOf(r)} (INV-AUD-MATRIX-0)`);
+            const req = fixture(w, leg);
             const res = await call(urls[s], r.method, req.path, {
               headers: { ...bearer(w.tokens[p][s]), ...req.headers },
               body: req.body,
@@ -587,6 +615,87 @@ describe('INV-AUD-MATRIX-3 non-acting principals: walked on every route, no acti
         process.stdout.write(`MATRIX ${p} ${s}: ${seen.join(' | ')}\n`);
         await new Promise((r) => setTimeout(r, 500));
         expect(await auditRows(s, 'audit.acting_request', since, { actor: w.subs[p] })).toEqual([]);
+      });
+    }
+  }
+});
+
+/*
+ * INV-AUD-MATRIX-4 (D-27 roles, D-28 audit scope; test owner, after D-27 added the routes).
+ * The D-27 operator routes by principal:
+ *  - the PUTs (reward API, wheel, rules) need `operator_admin`: the tenant's admin succeeds with the
+ *    valid fixture (200), the tenant's viewer (`operator_staff`) gets 403, and on engagement (the
+ *    audience the player token is issued for) the player gets 403;
+ *  - the other tenant's admin succeeds on its OWN tenant (the tenant is the token's, never the path);
+ *  - `GET /v1/operator/plan`: the admin reaches the handler (200, or 404 `no_subscription` for a
+ *    tenant without a plan), never 401/403;
+ *  - D-28: none of these refusals writes an audit record (non-acting principals go to the
+ *    structured log and the security metric only), so no `audit.acting_request` for the principal.
+ * The acting column of these routes is INV-AUD-MATRIX-1 (refusal audited `refused`).
+ *
+ * Mutations (re-applied by the reviewer):
+ *  - engagement `putWheel`/`putRules`: `requireRole(principal, 'operator_admin', 'operator_staff')`
+ *    -> the operator_staff cells go red (200, not 403);
+ *  - identity: add `credentials.rotate` to STAFF_ACTIONS -> the reward-api operator_staff cell red;
+ *  - drop `requireRole` from `putWheel` -> the player cell red;
+ *  - payments OperatorPlanController `@RequireRoles('platform_admin')` -> the admin plan cell red;
+ *  - the engagement audit interceptor audits every refusal (not only acting) -> the D-28 check red.
+ */
+type Cell = 'ok' | 'reached' | 'refused';
+const D27: { key: string; cells: Partial<Record<PrincipalName, Cell>> }[] = [
+  {
+    key: 'identity PUT /v1/operator/integrations/:casino/reward-api',
+    cells: { operator_admin: 'ok', other_tenant: 'ok', operator_staff: 'refused' },
+  },
+  {
+    key: 'engagement PUT /v1/operator/wheel',
+    cells: {
+      operator_admin: 'ok',
+      other_tenant: 'ok',
+      operator_staff: 'refused',
+      player: 'refused',
+    },
+  },
+  {
+    key: 'engagement PUT /v1/operator/rules',
+    cells: {
+      operator_admin: 'ok',
+      other_tenant: 'ok',
+      operator_staff: 'refused',
+      player: 'refused',
+    },
+  },
+  { key: 'payments GET /v1/operator/plan', cells: { operator_admin: 'reached' } },
+];
+
+describe('INV-AUD-MATRIX-4 D-27 operator routes: operator_admin only, refusals of non-acting principals not audited (D-28)', () => {
+  for (const { key, cells } of D27) {
+    for (const [p, cell] of Object.entries(cells) as [PrincipalName, Cell][]) {
+      it(`INV-AUD-MATRIX-4 ${p} ${key} -> ${cell}`, async () => {
+        const r = ROUTES.find((x) => keyOf(x) === key);
+        expect(r && { isPublic: r.isPublic, internal: r.internal }).toEqual({
+          isPublic: false,
+          internal: false,
+        });
+        const fixture = FIXTURES[key];
+        if (!r || !fixture) throw new Error(`no route or fixture for ${key} (INV-AUD-MATRIX-0)`);
+        const req = fixture(w, 'own');
+        const since = await dbNow(r.service);
+        const res = await call(urls[r.service], r.method, req.path, {
+          headers: { ...bearer(w.tokens[p][r.service]), ...req.headers },
+          body: req.body,
+        });
+        const got = { status: res.status, code: res.json?.code };
+        if (cell === 'ok') expect(got.status).toBe(200);
+        if (cell === 'refused') expect(got.status).toBe(403);
+        if (cell === 'reached') {
+          expect([200, 404]).toContain(got.status);
+          if (got.status === 404) expect(got.code).toBe('no_subscription');
+        }
+        await new Promise((x) => setTimeout(x, 500));
+        expect(
+          await auditRows(r.service, 'audit.acting_request', since, { actor: w.subs[p] }),
+        ).toEqual([]);
       });
     }
   }

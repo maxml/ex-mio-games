@@ -652,33 +652,31 @@ describe('INV-STACK-8 acting requests in other services reach the operator audit
     // payments: an acting read is served (not a coin-value action) and is audited there as well.
     const read = await get(PAYMENTS_USER_ROUTE, bearer(forPayments.json.access_token));
     expect([200, 404]).toContain(read.status);
+    // The three records this test caused. Wait for EACH of them, not for "3 rows": the
+    // tenant-projection polls above write `allowed` rows too, so a count can be reached before the
+    // refused resolve row lands (it is relayed asynchronously). A row that never arrives fails at
+    // the deadline with the list that was seen.
+    const wanted = [
+      { service: 'engagement', route: 'GET /v1/tenant-projection', decision: 'allowed' },
+      {
+        service: 'engagement',
+        route: 'POST /v1/operator/redemptions/:id/resolve',
+        decision: 'refused',
+      },
+      { service: 'payments', route: 'GET /v1/players/:player_id/balance', decision: 'allowed' },
+    ];
+    const matches = (e: Record<string, unknown>, w: Record<string, string>) =>
+      Object.entries(w).every(([k, v]) => e[k] === v);
+    let seen: Array<Record<string, unknown>> = [];
     const rows = await eventually(async () => {
       const r = await call('GET', urls.identity, '/v1/audit', { headers: bearer(op.token) });
-      const list = (r.json as Array<Record<string, unknown>>).filter(
+      seen = (r.json as Array<Record<string, unknown>>).filter(
         (e) => e.action === 'acting.request',
       );
-      return list.length >= 3 ? list : undefined;
-    });
-    expect(rows).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          service: 'engagement',
-          route: 'GET /v1/tenant-projection',
-          decision: 'allowed',
-        }),
-        expect.objectContaining({
-          service: 'engagement',
-          route: 'POST /v1/operator/redemptions/:id/resolve',
-          decision: 'refused',
-        }),
-        expect.objectContaining({
-          service: 'payments',
-          route: 'GET /v1/players/:player_id/balance',
-          decision: 'allowed',
-        }),
-      ]),
-    );
-  });
+      return wanted.every((w) => seen.some((e) => matches(e, w))) ? seen : undefined;
+    }, 30_000).catch(() => seen); // on timeout, assert on what was seen: the diff names the missing row
+    expect(rows).toEqual(expect.arrayContaining(wanted.map((w) => expect.objectContaining(w))));
+  }, 90_000); // the projection wait (20 s) plus the audit deadline (30 s) fit inside it
 });
 
 describe('INV-STACK-6 launch and player mapping hold under real concurrency (F16, MIO-044)', () => {

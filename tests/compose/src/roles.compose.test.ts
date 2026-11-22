@@ -21,6 +21,9 @@ const EXPECTED_GRANTS: Record<Service, Record<string, string[]>> = {
     outbox: ['INSERT', 'SELECT', 'UPDATE'],
     player_links: ['DELETE', 'INSERT', 'SELECT'],
     provider_links: ['INSERT', 'SELECT'],
+    // D-27 RewardApis (1732300004000): the PUT upserts (INSERT ... ON CONFLICT UPDATE), the
+    // integration route reads. No DELETE: a reward API is replaced, never removed by the app.
+    reward_apis: ['INSERT', 'SELECT', 'UPDATE'],
     signing_keys: ['INSERT', 'SELECT', 'UPDATE'],
     tenants: ['INSERT', 'SELECT', 'UPDATE'],
     user_roles: ['INSERT', 'SELECT'],
@@ -94,6 +97,18 @@ const PLATFORM_TABLES: Record<string, string> = {
  * registry, which has no RLS and no policy, so the RLS and DROP POLICY statements were not testing
  * what they claim.
  */
+/**
+ * Tables that MUST be in the tenant-table set of the RLS check below (they hold a tenant's secrets
+ * or integration settings). The check finds tenant tables by their `tenant_id` column; naming these
+ * stops one from leaving that set silently (a renamed column) and passing with no RLS.
+ * Mutation: `disableTenantRls(q, 'reward_apis')` in RewardApis1732300004000.up -> red.
+ */
+const MUST_BE_TENANT_TABLES: Record<Service, string[]> = {
+  identity: ['integration_credentials', 'reward_apis'],
+  engagement: [],
+  payments: [],
+};
+
 const RLS_TABLE: Record<Service, string> = {
   identity: 'users',
   engagement: 'tenant_projections',
@@ -210,6 +225,9 @@ describe.each(SERVICES)('database roles: %s', (service) => {
       );
       if (cols.length > 0) expect([name, cols.map((r) => r.c)]).toEqual([name, ['tenant_id']]);
     }
+    expect(
+      MUST_BE_TENANT_TABLES[service].filter((n) => !tables.some((t) => t.relname === n)),
+    ).toEqual([]);
     // every offender by name (D-24), so one run lists all of them
     expect(
       tables
