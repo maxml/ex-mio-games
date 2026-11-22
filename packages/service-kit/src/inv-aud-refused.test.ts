@@ -68,7 +68,11 @@ import { accessClaims, generateRsaKey, serviceClaims, signJwt } from './testing/
  *  - AUD-S2: the 400 of the entry point's tenant check is written `refused` -> red (today's code).
  */
 
-type RefusedCtor = new (input: { code: string; message?: string; status?: number }) => HttpException;
+type RefusedCtor = new (input: {
+  code: string;
+  message?: string;
+  status?: number;
+}) => HttpException;
 
 const CLASS_REL = 'packages/service-kit/src/authorization-refused.ts';
 
