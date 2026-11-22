@@ -1,10 +1,10 @@
-# Realtime: one socket.io client per tab, with reconnect and backoff
+# 0014. Realtime: one socket.io client per tab, with reconnect and backoff
 
-> Status: accepted. Client and server are built: the gateway lives in `engagement` (namespace `/rt`).
-> Date: 2026-11-21.
-> Deciders: maintainers.
-> Confidence: MEDIUM. Both halves exist and are tested in process; no end-to-end browser run is recorded
-> here. Delivery is at most once and there is no missed-event replay.
+- Status: accepted (client and server are built: the gateway lives in `engagement`, namespace `/rt`)
+- Deciders: maintainers
+- Date: 2026-11-21
+- Confidence: MEDIUM. Both halves exist and are tested in process; no end-to-end browser run is recorded
+  here. Delivery is at most once and there is no missed-event replay.
 
 ## Context
 

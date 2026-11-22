@@ -10,6 +10,8 @@ Index only: where to go when you need to know something.
 | How payments (coin ledger, billing) must behave       | [`specs/payments.md`](specs/payments.md)                     |
 | What the bonus store and redemption saga must do      | [`specs/engagement-store.md`](specs/engagement-store.md)     |
 | Why a decision was made (the "why")                   | [`adrs/`](adrs)                                              |
+| What a `D-<n>` cited in a test or comment means       | [`decision-log.md`](decision-log.md)                         |
+| Which product events are emitted, and the funnels     | [`analytics.md`](analytics.md)                               |
 | How to write a new decision record                    | [`adrs/0000-template.md`](adrs/0000-template.md)             |
 | Identity, tokens, tenants, roles, launch admission    | [`specs/identity.md`](specs/identity.md)                     |
 | What the ingest, rules and wheel code must do         | [`specs/engagement-ingest.md`](specs/engagement-ingest.md)   |

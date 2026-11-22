@@ -1,10 +1,10 @@
 # First 90 days: week table
 
-Estimates and targets, not measurements. Reasoning is in [README.md](README.md) section 4. Revenue is expected to be zero until week 8.
+Estimates and targets, not measurements. Reasoning is in [README.md](README.md) section 4. The only figures taken from the repository are the backlog size counts behind the effort estimate (README section 5); week targets, SLO percentages and onboarding times are proposals to be replaced by measurements. Revenue is expected to be zero until week 8.
 
 | Week | Goal | Deliverable | Metric |
 |---|---|---|---|
-| 1 | Close the secrets gap | Per-service secrets on deploy; separate database owner and runtime credentials | Deploy drill: service A cannot read service B's secret |
+| 1 | Close the secrets gap and the demo gaps | Per-service secrets on deploy; separate database owner and runtime credentials; merge the final integration branch; console switched to the rules and wheel routes; reward API run end to end (README section 1, Phase 0) | Deploy drill: service A cannot read service B's secret; a fresh tenant gets a spin from a signed deposit with no SQL |
 | 2 | Choose and wire identity | Production identity provider behind the existing interface | Adapter contract test passes against the provider's staging project |
 | 3 | Take payments | Stripe adapter behind `PaymentProvider`; self-serve operator signup | Sandbox charge, refund and replayed webhook give one ledger effect each |
 | 4 | Backups and the funnel | Backups with a restore drill; signup-to-first-redemption funnel in Varta; pilot operator agreed | Restore time measured; funnel visible; pilot agreed in writing |

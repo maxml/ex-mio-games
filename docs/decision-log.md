@@ -232,7 +232,7 @@ supersedes the literal wording of D-24.
 Reason: three rounds on the same class showed that call-site fixes move the defect.
 Enforced in: only the envelope part today, `packages/contracts/src/events.contracts.test.ts`
 (`INV-ENV-SANDBOX`). The schema scan over `pg_constraint` and the role-matrix audit test are written
-by the review owner, are not in this tree, and are listed in `submission/known-gaps.md` (S-11).
+by the review owner (commits `81f37cd`, `3de97be`), are not merged into this tree, and are listed in `submission/known-gaps.md` (S-11).
 
 **D-27. Gaps found by the end-to-end demo.** The operator registers each casino's reward API (base URL
 and a per-environment signing secret) in identity, which serves it to engagement as `reward_api`;

@@ -5,6 +5,19 @@ specs, backlog and documents in this repository were written by AI agents. A hum
 direction and made every decision that was expensive to change. A different set of AI agents tried to
 break each piece of work before it was merged.
 
+## Summary in ten lines
+
+1. Planner AI wrote a backlog of 17 epics and 133 tasks before any code (commit `b6fc551`); the backlog later grew to 142 task files.
+2. A separate reviewer found 2 blockers and 8 major problems in that backlog, fixed in `44e5a98` and `d31f1a5`.
+3. Each risky area went spec, red tests, review, code to green, review. Coders may not edit frozen tests.
+4. Reviewers are fresh Opus sessions that re-run the author's numbers and re-apply one mutation per claimed guard.
+5. At most three review rounds per area; a third repeat of a defect class means a re-spec (D-17, D-26).
+6. Owner decisions that overruled an AI recommendation: 8 (`decisions.md`); every `D-<n>` resolves in `../decision-log.md`.
+7. Counts such as "107 of 111 compose tests" and "12 of 13 mutations red" are reviewer reports; no run output is committed (known gaps S-12).
+8. Failures are recorded, not hidden: vacuous tests, false mutation claims, fixes that moved a defect (`limits.md`).
+9. Everything on this page happened on 2026-11-21, with a deadline of the evening of 2026-11-22.
+10. This folder is about 9.5k words; start with this summary, then `case-studies.md` for six traced defects.
+
 | File | What it shows |
 | --- | --- |
 | `README.md` | This page: the process, the roles, the models, where the prompts live |

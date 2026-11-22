@@ -439,8 +439,9 @@ reconciles every tenant's ledger and reports usage on an interval; `pnpm --filte
 
 ## How this was built
 
-Planned and built with AI coding agents under a review framework (review-framework) that requires a regression
-test at the choke point and a re-applied mutation for every claimed fix. The service skeleton comes from the
+Planned and built with AI coding agents under a review framework (review-framework, a set of review rules kept by the product owner, not a dependency of
+this repository) that requires a regression test at the choke point and a re-applied mutation for every claimed
+fix. The rules are restated in [`docs/ai/verification.md`](docs/ai/verification.md). The service skeleton comes from the
 monorepo starter. Evidence, and the decisions made by hand, are in [`docs/ai/`](docs/ai/README.md).
 
 ## License
