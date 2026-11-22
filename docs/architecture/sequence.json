@@ -55,7 +55,7 @@
       "from": "engagement",
       "to": "casino",
       "y": 308,
-      "label": "202, duplicates answered the same",
+      "label": "200 ack, a duplicate gets the same answer",
       "variant": "return"
     },
     {
@@ -63,7 +63,7 @@
       "from": "engagement",
       "to": "player",
       "y": 360,
-      "label": "3 one spin available (websocket)",
+      "label": "3 deposit.confirmed grants a spin; GET /v1/me/spins",
       "variant": "dashed"
     },
     {
@@ -71,7 +71,7 @@
       "from": "player",
       "to": "engagement",
       "y": 402,
-      "label": "4 POST /spins, Idempotency-Key",
+      "label": "4 POST /v1/spins, Idempotency-Key",
       "variant": "emphasis"
     },
     {
@@ -87,15 +87,23 @@
       "from": "engagement",
       "to": "payments",
       "y": 490,
-      "label": "5 spin.completed event (outbox), payments credits coins, key spin:spin_id",
+      "label": "5 engagement.spin.completed (outbox), payments credits coins once (inbox)",
       "variant": "emphasis"
+    },
+    {
+      "id": "m8b",
+      "from": "engagement",
+      "to": "player",
+      "y": 528,
+      "label": "websocket /rt: spin.result, balance.changed",
+      "variant": "dashed"
     },
     {
       "id": "m9",
       "from": "player",
       "to": "engagement",
       "y": 570,
-      "label": "6 POST /redemptions",
+      "label": "6 POST /v1/redemptions (202)",
       "variant": "emphasis"
     },
     {
@@ -103,7 +111,7 @@
       "from": "engagement",
       "to": "payments",
       "y": 612,
-      "label": "reserve coins (hold:redemption_id)",
+      "label": "POST /internal/v1/tenants/:id/reserves, key hold",
       "variant": "default"
     },
     {
@@ -111,7 +119,7 @@
       "from": "payments",
       "to": "engagement",
       "y": 650,
-      "label": "reserved, or 409",
+      "label": "reserved, or 409 insufficient_funds",
       "variant": "return"
     },
     {
@@ -135,7 +143,7 @@
       "from": "engagement",
       "to": "payments",
       "y": 780,
-      "label": "capture the reserve",
+      "label": "POST .../reserves/:id/capture, key capture",
       "variant": "default"
     },
     {
@@ -151,7 +159,7 @@
       "from": "player",
       "to": "engagement",
       "y": 870,
-      "label": "8 GET /redemptions/:id",
+      "label": "8 GET /v1/redemptions/:id",
       "variant": "default"
     },
     {
@@ -190,7 +198,8 @@
       "items": [
         "the outcome comes from a server secret and a versioned weight table",
         "one conditional update consumes the spin credit",
-        "payments credits the coins when it consumes spin.completed, key spin:spin_id, once through its inbox"
+        "payments credits the coins when it consumes engagement.spin.completed (journal operation spin_award), once through its inbox",
+        "the player gets spin.result and balance.changed over the websocket"
       ]
     },
     {

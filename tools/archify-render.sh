@@ -24,6 +24,9 @@ diagrams=(
   sequence:sequence
   workflow:workflow
   erd:erd
+  erd:erd-identity
+  erd:erd-engagement
+  erd:erd-payments
   lifecycle:lifecycle
 )
 

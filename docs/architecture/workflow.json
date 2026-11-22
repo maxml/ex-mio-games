@@ -146,6 +146,29 @@
       "label": "max age",
       "variant": "dashed",
       "role": "error"
+    },
+    {
+      "id": "e10",
+      "from": "issue",
+      "to": "release",
+      "label": "final refusal",
+      "variant": "security",
+      "role": "error"
+    },
+    {
+      "id": "e11",
+      "from": "review",
+      "to": "issue",
+      "label": "operator: issued",
+      "variant": "dashed"
+    },
+    {
+      "id": "e12",
+      "from": "review",
+      "to": "release",
+      "label": "operator: rejected",
+      "variant": "dashed",
+      "role": "error"
     }
   ],
   "cards": [

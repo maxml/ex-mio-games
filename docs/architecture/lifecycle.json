@@ -120,8 +120,61 @@
       "id": "t13",
       "from": "needs_review",
       "to": "issued",
-      "label": "operator, lookup says issued",
       "variant": "emphasis"
+    },
+    {
+      "id": "t14",
+      "from": "requested",
+      "to": "needs_review",
+      "label": "reserve refused",
+      "variant": "dashed"
+    },
+    {
+      "id": "t15",
+      "from": "unknown",
+      "to": "issuing",
+      "variant": "dashed"
+    },
+    {
+      "id": "t16",
+      "from": "issued",
+      "to": "needs_review",
+      "label": "capture refused",
+      "variant": "dashed"
+    },
+    {
+      "id": "t17",
+      "from": "rejected",
+      "to": "needs_review",
+      "label": "release refused",
+      "variant": "dashed"
+    },
+    {
+      "id": "t18",
+      "from": "released",
+      "to": "needs_review",
+      "label": "late report",
+      "variant": "dashed"
+    },
+    {
+      "id": "t19",
+      "from": "completed",
+      "to": "needs_review",
+      "variant": "dashed"
+    },
+    {
+      "id": "t20",
+      "from": "needs_review",
+      "to": "rejected",
+      "label": "operator: rejected",
+      "variant": "security"
+    },
+    {
+      "id": "t21",
+      "from": "needs_review",
+      "to": "unknown",
+      "label": "replay",
+      "variant": "dashed"
     }
   ],
   "cards": [
@@ -148,7 +201,8 @@
       "title": "Late results",
       "items": [
         "a late success or late rejection after a terminal state is recorded",
-        "it is reconciled, never applied blindly"
+        "it is reconciled, never applied blindly",
+        "unlabeled arrows: UNKNOWN to ISSUING (lookup finds nothing, retry with the same key), NEEDS_REVIEW to ISSUED (operator, lookup says issued), COMPLETED to NEEDS_REVIEW (refund refused or a conflicting casino report)"
       ]
     }
   ]

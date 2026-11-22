@@ -1,0 +1,816 @@
+{
+  "schema_version": 1,
+  "diagram_type": "erd",
+  "meta": {
+    "title": "Payments database: ledger, usage, billing",
+    "subtitle": "22 tables (19 business, 3 shared service-kit): final state after all migrations, checked against the live database",
+    "output": "erd-payments.html",
+    "quality_profile": "standard"
+  },
+  "layout": {
+    "mode": "grid",
+    "gapX": 50,
+    "gapY": 50
+  },
+  "entities": [
+    {
+      "id": "wallets",
+      "label": "wallets",
+      "sublabel": "RLS forced",
+      "tag": "ledger and idempotency",
+      "row": 0,
+      "col": 0,
+      "width": 270,
+      "attributes": [
+        {
+          "name": "tenant_id",
+          "type": "uuid",
+          "key": "pk"
+        },
+        {
+          "name": "id",
+          "type": "uuid",
+          "key": "pk"
+        },
+        {
+          "name": "sandbox",
+          "type": "boolean"
+        }
+      ]
+    },
+    {
+      "id": "wallet_owner_links",
+      "label": "wallet_owner_links",
+      "sublabel": "RLS forced",
+      "tag": "ledger and idempotency",
+      "row": 0,
+      "col": 1,
+      "width": 270,
+      "attributes": [
+        {
+          "name": "tenant_id",
+          "type": "uuid",
+          "key": ["pk", "fk"],
+          "references": "wallets.tenant_id"
+        },
+        {
+          "name": "wallet_id",
+          "type": "uuid",
+          "key": ["pk", "fk"],
+          "references": "wallets.id"
+        },
+        {
+          "name": "user_id",
+          "type": "uuid",
+          "key": "uk"
+        },
+        {
+          "name": "sandbox",
+          "type": "boolean",
+          "key": "uk"
+        }
+      ]
+    },
+    {
+      "id": "accounts",
+      "label": "accounts",
+      "sublabel": "RLS forced",
+      "tag": "ledger and idempotency",
+      "row": 0,
+      "col": 2,
+      "width": 270,
+      "attributes": [
+        {
+          "name": "tenant_id",
+          "type": "uuid",
+          "key": ["pk", "fk"],
+          "references": "wallets.tenant_id"
+        },
+        {
+          "name": "id",
+          "type": "uuid",
+          "key": "pk"
+        },
+        {
+          "name": "wallet_id",
+          "type": "uuid",
+          "key": "fk",
+          "references": "wallets.id"
+        },
+        {
+          "name": "kind",
+          "type": "text"
+        },
+        {
+          "name": "currency",
+          "type": "text"
+        },
+        {
+          "name": "sandbox",
+          "type": "boolean"
+        }
+      ]
+    },
+    {
+      "id": "balances",
+      "label": "balances",
+      "sublabel": "RLS forced",
+      "tag": "ledger and idempotency",
+      "row": 0,
+      "col": 3,
+      "width": 270,
+      "attributes": [
+        {
+          "name": "tenant_id",
+          "type": "uuid",
+          "key": ["pk", "fk"],
+          "references": "accounts.tenant_id"
+        },
+        {
+          "name": "account_id",
+          "type": "uuid",
+          "key": ["pk", "fk"],
+          "references": "accounts.id"
+        },
+        {
+          "name": "amount",
+          "type": "bigint"
+        }
+      ]
+    },
+    {
+      "id": "reserves",
+      "label": "reserves",
+      "sublabel": "RLS forced",
+      "tag": "ledger and idempotency",
+      "row": 1,
+      "col": 0,
+      "width": 270,
+      "attributes": [
+        {
+          "name": "tenant_id",
+          "type": "uuid",
+          "key": ["pk", "fk"],
+          "references": "wallets.tenant_id"
+        },
+        {
+          "name": "id",
+          "type": "uuid",
+          "key": "pk"
+        },
+        {
+          "name": "wallet_id",
+          "type": "uuid",
+          "key": "fk",
+          "references": "wallets.id"
+        },
+        {
+          "name": "amount",
+          "type": "bigint"
+        },
+        {
+          "name": "state",
+          "type": "text"
+        }
+      ]
+    },
+    {
+      "id": "journal_transactions",
+      "label": "journal_transactions",
+      "sublabel": "RLS forced",
+      "tag": "ledger and idempotency",
+      "row": 1,
+      "col": 1,
+      "width": 270,
+      "attributes": [
+        {
+          "name": "tenant_id",
+          "type": "uuid",
+          "key": "pk"
+        },
+        {
+          "name": "id",
+          "type": "uuid",
+          "key": "pk"
+        },
+        {
+          "name": "operation_type",
+          "type": "text",
+          "key": "uk"
+        },
+        {
+          "name": "operation_id",
+          "type": "uuid",
+          "key": "uk"
+        },
+        {
+          "name": "currency",
+          "type": "text"
+        }
+      ]
+    },
+    {
+      "id": "ledger_entries",
+      "label": "ledger_entries",
+      "sublabel": "RLS forced",
+      "tag": "ledger and idempotency",
+      "row": 1,
+      "col": 2,
+      "width": 270,
+      "attributes": [
+        {
+          "name": "tenant_id",
+          "type": "uuid",
+          "key": ["pk", "fk"],
+          "references": "journal_transactions.tenant_id"
+        },
+        {
+          "name": "id",
+          "type": "uuid",
+          "key": "pk"
+        },
+        {
+          "name": "transaction_id",
+          "type": "uuid",
+          "key": "fk",
+          "references": "journal_transactions.id"
+        },
+        {
+          "name": "account_id",
+          "type": "uuid",
+          "key": "fk",
+          "references": "accounts.id"
+        },
+        {
+          "name": "direction",
+          "type": "text"
+        },
+        {
+          "name": "amount",
+          "type": "bigint"
+        }
+      ]
+    },
+    {
+      "id": "idempotency_keys",
+      "label": "idempotency_keys",
+      "sublabel": "RLS forced",
+      "tag": "ledger and idempotency",
+      "row": 1,
+      "col": 3,
+      "width": 270,
+      "attributes": [
+        {
+          "name": "tenant_id",
+          "type": "uuid",
+          "key": "pk"
+        },
+        {
+          "name": "principal_id",
+          "type": "text",
+          "key": "pk"
+        },
+        {
+          "name": "operation",
+          "type": "text",
+          "key": "pk"
+        },
+        {
+          "name": "key",
+          "type": "text",
+          "key": "pk"
+        },
+        {
+          "name": "response_status",
+          "type": "integer"
+        }
+      ]
+    },
+    {
+      "id": "usage_events",
+      "label": "usage_events",
+      "sublabel": "RLS forced",
+      "tag": "usage and reconciliation",
+      "row": 2,
+      "col": 0,
+      "width": 270,
+      "attributes": [
+        {
+          "name": "tenant_id",
+          "type": "uuid",
+          "key": "pk"
+        },
+        {
+          "name": "spin_id",
+          "type": "uuid",
+          "key": "pk"
+        },
+        {
+          "name": "event_id",
+          "type": "uuid"
+        },
+        {
+          "name": "counted_at",
+          "type": "timestamptz"
+        }
+      ]
+    },
+    {
+      "id": "usage_meters",
+      "label": "usage_meters",
+      "sublabel": "RLS forced",
+      "tag": "usage and reconciliation",
+      "row": 2,
+      "col": 1,
+      "width": 270,
+      "attributes": [
+        {
+          "name": "tenant_id",
+          "type": "uuid",
+          "key": "pk"
+        },
+        {
+          "name": "period",
+          "type": "text",
+          "key": "pk"
+        },
+        {
+          "name": "metric",
+          "type": "text",
+          "key": "pk"
+        },
+        {
+          "name": "quantity",
+          "type": "bigint"
+        }
+      ]
+    },
+    {
+      "id": "usage_players",
+      "label": "usage_players",
+      "sublabel": "RLS forced",
+      "tag": "usage and reconciliation",
+      "row": 2,
+      "col": 2,
+      "width": 270,
+      "attributes": [
+        {
+          "name": "tenant_id",
+          "type": "uuid",
+          "key": "pk"
+        },
+        {
+          "name": "period",
+          "type": "text",
+          "key": "pk"
+        },
+        {
+          "name": "player_key",
+          "type": "text",
+          "key": "pk"
+        }
+      ]
+    },
+    {
+      "id": "usage_reports",
+      "label": "usage_reports",
+      "sublabel": "RLS forced",
+      "tag": "usage and reconciliation",
+      "row": 2,
+      "col": 3,
+      "width": 270,
+      "attributes": [
+        {
+          "name": "tenant_id",
+          "type": "uuid",
+          "key": "pk"
+        },
+        {
+          "name": "period",
+          "type": "text",
+          "key": "pk"
+        },
+        {
+          "name": "quantity",
+          "type": "bigint"
+        },
+        {
+          "name": "idempotency_key",
+          "type": "text"
+        }
+      ]
+    },
+    {
+      "id": "billing_plans",
+      "label": "billing_plans",
+      "sublabel": "no RLS",
+      "tag": "billing",
+      "row": 3,
+      "col": 0,
+      "width": 270,
+      "attributes": [
+        {
+          "name": "id",
+          "type": "uuid",
+          "key": "pk"
+        },
+        {
+          "name": "code",
+          "type": "text",
+          "key": "uk"
+        },
+        {
+          "name": "name",
+          "type": "text"
+        },
+        {
+          "name": "price_minor",
+          "type": "integer"
+        },
+        {
+          "name": "currency",
+          "type": "text"
+        }
+      ]
+    },
+    {
+      "id": "subscriptions",
+      "label": "subscriptions",
+      "sublabel": "RLS forced",
+      "tag": "billing",
+      "row": 3,
+      "col": 1,
+      "width": 270,
+      "attributes": [
+        {
+          "name": "tenant_id",
+          "type": "uuid",
+          "key": "pk"
+        },
+        {
+          "name": "id",
+          "type": "uuid",
+          "key": "pk"
+        },
+        {
+          "name": "plan_id",
+          "type": "uuid",
+          "key": "fk",
+          "references": "billing_plans.id"
+        },
+        {
+          "name": "status",
+          "type": "text"
+        },
+        {
+          "name": "provider",
+          "type": "text",
+          "key": "uk"
+        },
+        {
+          "name": "provider_subscription_id",
+          "type": "text",
+          "key": "uk"
+        }
+      ]
+    },
+    {
+      "id": "invoices",
+      "label": "invoices",
+      "sublabel": "RLS forced",
+      "tag": "billing",
+      "row": 3,
+      "col": 2,
+      "width": 270,
+      "attributes": [
+        {
+          "name": "tenant_id",
+          "type": "uuid",
+          "key": ["pk", "fk"],
+          "references": "subscriptions.tenant_id"
+        },
+        {
+          "name": "id",
+          "type": "uuid",
+          "key": "pk"
+        },
+        {
+          "name": "subscription_id",
+          "type": "uuid",
+          "key": "fk",
+          "references": "subscriptions.id"
+        },
+        {
+          "name": "amount_minor",
+          "type": "integer"
+        },
+        {
+          "name": "status",
+          "type": "text"
+        }
+      ]
+    },
+    {
+      "id": "payment_attempts",
+      "label": "payment_attempts",
+      "sublabel": "RLS forced",
+      "tag": "billing",
+      "row": 3,
+      "col": 3,
+      "width": 270,
+      "attributes": [
+        {
+          "name": "tenant_id",
+          "type": "uuid",
+          "key": ["pk", "fk"],
+          "references": "subscriptions.tenant_id"
+        },
+        {
+          "name": "id",
+          "type": "uuid",
+          "key": "pk"
+        },
+        {
+          "name": "plan_id",
+          "type": "uuid",
+          "key": "fk",
+          "references": "billing_plans.id"
+        },
+        {
+          "name": "subscription_id",
+          "type": "uuid",
+          "key": "fk",
+          "references": "subscriptions.id"
+        },
+        {
+          "name": "state",
+          "type": "text"
+        }
+      ]
+    },
+    {
+      "id": "billing_webhook_events",
+      "label": "billing_webhook_events",
+      "sublabel": "RLS forced",
+      "tag": "billing",
+      "row": 3,
+      "col": 4,
+      "width": 270,
+      "attributes": [
+        {
+          "name": "tenant_id",
+          "type": "uuid",
+          "key": "pk"
+        },
+        {
+          "name": "provider",
+          "type": "text",
+          "key": "pk"
+        },
+        {
+          "name": "event_id",
+          "type": "text",
+          "key": "pk"
+        }
+      ]
+    },
+    {
+      "id": "reconciliation_runs",
+      "label": "reconciliation_runs",
+      "sublabel": "RLS forced",
+      "tag": "usage and reconciliation",
+      "row": 2,
+      "col": 4,
+      "width": 270,
+      "attributes": [
+        {
+          "name": "tenant_id",
+          "type": "uuid",
+          "key": "pk"
+        },
+        {
+          "name": "id",
+          "type": "uuid",
+          "key": "pk"
+        },
+        {
+          "name": "status",
+          "type": "text"
+        },
+        {
+          "name": "accounts_checked",
+          "type": "integer"
+        }
+      ]
+    },
+    {
+      "id": "reconciliation_tenants",
+      "label": "reconciliation_tenants",
+      "sublabel": "no RLS",
+      "tag": "usage and reconciliation",
+      "row": 2,
+      "col": 5,
+      "width": 270,
+      "attributes": [
+        {
+          "name": "tenant_id",
+          "type": "uuid",
+          "key": "pk"
+        }
+      ]
+    },
+    {
+      "id": "outbox",
+      "label": "outbox",
+      "sublabel": "no RLS",
+      "tag": "shared service-kit tables",
+      "row": 4,
+      "col": 0,
+      "width": 270,
+      "attributes": [
+        {
+          "name": "event_id",
+          "type": "uuid",
+          "key": "pk"
+        },
+        {
+          "name": "tenant_id",
+          "type": "uuid"
+        },
+        {
+          "name": "type",
+          "type": "text"
+        },
+        {
+          "name": "published_at",
+          "type": "timestamptz"
+        },
+        {
+          "name": "parked_at",
+          "type": "timestamptz"
+        }
+      ]
+    },
+    {
+      "id": "inbox",
+      "label": "inbox",
+      "sublabel": "no RLS",
+      "tag": "shared service-kit tables",
+      "row": 4,
+      "col": 1,
+      "width": 270,
+      "attributes": [
+        {
+          "name": "consumer",
+          "type": "text",
+          "key": "pk"
+        },
+        {
+          "name": "event_id",
+          "type": "uuid",
+          "key": "pk"
+        },
+        {
+          "name": "tenant_id",
+          "type": "uuid"
+        }
+      ]
+    },
+    {
+      "id": "audit_intents",
+      "label": "audit_intents",
+      "sublabel": "RLS forced",
+      "tag": "shared service-kit tables",
+      "row": 4,
+      "col": 2,
+      "width": 270,
+      "attributes": [
+        {
+          "name": "tenant_id",
+          "type": "uuid",
+          "key": "pk"
+        },
+        {
+          "name": "event_id",
+          "type": "uuid",
+          "key": "pk"
+        },
+        {
+          "name": "envelope",
+          "type": "jsonb"
+        }
+      ]
+    }
+  ],
+  "relationships": [
+    {
+      "id": "fk_0_wallet_owner_links_wallets",
+      "from": "wallet_owner_links",
+      "to": "wallets",
+      "label": "owner of",
+      "fromCardinality": "many",
+      "toCardinality": "one",
+      "identifying": true
+    },
+    {
+      "id": "fk_1_accounts_wallets",
+      "from": "accounts",
+      "to": "wallets",
+      "label": "player accounts",
+      "fromCardinality": "many",
+      "toCardinality": "one"
+    },
+    {
+      "id": "fk_2_balances_accounts",
+      "from": "balances",
+      "to": "accounts",
+      "label": "one row per",
+      "fromCardinality": "many",
+      "toCardinality": "one",
+      "identifying": true
+    },
+    {
+      "id": "fk_3_reserves_wallets",
+      "from": "reserves",
+      "to": "wallets",
+      "label": "holds coins of",
+      "fromCardinality": "many",
+      "toCardinality": "one"
+    },
+    {
+      "id": "fk_4_ledger_entries_journal_transactions",
+      "from": "ledger_entries",
+      "to": "journal_transactions",
+      "label": "two or more",
+      "fromCardinality": "many",
+      "toCardinality": "one"
+    },
+    {
+      "id": "fk_5_ledger_entries_accounts",
+      "from": "ledger_entries",
+      "to": "accounts",
+      "label": "moves",
+      "fromCardinality": "many",
+      "toCardinality": "one"
+    },
+    {
+      "id": "fk_6_subscriptions_billing_plans",
+      "from": "subscriptions",
+      "to": "billing_plans",
+      "label": "on plan",
+      "fromCardinality": "many",
+      "toCardinality": "one"
+    },
+    {
+      "id": "fk_7_invoices_subscriptions",
+      "from": "invoices",
+      "to": "subscriptions",
+      "label": "bills",
+      "fromCardinality": "many",
+      "toCardinality": "one"
+    },
+    {
+      "id": "fk_8_payment_attempts_subscriptions",
+      "from": "payment_attempts",
+      "to": "subscriptions",
+      "label": "for",
+      "fromCardinality": "many",
+      "toCardinality": "one"
+    },
+    {
+      "id": "fk_9_payment_attempts_billing_plans",
+      "from": "payment_attempts",
+      "to": "billing_plans",
+      "label": "for plan",
+      "fromCardinality": "many",
+      "toCardinality": "one"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "Row-level security",
+      "items": [
+        "every business table with tenant_id has ENABLE + FORCE RLS (17 of 19), plus audit_intents",
+        "no RLS: billing_plans (global), reconciliation_tenants, outbox and inbox"
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "Keys and environment",
+      "items": [
+        "sandbox on wallets, accounts and wallet_owner_links; unique (tenant_id, user_id, sandbox) on wallet_owner_links"
+      ]
+    },
+    {
+      "dot": "slate",
+      "title": "Across databases",
+      "items": [
+        "wallet_owner_links.user_id is a logical key into identity users, not a foreign key (erasure deletes the link)",
+        "tenant_id in every table is a logical key into identity tenants",
+        "a link into another service database is a logical id, never a foreign key",
+        "solid line: a declared foreign key; dashed line: a logical link the database does not enforce"
+      ]
+    }
+  ]
+}

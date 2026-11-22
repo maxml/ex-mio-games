@@ -40,6 +40,14 @@
       "size": [180, 60]
     },
     {
+      "id": "firebase-auth",
+      "type": "security",
+      "label": "firebase-auth",
+      "sublabel": "identity provider emulator",
+      "pos": [640, 180],
+      "size": [200, 60]
+    },
+    {
       "id": "casino-sim",
       "type": "external",
       "label": "casino-sim",
@@ -120,6 +128,7 @@
         "web",
         "identity",
         "identity-db",
+        "firebase-auth",
         "engagement",
         "rabbit",
         "redis",
@@ -132,7 +141,21 @@
   ],
   "connections": [
     { "id": "player-web", "from": "players", "to": "web", "label": "HTTPS", "variant": "emphasis" },
-    { "id": "web-identity", "from": "web", "to": "identity", "label": "login, launch" },
+    {
+      "id": "web-identity",
+      "from": "web",
+      "to": "identity",
+      "label": "login, launch, ticket"
+    },
+    {
+      "id": "identity-firebase",
+      "from": "identity",
+      "to": "firebase-auth",
+      "label": "verify login",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "labelAt": [790, 150]
+    },
     {
       "id": "web-engagement",
       "from": "web",
@@ -165,11 +188,11 @@
       "id": "identity-rabbit",
       "from": "identity",
       "to": "rabbit",
-      "label": "events",
+      "label": "tenant.created out, audit in",
       "variant": "dashed",
       "fromSide": "bottom",
       "toSide": "top",
-      "labelAt": [770, 210]
+      "labelAt": [840, 270]
     },
     {
       "id": "engagement-rabbit",
@@ -183,7 +206,7 @@
       "id": "rabbit-payments",
       "from": "rabbit",
       "to": "payments",
-      "label": "commands, events",
+      "label": "spin.completed in, coin events out",
       "variant": "dashed",
       "fromSide": "bottom",
       "toSide": "top",
@@ -220,21 +243,38 @@
     { "id": "payments-db-link", "from": "payments", "to": "payments-db", "label": "SQL" },
     {
       "id": "varta-link",
-      "from": "identity-db",
+      "from": "identity",
       "to": "varta",
-      "label": "logs, events",
+      "label": "stdout JSON lines, tailed from Docker logs (all four services)",
       "variant": "dashed",
-      "fromSide": "right",
-      "toSide": "left",
-      "labelDy": -14
+      "fromSide": "top",
+      "toSide": "top",
+      "via": [
+        [740, 10],
+        [1395, 10]
+      ],
+      "labelDy": -8
     },
     {
       "id": "deckhand-link",
-      "from": "payments-db",
-      "to": "deckhand",
-      "label": "deploys",
+      "from": "deckhand",
+      "to": "payments",
+      "label": "deploys containers",
       "variant": "dashed",
-      "labelDy": -14
+      "fromSide": "bottom",
+      "toSide": "bottom",
+      "via": [
+        [1395, 680],
+        [750, 680]
+      ],
+      "labelDy": -8
+    },
+    {
+      "id": "engagement-identity",
+      "from": "engagement",
+      "to": "identity",
+      "label": "resolve player, redeem ticket",
+      "labelAt": [600, 150]
     }
   ],
   "cards": [
@@ -251,8 +291,9 @@
       "dot": "emerald",
       "title": "Data and messaging",
       "items": [
-        "one Postgres database per service, tenant_id and RLS",
-        "RabbitMQ with outbox and inbox in every service",
+        "one Postgres container, one database per service (owner and app roles), tenant_id and RLS",
+        "RabbitMQ topic exchange, routing key = event type, outbox and inbox in every service",
+        "payments and the other services check tokens with identity (JWKS)",
         "Redis holds an optional balance projection, never the source of truth for money"
       ]
     },
@@ -269,7 +310,7 @@
       "dot": "slate",
       "title": "Not drawn",
       "items": [
-        "every service emits structured logs and events to Varta",
+        "web also reads balances from payments (REST); nothing calls Varta at runtime",
         "Deckhand deploys every container",
         "Stripe adapter and production identity provider are designed only"
       ]

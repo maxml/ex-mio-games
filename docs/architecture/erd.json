@@ -2,42 +2,45 @@
   "schema_version": 1,
   "diagram_type": "erd",
   "meta": {
-    "title": "Tenancy and ledger schema",
+    "title": "Schema overview: 3 databases, 50 tables",
+    "subtitle": "identity 13, engagement 15, payments 22 (41 business tables and 3 shared outbox, inbox, audit_intents per database). Full per-database diagrams: erd-identity.html, erd-engagement.html, erd-payments.html",
     "output": "erd.html",
     "quality_profile": "standard"
   },
-  "layout": { "mode": "grid", "gapX": 80, "gapY": 60 },
+  "layout": { "mode": "grid", "gapX": 90, "gapY": 60, "entityW": 300 },
   "entities": [
     {
-      "id": "tenant",
-      "label": "tenant",
-      "tag": "identity db",
+      "id": "tenants",
+      "label": "tenants",
+      "sublabel": "RLS on, not forced",
+      "tag": "identity database",
       "row": 0,
       "col": 0,
       "attributes": [
         { "name": "id", "type": "uuid", "key": "pk" },
-        { "name": "kind", "type": "text" },
-        { "name": "domain", "type": "text", "key": "uk" },
+        { "name": "slug", "type": "text", "key": "uk" },
+        { "name": "type", "type": "text" },
         { "name": "status", "type": "text" }
       ]
     },
     {
-      "id": "app_user",
-      "label": "app_user",
-      "tag": "identity db",
+      "id": "users",
+      "label": "users",
+      "sublabel": "RLS forced",
+      "tag": "identity database",
       "row": 0,
       "col": 1,
       "attributes": [
-        { "name": "tenant_id", "type": "uuid", "key": ["pk", "fk"], "references": "tenant.id" },
-        { "name": "user_id", "type": "uuid", "key": "pk" },
-        { "name": "email", "type": "text" },
-        { "name": "role", "type": "text" }
+        { "name": "tenant_id", "type": "uuid", "key": ["pk", "fk"], "references": "tenants.id" },
+        { "name": "id", "type": "uuid", "key": "pk" },
+        { "name": "kind", "type": "text" }
       ]
     },
     {
-      "id": "player_link",
-      "label": "player_link",
-      "tag": "identity db",
+      "id": "player_links",
+      "label": "player_links",
+      "sublabel": "RLS forced",
+      "tag": "identity database",
       "row": 0,
       "col": 2,
       "attributes": [
@@ -45,144 +48,182 @@
           "name": "tenant_id",
           "type": "uuid",
           "key": ["pk", "fk"],
-          "references": "app_user.tenant_id"
+          "references": "users.tenant_id"
         },
-        { "name": "platform", "type": "text", "key": "pk" },
-        { "name": "external_player_id", "type": "text", "key": "pk" },
-        { "name": "user_id", "type": "uuid", "key": "fk", "references": "app_user.user_id" }
+        { "name": "user_id", "type": "uuid", "key": ["pk", "fk"], "references": "users.id" },
+        { "name": "platform", "type": "text", "key": "uk" },
+        { "name": "external_player_id", "type": "text", "key": "uk" }
       ]
     },
     {
-      "id": "ledger_account",
-      "label": "ledger_account",
-      "tag": "payments db",
+      "id": "tenant_projections",
+      "label": "tenant_projections",
+      "sublabel": "RLS forced",
+      "tag": "engagement database",
       "row": 1,
       "col": 0,
       "attributes": [
-        { "name": "tenant_id", "type": "uuid", "key": "pk" },
-        { "name": "id", "type": "uuid", "key": "pk" },
-        { "name": "owner_user_id", "type": "uuid" },
-        { "name": "kind", "type": "text" },
-        { "name": "balance_minor", "type": "bigint" }
+        { "name": "tenant_id", "type": "uuid, logical: tenants.id", "key": "pk" },
+        { "name": "slug", "type": "text" }
       ]
     },
     {
-      "id": "journal_transaction",
-      "label": "journal_transaction",
-      "tag": "payments db",
+      "id": "spin_credits",
+      "label": "spin_credits",
+      "sublabel": "RLS forced, sandbox",
+      "tag": "engagement database",
       "row": 1,
       "col": 1,
       "attributes": [
-        { "name": "tenant_id", "type": "uuid", "key": ["pk", "uk"] },
+        { "name": "tenant_id", "type": "uuid", "key": "pk" },
         { "name": "id", "type": "uuid", "key": "pk" },
-        { "name": "operation_type", "type": "text", "key": "uk" },
-        { "name": "operation_id", "type": "text", "key": "uk" },
-        { "name": "created_at", "type": "timestamptz" }
+        { "name": "user_id", "type": "uuid, logical: users.id" },
+        { "name": "sandbox", "type": "boolean" }
       ]
     },
     {
-      "id": "journal_leg",
-      "label": "journal_leg",
-      "tag": "payments db",
-      "row": 2,
-      "col": 1,
+      "id": "redemptions",
+      "label": "redemptions",
+      "sublabel": "RLS forced, sandbox",
+      "tag": "engagement database",
+      "row": 1,
+      "col": 2,
       "attributes": [
         { "name": "tenant_id", "type": "uuid", "key": "pk" },
         { "name": "id", "type": "uuid", "key": "pk" },
+        { "name": "player_id", "type": "text, logical: users.id" },
+        { "name": "sandbox", "type": "boolean" },
+        { "name": "state", "type": "text" }
+      ]
+    },
+    {
+      "id": "wallet_owner_links",
+      "label": "wallet_owner_links",
+      "sublabel": "RLS forced, sandbox",
+      "tag": "payments database",
+      "row": 2,
+      "col": 1,
+      "attributes": [
         {
-          "name": "transaction_id",
+          "name": "tenant_id",
           "type": "uuid",
-          "key": "fk",
-          "references": "journal_transaction.id"
+          "key": ["pk", "fk"],
+          "references": "wallets.tenant_id"
         },
-        { "name": "account_id", "type": "uuid", "key": "fk", "references": "ledger_account.id" },
-        { "name": "direction", "type": "text" },
-        { "name": "amount_minor", "type": "bigint" }
+        { "name": "wallet_id", "type": "uuid", "key": ["pk", "fk"], "references": "wallets.id" },
+        { "name": "user_id", "type": "uuid, logical: users.id", "key": "uk" },
+        { "name": "sandbox", "type": "boolean", "key": "uk" }
       ]
     },
     {
-      "id": "coin_hold",
-      "label": "coin_hold",
-      "tag": "payments db",
+      "id": "wallets",
+      "label": "wallets",
+      "sublabel": "RLS forced, sandbox",
+      "tag": "payments database",
       "row": 2,
-      "col": 0,
+      "col": 2,
       "attributes": [
         { "name": "tenant_id", "type": "uuid", "key": "pk" },
         { "name": "id", "type": "uuid", "key": "pk" },
-        { "name": "account_id", "type": "uuid", "key": "fk", "references": "ledger_account.id" },
-        { "name": "amount_minor", "type": "bigint" },
-        { "name": "status", "type": "text" }
+        { "name": "sandbox", "type": "boolean" }
       ]
     }
   ],
   "relationships": [
     {
-      "id": "user_tenant",
-      "from": "app_user",
-      "to": "tenant",
+      "id": "users_tenants",
+      "from": "users",
+      "to": "tenants",
       "label": "belongs to",
       "fromCardinality": "many",
       "toCardinality": "one",
       "identifying": true
     },
     {
-      "id": "link_user",
-      "from": "player_link",
-      "to": "app_user",
+      "id": "links_users",
+      "from": "player_links",
+      "to": "users",
       "label": "maps to",
       "fromCardinality": "many",
-      "toCardinality": "one"
+      "toCardinality": "one",
+      "identifying": true
     },
     {
-      "id": "leg_tx",
-      "from": "journal_leg",
-      "to": "journal_transaction",
-      "label": "2 or more legs",
+      "id": "owner_wallets",
+      "from": "wallet_owner_links",
+      "to": "wallets",
+      "label": "owner of",
       "fromCardinality": "many",
-      "toCardinality": "one"
+      "toCardinality": "one",
+      "identifying": true
     },
     {
-      "id": "leg_account",
-      "from": "journal_leg",
-      "to": "ledger_account",
-      "label": "moves",
-      "fromCardinality": "many",
-      "toCardinality": "one"
+      "id": "logical_projection_tenant",
+      "from": "tenant_projections",
+      "to": "tenants",
+      "label": "event copy, no FK",
+      "fromCardinality": "one",
+      "toCardinality": "one",
+      "identifying": false,
+      "variant": "dashed"
     },
     {
-      "id": "hold_account",
-      "from": "coin_hold",
-      "to": "ledger_account",
-      "label": "reserves",
+      "id": "logical_credit_user",
+      "from": "spin_credits",
+      "to": "users",
+      "label": "user_id, no FK",
       "fromCardinality": "many",
-      "toCardinality": "one"
+      "toCardinality": "one",
+      "identifying": false,
+      "variant": "dashed"
+    },
+    {
+      "id": "logical_redemption_user",
+      "from": "redemptions",
+      "to": "users",
+      "label": "player_id, no FK",
+      "fromCardinality": "many",
+      "toCardinality": "one",
+      "identifying": false,
+      "variant": "dashed"
+    },
+    {
+      "id": "logical_owner_user",
+      "from": "wallet_owner_links",
+      "to": "users",
+      "label": "user_id, no FK",
+      "fromCardinality": "many",
+      "toCardinality": "one",
+      "identifying": false,
+      "variant": "dashed"
     }
   ],
   "cards": [
     {
       "dot": "cyan",
-      "title": "Tenancy",
+      "title": "Three databases",
       "items": [
-        "every table carries tenant_id; keys are (tenant_id, id)",
-        "RLS filters rows by the transaction's tenant, FORCE on",
-        "a person on a second tenant is a new app_user row"
+        "identity 13 tables, engagement 15, payments 22 (50 in all, without the TypeORM migrations table)",
+        "each service owns its database; the 41 business tables plus outbox, inbox and audit_intents per database",
+        "open erd-identity.html, erd-engagement.html and erd-payments.html for every table"
       ]
     },
     {
       "dot": "amber",
-      "title": "Ledger",
+      "title": "Tenancy and sandbox",
       "items": [
-        "a deferred trigger checks debits equal credits per transaction",
-        "unique (tenant_id, operation_type, operation_id) stops a repeat",
-        "balance_minor has CHECK (balance_minor >= 0)"
+        "every table with tenant_id has ENABLE + FORCE RLS, except tenants (ENABLE only), outbox, inbox and reconciliation_tenants",
+        "no RLS: outbox, inbox (x3), signing_keys, billing_plans, reconciliation_tenants",
+        "sandbox column: launch_jti, inbound_events, spin_credits, item_player_usage, redemptions, wallets, accounts, wallet_owner_links"
       ]
     },
     {
       "dot": "slate",
       "title": "Across databases",
       "items": [
-        "payments stores owner_user_id and tenant_id as opaque ids, with no foreign key into identity",
-        "personal data exists only in identity"
+        "dashed lines are logical ids carried between services, never foreign keys",
+        "tenant_id is a logical key into identity tenants in every database",
+        "the ids cross by event or by an internal call, so each database stays independent"
       ]
     }
   ]

@@ -1,0 +1,493 @@
+{
+  "schema_version": 1,
+  "diagram_type": "erd",
+  "meta": {
+    "title": "Identity database: tenants, users, links, credentials",
+    "subtitle": "13 tables (10 business, 3 shared service-kit): final state after all migrations, checked against the live database",
+    "output": "erd-identity.html",
+    "quality_profile": "standard"
+  },
+  "layout": {
+    "mode": "grid",
+    "gapX": 50,
+    "gapY": 50
+  },
+  "entities": [
+    {
+      "id": "tenants",
+      "label": "tenants",
+      "sublabel": "RLS on, not forced",
+      "tag": "users and links",
+      "row": 0,
+      "col": 0,
+      "width": 270,
+      "attributes": [
+        {
+          "name": "id",
+          "type": "uuid",
+          "key": "pk"
+        },
+        {
+          "name": "name",
+          "type": "text"
+        },
+        {
+          "name": "slug",
+          "type": "text",
+          "key": "uk"
+        },
+        {
+          "name": "type",
+          "type": "text"
+        },
+        {
+          "name": "status",
+          "type": "text"
+        }
+      ]
+    },
+    {
+      "id": "users",
+      "label": "users",
+      "sublabel": "RLS forced",
+      "tag": "users and links",
+      "row": 0,
+      "col": 1,
+      "width": 270,
+      "attributes": [
+        {
+          "name": "tenant_id",
+          "type": "uuid",
+          "key": ["pk", "fk"],
+          "references": "tenants.id"
+        },
+        {
+          "name": "id",
+          "type": "uuid",
+          "key": "pk"
+        },
+        {
+          "name": "email",
+          "type": "text"
+        },
+        {
+          "name": "kind",
+          "type": "text"
+        }
+      ]
+    },
+    {
+      "id": "user_roles",
+      "label": "user_roles",
+      "sublabel": "RLS forced",
+      "tag": "users and links",
+      "row": 0,
+      "col": 2,
+      "width": 270,
+      "attributes": [
+        {
+          "name": "tenant_id",
+          "type": "uuid",
+          "key": ["pk", "fk"],
+          "references": "users.tenant_id"
+        },
+        {
+          "name": "user_id",
+          "type": "uuid",
+          "key": ["pk", "fk"],
+          "references": "users.id"
+        },
+        {
+          "name": "role",
+          "type": "text",
+          "key": "pk"
+        }
+      ]
+    },
+    {
+      "id": "provider_links",
+      "label": "provider_links",
+      "sublabel": "RLS forced",
+      "tag": "users and links",
+      "row": 0,
+      "col": 3,
+      "width": 270,
+      "attributes": [
+        {
+          "name": "tenant_id",
+          "type": "uuid",
+          "key": ["pk", "fk"],
+          "references": "users.tenant_id"
+        },
+        {
+          "name": "user_id",
+          "type": "uuid",
+          "key": ["pk", "fk"],
+          "references": "users.id"
+        },
+        {
+          "name": "provider",
+          "type": "text",
+          "key": "uk"
+        },
+        {
+          "name": "provider_uid",
+          "type": "text",
+          "key": "uk"
+        }
+      ]
+    },
+    {
+      "id": "player_links",
+      "label": "player_links",
+      "sublabel": "RLS forced",
+      "tag": "users and links",
+      "row": 0,
+      "col": 4,
+      "width": 270,
+      "attributes": [
+        {
+          "name": "tenant_id",
+          "type": "uuid",
+          "key": ["pk", "fk"],
+          "references": "users.tenant_id"
+        },
+        {
+          "name": "user_id",
+          "type": "uuid",
+          "key": ["pk", "fk"],
+          "references": "users.id"
+        },
+        {
+          "name": "platform",
+          "type": "text",
+          "key": "uk"
+        },
+        {
+          "name": "external_player_id",
+          "type": "text",
+          "key": "uk"
+        }
+      ]
+    },
+    {
+      "id": "launch_jti",
+      "label": "launch_jti",
+      "sublabel": "RLS forced",
+      "tag": "credentials and audit",
+      "row": 1,
+      "col": 0,
+      "width": 270,
+      "attributes": [
+        {
+          "name": "tenant_id",
+          "type": "uuid",
+          "key": ["pk", "fk"],
+          "references": "tenants.id"
+        },
+        {
+          "name": "sandbox",
+          "type": "boolean",
+          "key": "pk"
+        },
+        {
+          "name": "jti",
+          "type": "text",
+          "key": "pk"
+        },
+        {
+          "name": "expires_at",
+          "type": "timestamptz"
+        }
+      ]
+    },
+    {
+      "id": "integration_credentials",
+      "label": "integration_credentials",
+      "sublabel": "RLS forced",
+      "tag": "credentials and audit",
+      "row": 1,
+      "col": 1,
+      "width": 270,
+      "attributes": [
+        {
+          "name": "tenant_id",
+          "type": "uuid",
+          "key": ["pk", "fk"],
+          "references": "tenants.id"
+        },
+        {
+          "name": "key_id",
+          "type": "text",
+          "key": "pk"
+        },
+        {
+          "name": "api_key_hash",
+          "type": "text",
+          "key": "uk"
+        },
+        {
+          "name": "environment",
+          "type": "text"
+        },
+        {
+          "name": "status",
+          "type": "text"
+        }
+      ]
+    },
+    {
+      "id": "audit_log",
+      "label": "audit_log",
+      "sublabel": "RLS forced",
+      "tag": "credentials and audit",
+      "row": 1,
+      "col": 2,
+      "width": 270,
+      "attributes": [
+        {
+          "name": "tenant_id",
+          "type": "uuid",
+          "key": ["pk", "fk"],
+          "references": "tenants.id"
+        },
+        {
+          "name": "id",
+          "type": "uuid",
+          "key": "pk"
+        },
+        {
+          "name": "occurred_at",
+          "type": "timestamptz"
+        },
+        {
+          "name": "action",
+          "type": "text"
+        }
+      ]
+    },
+    {
+      "id": "reward_apis",
+      "label": "reward_apis",
+      "sublabel": "RLS forced",
+      "tag": "credentials and audit",
+      "row": 1,
+      "col": 3,
+      "width": 270,
+      "attributes": [
+        {
+          "name": "tenant_id",
+          "type": "uuid",
+          "key": "pk"
+        },
+        {
+          "name": "platform",
+          "type": "text",
+          "key": "pk"
+        },
+        {
+          "name": "environment",
+          "type": "text",
+          "key": "pk"
+        },
+        {
+          "name": "base_url",
+          "type": "text"
+        }
+      ]
+    },
+    {
+      "id": "signing_keys",
+      "label": "signing_keys",
+      "sublabel": "no RLS",
+      "tag": "credentials and audit",
+      "row": 1,
+      "col": 4,
+      "width": 270,
+      "attributes": [
+        {
+          "name": "kid",
+          "type": "text",
+          "key": "pk"
+        },
+        {
+          "name": "public_jwk",
+          "type": "jsonb"
+        },
+        {
+          "name": "retired",
+          "type": "boolean"
+        }
+      ]
+    },
+    {
+      "id": "outbox",
+      "label": "outbox",
+      "sublabel": "no RLS",
+      "tag": "shared service-kit tables",
+      "row": 2,
+      "col": 0,
+      "width": 270,
+      "attributes": [
+        {
+          "name": "event_id",
+          "type": "uuid",
+          "key": "pk"
+        },
+        {
+          "name": "tenant_id",
+          "type": "uuid"
+        },
+        {
+          "name": "type",
+          "type": "text"
+        },
+        {
+          "name": "published_at",
+          "type": "timestamptz"
+        },
+        {
+          "name": "parked_at",
+          "type": "timestamptz"
+        }
+      ]
+    },
+    {
+      "id": "inbox",
+      "label": "inbox",
+      "sublabel": "no RLS",
+      "tag": "shared service-kit tables",
+      "row": 2,
+      "col": 1,
+      "width": 270,
+      "attributes": [
+        {
+          "name": "consumer",
+          "type": "text",
+          "key": "pk"
+        },
+        {
+          "name": "event_id",
+          "type": "uuid",
+          "key": "pk"
+        },
+        {
+          "name": "tenant_id",
+          "type": "uuid"
+        }
+      ]
+    },
+    {
+      "id": "audit_intents",
+      "label": "audit_intents",
+      "sublabel": "RLS forced",
+      "tag": "shared service-kit tables",
+      "row": 2,
+      "col": 2,
+      "width": 270,
+      "attributes": [
+        {
+          "name": "tenant_id",
+          "type": "uuid",
+          "key": "pk"
+        },
+        {
+          "name": "event_id",
+          "type": "uuid",
+          "key": "pk"
+        },
+        {
+          "name": "envelope",
+          "type": "jsonb"
+        }
+      ]
+    }
+  ],
+  "relationships": [
+    {
+      "id": "fk_0_users_tenants",
+      "from": "users",
+      "to": "tenants",
+      "label": "belongs to",
+      "fromCardinality": "many",
+      "toCardinality": "one",
+      "identifying": true
+    },
+    {
+      "id": "fk_1_user_roles_users",
+      "from": "user_roles",
+      "to": "users",
+      "label": "has",
+      "fromCardinality": "many",
+      "toCardinality": "one",
+      "identifying": true
+    },
+    {
+      "id": "fk_2_provider_links_users",
+      "from": "provider_links",
+      "to": "users",
+      "label": "maps to",
+      "fromCardinality": "many",
+      "toCardinality": "one",
+      "identifying": true
+    },
+    {
+      "id": "fk_3_player_links_users",
+      "from": "player_links",
+      "to": "users",
+      "label": "maps to",
+      "fromCardinality": "many",
+      "toCardinality": "one",
+      "identifying": true
+    },
+    {
+      "id": "fk_4_launch_jti_tenants",
+      "from": "launch_jti",
+      "to": "tenants",
+      "label": "of",
+      "fromCardinality": "many",
+      "toCardinality": "one"
+    },
+    {
+      "id": "fk_5_integration_credentials_tenants",
+      "from": "integration_credentials",
+      "to": "tenants",
+      "label": "of",
+      "fromCardinality": "many",
+      "toCardinality": "one"
+    },
+    {
+      "id": "fk_6_audit_log_tenants",
+      "from": "audit_log",
+      "to": "tenants",
+      "label": "of",
+      "fromCardinality": "many",
+      "toCardinality": "one"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "Row-level security",
+      "items": [
+        "tenants: ENABLE without FORCE, scoped on id; every other tenant_id table has ENABLE + FORCE",
+        "signing_keys, outbox and inbox have no RLS: they are not tenant data or work across tenants"
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "Keys and environment",
+      "items": [
+        "sandbox on launch_jti (key part); integration_credentials and reward_apis use environment text (production or sandbox)"
+      ]
+    },
+    {
+      "dot": "slate",
+      "title": "Across databases",
+      "items": [
+        "a link into another service database is a logical id, never a foreign key",
+        "solid line: a declared foreign key; dashed line: a logical link the database does not enforce"
+      ]
+    }
+  ]
+}
