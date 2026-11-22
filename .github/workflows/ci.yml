@@ -34,17 +34,20 @@ jobs:
           submodules: false
           persist-credentials: false
 
-      # Docs-only change? Then the stack job is skipped (prettier below still checks the Markdown).
+      # Docs-only PR? Then the stack job is skipped (prettier below still checks the Markdown).
+      # Only for pull_request: a push to main always runs the stack, because a docs push diffed against
+      # the previous push would skip it even when that previous run was cancelled or red, and code
+      # would reach main with no stack run at all (seen on 2026-11-22: 25575d8, c579cba, fdcf84c).
       # Fail-closed: if the diff cannot be computed the job fails, it never reports "no code".
       - name: Docs-only change?
         id: changes
         env:
           EVENT: ${{ github.event_name }}
-          BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
+          BASE: ${{ github.event.pull_request.base.sha }}
           HEAD: ${{ github.sha }}
         run: |
           set -euo pipefail
-          if [ "$EVENT" = workflow_dispatch ] || [ -z "$BASE" ] || [ "$BASE" = 0000000000000000000000000000000000000000 ]; then
+          if [ "$EVENT" != pull_request ]; then
             echo "code=true" >> "$GITHUB_OUTPUT"; exit 0
           fi
           git fetch --no-tags --depth=1 origin "$BASE"
