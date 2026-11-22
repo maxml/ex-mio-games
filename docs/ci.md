@@ -31,11 +31,13 @@ of correctness; the production gate is Deckhand's (health gate, smoke, rollback)
 
 [^1]: The local stack gate runs the compose tests and payments `test:db`; engagement `test:pg` runs in CI only.
 
-- **Triggers**: `push` to `main`, `pull_request` to `main`, `workflow_dispatch`. A tree is gated once on
-  `main`; the only double run is a branch that is merged by fast forward after its PR run (the combined
-  Dependabot branch), accepted because the minutes are free and the run on `main` is the record.
-- **Docs-only change** (only `*.md` and `docs/`): job `stack` is skipped; job `checks` still runs, because
-  prettier checks the Markdown. Nothing in `docs/` is read by a test or a build.
+- **Triggers**: `push` to `main`, `pull_request` to `main`, `workflow_dispatch`. A change that goes
+  through a PR is gated on the PR and again on `main`; accepted because the minutes are free and the run on
+  `main` is the record.
+- **Docs-only PR** (only `*.md` and `docs/`): job `stack` is skipped; job `checks` still runs, because
+  prettier checks the Markdown. Nothing in `docs/` is read by a test or a build. A push to `main` always
+  runs both jobs: a docs push diffed against the previous push would skip the stack even when that
+  previous run was cancelled or red, so code could reach `main` with no stack run at all.
 - **Dependabot PRs** get job `checks` only. The full stack runs on the branch the
   bumps are combined on and on `main`.
 - `concurrency` cancels a superseded run of the same ref; every job has `timeout-minutes`; actions are
