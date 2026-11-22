@@ -20,7 +20,7 @@ import { StateBody, type Environment, type PageState } from './OperatorShell';
 export interface PlayerWidgetTemplateProps {
   state?: PageState;
   errorText?: string;
-  environment?: Environment;
+  environment: Environment;
   balance: number;
   spinsLeft: number;
   segments: WheelSegment[];
@@ -60,11 +60,9 @@ export function PlayerWidgetTemplate({
       <Stack gap={6}>
         <Stack row align="center" justify="between">
           <Heading level={1}>Wheel of Fortune</Heading>
-          {environment && (
-            <Badge tone={environment === 'live' ? 'success' : 'warning'} icon>
-              {environment === 'live' ? 'Live' : 'Sandbox'}
-            </Badge>
-          )}
+          <Badge tone={environment === 'live' ? 'success' : 'warning'} icon>
+            {environment === 'live' ? 'Live' : 'Sandbox'}
+          </Badge>
         </Stack>
         <StateBody
           state={state}

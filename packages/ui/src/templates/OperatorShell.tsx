@@ -14,7 +14,7 @@ export interface ShellProps {
   pages: NavPage[];
   /** Site-level links (the demo chrome: Home, Operator, Admin, Widget). */
   siteItems?: NavItem[];
-  environment?: Environment;
+  environment: Environment;
   /** Mock mode only: lets a reviewer change the role. */
   onRoleChange?: (role: ConsoleRole) => void;
 }
@@ -49,13 +49,11 @@ export function OperatorShell({
         <RoleNav pages={pages} role={role} current={current} />
         <main id="main" tabIndex={-1} className="min-w-0">
           <Page title={title} intro={intro} className="max-w-none p-0">
-            {environment && (
-              <p className="mb-4">
-                <Badge tone={environment === 'live' ? 'success' : 'warning'} icon>
-                  {environment === 'live' ? 'Live environment' : 'Sandbox environment'}
-                </Badge>
-              </p>
-            )}
+            <p className="mb-4">
+              <Badge tone={environment === 'live' ? 'success' : 'warning'} icon>
+                {environment === 'live' ? 'Live environment' : 'Sandbox environment'}
+              </Badge>
+            </p>
             {children}
           </Page>
         </main>
