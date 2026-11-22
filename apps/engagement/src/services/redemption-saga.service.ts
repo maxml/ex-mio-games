@@ -5,6 +5,7 @@ import {
   type RewardRequest,
   type RewardStatus,
 } from '@ex-mio/contracts';
+import { AuthorizationRefused } from '@ex-mio/service-kit';
 import { rewardOfOrder } from '../redemptions/reward-request';
 import {
   StoreRejection,
@@ -628,7 +629,9 @@ export class RedemptionSagaService implements RedemptionSaga {
     id: string,
     input: { outcome: 'issued' | 'not_issued'; reason: string; operator: Operator },
   ): Promise<RedemptionRecord> {
-    if (input.operator.role !== 'operator_admin') throw new SagaError('forbidden'); // X-15
+    if (input.operator.role !== 'operator_admin') {
+      throw new AuthorizationRefused({ code: 'forbidden' }); // X-15
+    }
     const r = await this.deps.store.getForOperator(tenantId, id);
     if (!r) throw new SagaError('redemption_not_found');
     if (r.state !== 'NEEDS_REVIEW') throw new SagaError('illegal_transition');

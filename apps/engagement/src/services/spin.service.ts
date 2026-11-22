@@ -10,6 +10,7 @@ import {
 import {
   createEvent,
   scopedKey,
+  ScopedKeyTooLong,
   type MySpinsResponse,
   type PublicWheel,
   type SpinConflictBody,
@@ -87,12 +88,23 @@ export class SpinService {
     const { tenantId, userId } = this.caller();
     // D-26: the environment is in every key (the token's `sbx` claim, never a request value).
     const sandbox = input.sandbox === true;
-    const flightKey = scopedKey({
-      kind: 'flight',
-      tenantId,
-      sandbox,
-      parts: [userId, input.idempotencyKey],
-    });
+    // F4: the client's key is the only unbounded part. Both keys (flight here, spin in the tx) are
+    // built from it, so a key that escapes past the bound is refused here, as a 4xx, before either.
+    let flightKey: string;
+    try {
+      flightKey = scopedKey({
+        kind: 'flight',
+        tenantId,
+        sandbox,
+        parts: [userId, input.idempotencyKey],
+      });
+      scopedKey({ kind: 'spin', tenantId, sandbox, parts: [userId, input.idempotencyKey] });
+    } catch (err) {
+      if (err instanceof ScopedKeyTooLong) {
+        throw new UnprocessableEntityException('Idempotency-Key is too long once escaped');
+      }
+      throw err;
+    }
     if (this.inFlight.has(flightKey)) throw IN_PROGRESS();
     this.inFlight.add(flightKey);
     try {

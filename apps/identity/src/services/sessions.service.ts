@@ -169,7 +169,7 @@ export class SessionsService {
       throw new IdentityError('INVALID_CREDENTIALS', 'invalid credentials');
     });
     if (tenant.status !== 'active')
-      throw new IdentityError('TENANT_SUSPENDED', 'tenant is suspended');
+      throw new AuthorizationRefused({ code: 'TENANT_SUSPENDED', message: 'tenant is suspended' });
     const invalid = new IdentityError('INVALID_CREDENTIALS', 'invalid credentials');
     const email = input.email.trim().toLowerCase();
     const user = await this.uow.run(tenantId, (tx) =>
@@ -216,7 +216,10 @@ export class SessionsService {
   ): Promise<TokenResponse> {
     this.assertMayStartActing(subject);
     if (input.tenant_id === PLATFORM_TENANT_ID) {
-      throw new IdentityError('ACTING_FORBIDDEN', 'acting on the platform tenant is meaningless');
+      throw new AuthorizationRefused({
+        code: 'ACTING_FORBIDDEN',
+        message: 'acting on the platform tenant is meaningless',
+      });
     }
     const target = await this.tenants.get(input.tenant_id); // NOT_FOUND when unknown
     // D-15 Q-4: 8 to 500 characters (the existence of the tenant is answered first)
@@ -295,7 +298,8 @@ export class SessionsService {
       throw new IdentityError('TOKEN_INVALID', 'not a realtime ticket');
     });
     if (tenant.status !== 'active') {
-      throw new IdentityError('TENANT_SUSPENDED', 'tenant is suspended');
+      // D-30 (F6): a suspended tenant is an authorization refusal, audited `refused`.
+      throw new AuthorizationRefused({ code: 'TENANT_SUSPENDED', message: 'tenant is suspended' });
     }
     try {
       // the jti row is the consumption record; its expiry is the ticket's

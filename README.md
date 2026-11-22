@@ -201,6 +201,14 @@ from that first run.
   stays as a fallback with `skipTrailingSlashRedirect` so `/socket.io/` is no longer redirected.
 - **Redemption reaching the casino.** An operator registers the casino reward API with
   `PUT /v1/operator/integrations/:casino/reward-api` (identity); it is served to engagement as `reward_api`.
+  The URL is checked twice (D-30). The PUT refuses credentials in the URL and literal loopback, private,
+  link-local (cloud metadata) and unspecified addresses. Engagement's transport resolves the host at call
+  time and refuses the same ranges, never follows a redirect (a 3xx counts as "outcome unknown"), and in
+  production requires `https`; identity's PUT likewise refuses a plain-http URL for the `production`
+  environment (the sandbox endpoint may be http). `REWARD_API_ALLOW_HOSTS` (comma separated host names,
+  read by identity and engagement) exempts listed hosts from the https rule, and from the address rule in
+  engagement's transport; compose sets it to `casino-sim` on both services. The casino's rejection
+  reason is cut to 64 characters of `[A-Za-z0-9_.:-]` before it is stored or shown.
 - **Wheel, rules and subscription id.** `PUT /v1/operator/wheel` and `PUT /v1/operator/rules` (engagement,
   `operator_admin`), a default wheel and rule on signup, and `GET /v1/operator/plan` (payments) replace the
   database steps; the script no longer reads or writes any database.

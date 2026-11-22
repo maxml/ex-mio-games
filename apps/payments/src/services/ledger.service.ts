@@ -9,7 +9,7 @@ import {
   type ReserveState,
 } from '@ex-mio/contracts';
 import type { IdempotentOutcome } from '@ex-mio/idempotency';
-import { Db, type Tx } from '@ex-mio/service-kit';
+import { AuthorizationRefused, Db, type Tx } from '@ex-mio/service-kit';
 import { currentTenant } from '@ex-mio/tenancy';
 import { afterCommit, emitProductEvent } from '@ex-mio/logger';
 import { LEDGER_FAULTS, type LedgerFaults } from '../model/ledger.faults';
@@ -428,7 +428,12 @@ export class LedgerService {
 
   private actor(): { tenantId: string; principalId: string } {
     const { tenantId, principalId } = currentTenant();
-    if (!principalId) throw new LedgerError('forbidden', 'a service identity is required');
+    if (!principalId) {
+      throw new AuthorizationRefused({
+        code: 'forbidden',
+        message: 'a service identity is required',
+      });
+    }
     return { tenantId, principalId };
   }
 

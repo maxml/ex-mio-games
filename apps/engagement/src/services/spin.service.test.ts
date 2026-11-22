@@ -6,11 +6,10 @@ import {
   SpinConflictBody,
   SpinResponse,
   parseEvent,
-  scopedKey,
   type EventEnvelope,
 } from '@ex-mio/contracts';
 import { Db } from '@ex-mio/service-kit';
-import { runWithTenant } from '@ex-mio/tenancy';
+import { currentTenant, runWithTenant } from '@ex-mio/tenancy';
 import {
   SEEDS,
   SpinCreditsRepository,
@@ -96,9 +95,12 @@ const T = '0190a1b2-c3d4-4e5f-8a6b-000000000001';
 const A = '0190a1b2-c3d4-4e5f-8a6b-0000000000a1'; // the player making the request
 const B = '0190a1b2-c3d4-4e5f-8a6b-0000000000b2'; // another player of the same tenant
 const WHEEL = '0190a1b2-c3d4-4e5f-8a6b-7c8d9e0f1a2c';
-/** The stored operation id of player A's production request with this Idempotency-Key (D-26). */
-const op = (key: string): string =>
-  scopedKey({ kind: 'spin', tenantId: T, sandbox: false, parts: [A, key] });
+/**
+ * The stored operation id of player A's production request with this Idempotency-Key (D-26), written
+ * out LITERALLY as `spin:<tenant>:prd:<user>:<key>` (the keys used here need no escaping). Never
+ * derived from `scopedKey`, the code under test (final review F2).
+ */
+const op = (key: string): string => `spin:${T}:prd:${A}:${key}`;
 const credit = (n: number) => `0190a1b2-c3d4-4e5f-8a6b-00000000c${String(n).padStart(3, '0')}`;
 
 const TABLE: RewardTableVersion = {
@@ -167,17 +169,22 @@ describe('SpinService', () => {
       },
     };
     const spinsRepo = {
+      // operation_id is a plain, NON-unique index since EnvScopedKeys: a lookup, first match wins
       async findByOperation(_tx: unknown, i: { userId: string; operationId: string }) {
-        return spins.get(`${i.userId}|${i.operationId}`);
+        return [...spins.values()].find(
+          (s) => s.userId === i.userId && s.operationId === i.operationId,
+        );
       },
       async insert(tx: unknown, s: SpinRecord) {
-        // models UNIQUE (tenant_id, user_id, operation_id): a second insert is a unique violation
-        if (spins.has(`${s.userId}|${s.operationId}`))
+        // models the ONLY unique key spins has now, PRIMARY KEY (tenant_id, id); the spin id is
+        // derived from the environment-scoped key, so a same-key duplicate collides here
+        const pk = `${currentTenant().tenantId}|${s.id}`;
+        if (spins.has(pk))
           throw Object.assign(new Error('duplicate key value violates unique constraint'), {
             code: '23505',
           });
-        spins.set(`${s.userId}|${s.operationId}`, s);
-        (tx as Tx).undo.push(() => void spins.delete(`${s.userId}|${s.operationId}`));
+        spins.set(pk, s);
+        (tx as Tx).undo.push(() => void spins.delete(pk));
       },
     };
     const mod = await Test.createTestingModule({
@@ -216,6 +223,9 @@ describe('SpinService', () => {
 
   const asPlayer = <R>(user: string, fn: () => Promise<R>) =>
     runWithTenant({ tenantId: T, principalId: user }, fn);
+  /** Player A's stored production spin for this Idempotency-Key, found by its literal operation id. */
+  const byOp = (key: string): SpinRecord | undefined =>
+    [...spins.values()].find((s) => s.userId === A && s.operationId === op(key));
   const addCredit = (id: string, userId: string) =>
     credits.set(id, { id, userId, wheelId: WHEEL, status: 'available' });
 
@@ -460,13 +470,13 @@ describe('SpinService', () => {
     seedStore.drop(T, 2); // the store holds v1 only: current = 1
     addCredit(credit(1), A);
     const old = await asPlayer(A, () => service.spin({ idempotencyKey: 'old' }));
-    const stored = spins.get(`${A}|${op('old')}`)!;
+    const stored = byOp('old')!;
     expect(stored.seedVersion).toBe(1);
     seedStore.add(T, 2, SEED_BY_VERSION[2]!); // rotation: a new version in the store
     addCredit(credit(2), A);
     const fresh = await asPlayer(A, () => service.spin({ idempotencyKey: 'new' }));
-    expect(spins.get(`${A}|${op('new')}`)!.seedVersion).toBe(2);
-    expect(spins.get(`${A}|${op('old')}`)).toEqual(stored); // the old record is untouched by the rotation
+    expect(byOp('new')!.seedVersion).toBe(2);
+    expect(byOp('old')).toEqual(stored); // the old record is untouched by the rotation
 
     // R2-3: `seeds` is the REAL provider (model/seeds.ts) over the versioned store, not test-owned
     // arithmetic. A provider whose seed(tenant, v) returns the current seed fails the next line.
@@ -487,7 +497,7 @@ describe('SpinService', () => {
       table: TABLE,
     });
     expect(withCurrent.hmac).not.toBe(stored.hmac); // the current seed would NOT reproduce it
-    expect(spins.get(`${A}|${op('new')}`)!.hmac).toBe(
+    expect(byOp('new')!.hmac).toBe(
       selectSegment({
         seed: SEED_BY_VERSION[2]!,
         seedVersion: 2,

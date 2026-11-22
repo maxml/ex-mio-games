@@ -20,15 +20,19 @@ import type {
   Scope,
   StateChange,
 } from '../ports';
-import { scopedKey } from '@ex-mio/contracts';
 import { TestClock } from './clock';
 import { MemoryStore } from './memory-store';
 
-/** The idempotency key of one phase of an order (D-26: tenant and environment are in the key). */
+/**
+ * The idempotency key of one phase of an order, written out LITERALLY: `<kind>:<tenant>:<prd|sbx>:<order id>`
+ * (D-26: tenant and environment are in the key). It is a wire contract (payments stores the reserve
+ * under it, the casino dedupes and answers lookups by it), so it is never derived from `scopedKey`,
+ * the code under test: a format change must turn the saga tests red (final review F2).
+ */
 export const okey = (
   kind: 'redeem' | 'hold' | 'capture' | 'release' | 'refund',
   r: { id: string; tenantId: string; sandbox: boolean },
-): string => scopedKey({ kind, tenantId: r.tenantId, sandbox: r.sandbox, parts: [r.id] });
+): string => `${kind}:${r.tenantId.toLowerCase()}:${r.sandbox ? 'sbx' : 'prd'}:${r.id}`;
 
 export { TestClock };
 
