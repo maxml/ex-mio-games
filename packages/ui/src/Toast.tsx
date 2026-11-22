@@ -13,15 +13,19 @@ const ICON: Record<AlertTone, string> = { info: 'i', success: '✓', warning: '!
 /** A static message box. The icon and a word-level message carry the meaning, not the colour. */
 export function Alert({
   tone = 'info',
+  live,
   children,
   className,
 }: {
   tone?: AlertTone;
+  /** Makes the message a live region: `status` is announced politely, `alert` immediately. */
+  live?: 'status' | 'alert';
   children: ReactNode;
   className?: string;
 }) {
   return (
     <div
+      role={live}
       className={cn(
         'flex items-start gap-2 rounded-md border bg-surface px-3 py-2 text-sm',
         TONE[tone],

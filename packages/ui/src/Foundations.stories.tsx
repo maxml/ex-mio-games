@@ -13,8 +13,8 @@ const SURFACES = [
   ['bg', 'bg-bg'],
   ['surface', 'bg-surface'],
   ['surface-2', 'bg-surface-2'],
-  ['primary', 'bg-primary'],
-  ['accent', 'bg-accent'],
+  ['primary', 'bg-primary text-primary-fg'],
+  ['accent', 'bg-accent text-accent-fg'],
   ['coin', 'bg-coin'],
 ] as const;
 
@@ -32,7 +32,7 @@ export const Colours: Story = {
         {SURFACES.map(([name, cls]) => (
           <div
             key={name}
-            className={`${cls} rounded-md border border-border p-4 text-sm font-semibold text-fg`}
+            className={`${cls} rounded-md border border-border p-4 text-sm font-semibold ${cls.includes('text-') ? '' : 'text-fg'}`}
           >
             {name}
           </div>

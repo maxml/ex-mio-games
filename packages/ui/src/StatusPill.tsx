@@ -48,6 +48,7 @@ export function Badge({ tone = 'neutral', icon = false, children, className }: B
 export type Status =
   | 'pending'
   | 'issuing'
+  | 'needs_review'
   | 'issued'
   | 'failed'
   | 'refunded'
@@ -69,6 +70,7 @@ export type Status =
 const STATUS: Record<Status, { tone: Tone; label: string }> = {
   pending: { tone: 'warning', label: 'Pending' },
   issuing: { tone: 'info', label: 'Issuing' },
+  needs_review: { tone: 'warning', label: 'Needs review' },
   issued: { tone: 'success', label: 'Issued' },
   failed: { tone: 'danger', label: 'Failed' },
   refunded: { tone: 'neutral', label: 'Refunded' },

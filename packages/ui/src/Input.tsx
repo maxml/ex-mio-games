@@ -60,9 +60,12 @@ export function Field({
   label,
   hint,
   error,
+  hideLabel,
   children,
 }: {
   label: string;
+  /** Visually hide the label (it stays for screen readers), for a field inside a table cell. */
+  hideLabel?: boolean;
   hint?: string;
   error?: string;
   children: (props: { id: string; invalid: boolean; describedBy?: string }) => ReactNode;
@@ -72,7 +75,10 @@ export function Field({
   const text = error ?? hint;
   return (
     <div>
-      <label htmlFor={id} className="mb-1 block text-sm font-semibold">
+      <label
+        htmlFor={id}
+        className={cn('mb-1 block text-sm font-semibold', hideLabel && 'sr-only')}
+      >
         {label}
       </label>
       {children({ id, invalid: Boolean(error), describedBy: text ? msgId : undefined })}
