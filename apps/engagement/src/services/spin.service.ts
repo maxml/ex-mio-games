@@ -14,7 +14,7 @@ import {
   type SpinConflictBody,
   type SpinResponse,
 } from '@ex-mio/contracts';
-import { Db, tryCurrentAuth } from '@ex-mio/service-kit';
+import { currentAuth, Db } from '@ex-mio/service-kit';
 import { currentTenant } from '@ex-mio/tenancy';
 import {
   SEEDS,
@@ -178,7 +178,8 @@ export class SpinService {
   async availableSpins(): Promise<MySpinsResponse> {
     const { userId } = this.caller();
     // Credits are per environment (D-13): the verified token's `sbx` claim picks which are counted.
-    const sandbox = tryCurrentAuth()?.sandbox === true;
+    // `currentAuth()` throws without an auth context: fail closed, never default to production.
+    const sandbox = currentAuth().sandbox === true;
     const available = await this.db.tenantTx((tx) =>
       this.credits.countAvailable(tx, { userId, sandbox }),
     );
