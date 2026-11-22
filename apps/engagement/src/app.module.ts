@@ -32,6 +32,10 @@ import {
 import { ModelModule } from './model/model.module';
 import { SEEDS } from './model/repositories';
 import { createSeedProvider, envSeedStore } from './model/seeds';
+import { RealtimeGateway } from './realtime/realtime.gateway';
+import { RealtimeModule } from './realtime/realtime.module';
+import { REALTIME_BINDINGS } from './realtime/realtime.events';
+import { IdentityTicketRedeemer } from './realtime/ticket-redeemer';
 import { StoreModule } from './redemptions/store.module';
 import { IngestionService } from './services/ingestion.service';
 import { ProjectionsService } from './services/projections.service';
@@ -49,24 +53,6 @@ class ProjectionsModule {}
 class EngagementModule {}
 
 export function createAppModule(config: Config): DynamicModule {
-  const bus = BusModule.register({
-    service: 'engagement',
-    url: config.AMQP_URL,
-    bindings: ['identity.tenant.created', 'engagement.deposit.confirmed'],
-    publishes: true,
-    imports: [ProjectionsModule], // the handler needs ProjectionsService and SpinCreditsService
-    handler: {
-      inject: [ProjectionsService, SpinCreditsService],
-      useFactory:
-        (projections: ProjectionsService, credits: SpinCreditsService) => async (tx, event) => {
-          if (event.type === 'engagement.deposit.confirmed') {
-            await credits.onDepositConfirmed(tx, event);
-            return;
-          }
-          await projections.onTenantCreated(tx, event);
-        },
-    },
-  });
   // Identity is the source of the player mapping and of the tenants' casino credentials (X-1, X-7,
   // X-8); this service calls it with a client-credentials service token (D-4, D-14).
   const tokens = new ServiceTokenSource({
@@ -75,6 +61,41 @@ export function createAppModule(config: Config): DynamicModule {
     clientSecret: config.SERVICE_CLIENT_SECRET,
   });
   const identity = new IdentityHttpClient(config.IDENTITY_URL, tokens);
+  // D-25: the realtime gateway. It redeems one-time tickets through identity and pushes the events below.
+  const realtime = RealtimeModule.register({
+    redeemer: new IdentityTicketRedeemer(config.IDENTITY_URL, tokens),
+    allowedOrigins: config.REALTIME_ALLOWED_ORIGINS,
+  });
+  const bus = BusModule.register({
+    service: 'engagement',
+    url: config.AMQP_URL,
+    bindings: [
+      'identity.tenant.created',
+      'engagement.deposit.confirmed',
+      ...REALTIME_BINDINGS, // pushed to the player's room by the gateway
+    ],
+    publishes: true,
+    // the handler needs ProjectionsService, SpinCreditsService and the gateway
+    imports: [ProjectionsModule, realtime],
+    handler: {
+      inject: [ProjectionsService, SpinCreditsService, RealtimeGateway],
+      useFactory:
+        (projections: ProjectionsService, credits: SpinCreditsService, gateway: RealtimeGateway) =>
+        async (tx, event) => {
+          if (event.type === 'engagement.deposit.confirmed') {
+            await credits.onDepositConfirmed(tx, event);
+            return;
+          }
+          if (event.type === 'identity.tenant.created') {
+            await projections.onTenantCreated(tx, event);
+            return;
+          }
+          // Spin result, balance change, redemption status: queued, and pushed only after this
+          // transaction commits (at most once, best effort).
+          gateway.queue(tx, event);
+        },
+    },
+  });
   const casinoPlayers = createCasinoPlayerPort({ identity });
   // The static `INGEST_STATIC_TENANTS` stand-in is for development only (config refuses it in production).
   const integrations: TenantIntegrationPort = config.INGEST_STATIC_TENANTS
@@ -97,6 +118,7 @@ export function createAppModule(config: Config): DynamicModule {
       ServiceAuthModule.forService({ audience: 'engagement', identityUrl: config.IDENTITY_URL }),
       ModelModule,
       ProjectionsModule,
+      realtime,
       StoreModule.register({
         paymentsUrl: config.PAYMENTS_URL,
         paymentsToken: () => tokens.tokenFor('payments'),

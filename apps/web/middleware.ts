@@ -14,5 +14,6 @@ export const config = {
   // locale redirect — and files with an extension (static assets). The web app
   // has no `/api` routes (the API is a separate Nest app), so this stays close to
   // the recommended next-intl matcher.
-  matcher: ['/((?!api|_next|_vercel|health|config|.*\\..*).*)'],
+  // `socket.io` is the realtime proxy to engagement (next.config.mjs rewrites): never locale-redirect it.
+  matcher: ['/((?!api|_next|_vercel|health|config|socket\\.io|.*\\..*).*)'],
 };

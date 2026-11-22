@@ -62,7 +62,7 @@ describe('WSProvider', () => {
       // provider connects rather than degrading to "realtime off".
       expect(mockedIo).toHaveBeenCalledTimes(1);
       const [url] = mockedIo.mock.calls[0] as [string, Record<string, unknown>];
-      expect(url).toBe(`ws://${window.location.host}/notifications`);
+      expect(url).toBe(`ws://${window.location.host}/rt`);
       expect(fake.connect).toHaveBeenCalledTimes(1);
       expect(useConnectionStore.getState().status).toBe('connecting');
     } finally {

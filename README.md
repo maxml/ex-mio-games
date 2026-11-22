@@ -18,6 +18,17 @@ pnpm test:compose                # health, database roles, tenant isolation, ide
 docker compose down -v           # stop and delete the data
 ```
 
+### Realtime (websocket)
+
+Engagement hosts the Socket.IO gateway (namespace `/rt`). The browser never talks to it directly: the web
+app proxies `/socket.io/*` to engagement (a Next rewrite in `apps/web/next.config.mjs`), so the socket opens
+on the web origin, for example `ws://localhost:3000/socket.io/?EIO=4&transport=websocket` with the `/rt`
+namespace. The proxy target is read at build time from `REALTIME_UPSTREAM` and defaults to
+`http://engagement:4002`, which is right for `docker compose`. For `next dev` outside compose, run
+`REALTIME_UPSTREAM=http://localhost:4002 pnpm --filter @ex-mio/web dev`. The socket authenticates with a
+one-time ticket from `GET /api/realtime/ticket`. To let a browser on another origin connect straight to
+engagement instead, set `REALTIME_ALLOWED_ORIGINS` (comma separated) on the engagement service.
+
 ## What runs
 
 | Container       | Host port          | Purpose                                                 |

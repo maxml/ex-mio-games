@@ -4,7 +4,7 @@ import {
   PingInput,
   PongAck,
   REALTIME_EVENTS,
-  REALTIME_NAMESPACE,
+  MIO_REALTIME_NAMESPACE,
   SubscribeAck,
   SubscribeInput,
 } from '@ex-mio/contracts';
@@ -90,7 +90,7 @@ function resolveUrl(explicit?: string): string {
       'Cannot resolve a realtime socket origin (no window and no configured API URL).',
     );
   }
-  return `${base.replace(/\/+$/, '')}/${REALTIME_NAMESPACE}`;
+  return `${base.replace(/\/+$/, '')}/${MIO_REALTIME_NAMESPACE}`;
 }
 
 /**

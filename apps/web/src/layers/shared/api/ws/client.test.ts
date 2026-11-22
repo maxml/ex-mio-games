@@ -37,7 +37,7 @@ describe('getWsClient', () => {
     const [url, opts] = mockedIo.mock.calls[0] as [string, Record<string, unknown>];
     // The vitest env sets NEXT_PUBLIC_API_URL=http://localhost:4000; the WS origin
     // is derived from it with the scheme swapped http -> ws.
-    expect(url).toBe('ws://localhost:4000/notifications');
+    expect(url).toBe('ws://localhost:4000/rt');
     expect(opts).toMatchObject({
       transports: ['websocket'],
       autoConnect: false,
@@ -65,7 +65,7 @@ describe('getWsClient', () => {
       const [url] = mockedIo.mock.calls[0] as [string, Record<string, unknown>];
       // No baked domain: the origin is derived from the current page
       // (`ws://` on an http page) plus the notifications namespace.
-      expect(url).toBe(`ws://${window.location.host}/notifications`);
+      expect(url).toBe(`ws://${window.location.host}/rt`);
     } finally {
       if (previous !== undefined) process.env.NEXT_PUBLIC_API_URL = previous;
     }
