@@ -6,6 +6,24 @@ working vertical slice of it, built for the MIO Games test task. [CI](https://gi
 runs format, lint, typecheck and unit tests on every push, then starts the compose stack and runs the compose
 suites, the database suites and the demo against it.
 
+## What was done
+
+- A running prototype: 5 services (identity, engagement, payments, web, casino-sim) in 9 containers, 2 simulated
+  casino integrations with different APIs, an operator console and a player widget.
+- Proof: a demo of 40 steps and 194 assertions, and 250 compose tests, with the output in [`evidence/`](evidence/README.md).
+- Design: 14 ADRs and 5 architecture diagrams in [`docs/adrs/`](docs/adrs/) and [`docs/architecture/`](docs/architecture/README.md).
+- Process: AI agents in separate roles, with reviews of up to three rounds per area. See [How AI was used](#how-ai-was-used).
+- Planning: the whole product is split into a backlog of **166 tasks in 18 epics**, each with acceptance criteria
+  and an hour estimate: 2,299 hours, or 2,828 hours with a 20% buffer. Start at
+  [`backlog/README.md`](backlog/README.md).
+
+Why these tasks, in this order: the first goal is a sellable slice (priority P0): an operator signs up, connects a
+casino, and a deposit turns into a spin, coins and an issued reward. Anything that protects money or tenant data
+comes before features. Each task carries a risk class (guard, identity, admission, budget, locks, concurrency,
+ownership, isolation), and a task with a class goes through a spec and failing tests before code. This
+prototype implements the slice and the reliability cases of Part C. Billing beyond the fake provider, rate limits,
+the production deploy and the later products (PvP, Missions, Kingdom Builder) are planned in the backlog and not built.
+
 ## Where things are
 
 The seven deliverables of the task, in the order the task lists them:
