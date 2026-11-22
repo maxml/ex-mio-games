@@ -24,6 +24,21 @@ ownership, isolation), and a task with a class goes through a spec and failing t
 prototype implements the slice and the reliability cases of Part C. Billing beyond the fake provider, rate limits,
 the production deploy and the later products (PvP, Missions, Kingdom Builder) are planned in the backlog and not built.
 
+## How we prioritised
+
+The assignment had a limit of 8 hours. This repository chose a product start instead: a small but real
+slice that a casino operator could try, with the planning for the rest written down. The order was:
+
+1. The money path: deposit, spin, coins, store, issued reward, and the plan payment.
+2. The protections around it: signatures, deduplication, one winner for concurrent spins, idempotent
+   redemption, no negative balance, tenant isolation.
+3. The evidence: the demo, the compose suites, the captured outputs and the CI run.
+
+Deferred, with reasons: rate limits, load tests, the production deploy, Stripe and the later products. Each deferred
+item is a task in [`backlog/`](backlog/README.md), and the follow-ups from the review rounds are listed in
+[`docs/submission/known-gaps.md`](docs/submission/known-gaps.md). The decision to build inside the product with a
+two-day deadline is recorded in [`docs/ai/decisions.md`](docs/ai/decisions.md).
+
 The principles behind the design, each linked to where the repo does it:
 
 - Money first: the backlog priorities follow profit impact, and P0 is the first sellable slice ([backlog](backlog/README.md)).
