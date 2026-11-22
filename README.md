@@ -1,15 +1,104 @@
 # MIO Games (ex-mio-games)
 
-A working vertical slice of a multi-tenant engagement platform for online casinos. A casino sends a signed
-deposit event, the player earns a Wheel of Fortune spin, spins it for a server-decided coin reward, and redeems
-coins for a Bonus Store reward that MIO Games asks the casino to issue. Two simulated casinos with different
-event and reward APIs run through the same internal logic. Operators run it from a console.
+MIO Games is a platform that online casinos plug into to give their players a game layer: a Wheel of Fortune
+earned by depositing, virtual coins, and a Bonus Store where coins buy real rewards. This repository is a
+working vertical slice of it, built for the MIO Games test task. [CI](https://github.com/maxml/ex-mio-games/actions/workflows/ci.yml)
+runs format, lint, typecheck and unit tests on every push, then starts the compose stack and runs the compose
+suites, the database suites and the demo against it.
 
-The repository is a monorepo of small services, built from the monorepo starter and extended with tenancy, an
-event bus and idempotent money handling. For the product and the decisions behind it start at
-[`AGENTS.md`](AGENTS.md) and [`docs/README.md`](docs/README.md). Status words used everywhere: **Built**,
-**Partial** (the core exists, the named part does not) and **Next** (decided, not built).
-Decisions cited as D-<n> in tests and comments are resolved in docs/decision-log.md.
+## Where things are
+
+The seven deliverables of the task, in the order the task lists them:
+
+1. Working code: `apps/` (identity, engagement, payments, web, casino-sim), `packages/` (contracts, tenancy, bus,
+   idempotency, service-kit, ui), `tests/compose/`, `docker-compose.yml`. The service map is [below](#service-map-ports-and-environment).
+2. README with setup and assumptions: [Run it from a clean clone](#run-it-from-a-clean-clone), [Assumptions](#assumptions),
+   and `scripts/setup.sh`, which checks the tools the demo needs.
+3. Architecture diagrams: [`docs/architecture/`](docs/architecture/README.md) and the
+   [overview](docs/architecture/overview.md); the decisions are in [`docs/adrs/`](docs/adrs/).
+4. Automated tests: [Tests](#tests) for the commands, [`evidence/`](evidence/README.md) for the captured runs and
+   [CI](https://github.com/maxml/ex-mio-games/actions/workflows/ci.yml) for the green build.
+5. Sample requests and responses: [`docs/samples/`](docs/samples/README.md).
+6. AI evidence log: [`docs/ai/`](docs/ai/README.md) and the agent instructions in [`prompts/`](prompts/).
+7. First 90-day plan: [`docs/scaling/90-days.md`](docs/scaling/90-days.md).
+
+By part of the task:
+
+- Part A, architecture: [`docs/architecture/overview.md`](docs/architecture/overview.md) and [`docs/adrs/`](docs/adrs/).
+- Part B, working prototype: this README, the 8-step flow in [Try the 8-step workflow](#try-the-8-step-workflow) and `scripts/demo.sh`.
+- Part C, reliability and security: [`docs/submission/part-c.md`](docs/submission/part-c.md).
+- Part D, AI-native development: [`docs/ai/`](docs/ai/README.md).
+- Part E, scaling the product: [`docs/scaling/`](docs/scaling/README.md).
+
+## What was built
+
+One complete flow runs end to end against two simulated casinos that have different event formats, signature
+schemes and reward APIs:
+
+1. A casino sends a signed deposit event. MIO checks the signature, validates it and drops duplicates.
+2. The player gets one spin. The server picks the result from the operator's weighted reward table and the
+   coins go into a double-entry ledger.
+3. The player spends coins in the Bonus Store. MIO asks the casino, through that casino's adapter, to issue the
+   reward, and tracks the order until the casino reports a final status.
+4. The operator configures rules, wheel, store and casino credentials in a console. The player sees the wheel
+   and the store in a widget. Both run live against the services.
+
+Both casinos go through the same rules, wheel, ledger and store code. Only the adapter differs.
+
+## What it guarantees
+
+- No double rewards. A repeated deposit, a repeated redemption and parallel spins each produce one result.
+- No negative coin balance, including when two redemptions race for the same coins.
+- Tenant isolation. Each casino sees only its own data, enforced in the database with row-level security as
+  well as in the services.
+- Sandbox and production are separate environments. Spin credits, event deduplication and tokens are kept per
+  environment, so a sandbox token cannot use a production credit.
+- The wheel is decided on the server and is deterministic for a given seed. The client cannot send weights or
+  a result, and the public wheel view hides the weights.
+
+## How it was proven
+
+`scripts/demo.sh` runs the whole flow and every reliability case against the running stack. Its last recorded
+run printed `DONE: 40 steps, 194 assertions passed, 0 recorded failure(s)`. The compose suites run against real
+Postgres and RabbitMQ: 250 of 250 passed, and the payments and engagement database suites passed 181 of 181 and
+50 of 50. The captured outputs are in [`evidence/`](evidence/README.md), and CI is green on `main`.
+
+## Architecture in short
+
+Five services (identity, engagement, payments, a web app and a casino simulator) run next to RabbitMQ, Postgres
+and Redis in one Docker Compose file. Payments is the only writer of coins, identity signs tokens, and engagement
+holds the rules, wheel, store and the casino adapters. Services exchange events through RabbitMQ with an outbox and an inbox, and each
+service has its own database. See [`docs/architecture/overview.md`](docs/architecture/overview.md) for the
+diagrams and the reasons, and [`docs/how-to/where-to-change.md`](docs/how-to/where-to-change.md) for where to add
+a third casino or a reward type.
+
+## What you can try in 5 minutes
+
+```sh
+git clone https://github.com/maxml/ex-mio-games && cd ex-mio-games
+scripts/setup.sh                              # checks docker, compose v2, bash 4+, curl, jq, openssl; offers to install gaps
+docker compose up -d --wait && scripts/demo.sh
+```
+
+The first build takes a few minutes. Then open `http://localhost:3000/en/operator` for the operator console. No
+account is needed. `scripts/setup.sh --check` only reports, and `--yes` answers every install question
+with yes. Details are in [Run it from a clean clone](#run-it-from-a-clean-clone).
+
+## How AI was used
+
+The code, tests and docs were written by AI coding agents (Claude Code) in separate roles: a spec author, a test
+author who freezes the tests, a coder who may not change them, and a reviewer who tries to break the result and
+re-applies a mutation for each claimed fix. A person set the scope and made the decisions listed in
+[`docs/ai/`](docs/ai/README.md), and checked the output against the demo, the tests and the evidence. The agent
+instructions are in [`prompts/`](prompts/).
+
+## Reading guide
+
+For the product and the decisions behind it start at [`AGENTS.md`](AGENTS.md) and [`docs/README.md`](docs/README.md).
+The repository is a monorepo built from a monorepo starter and extended with tenancy, an event bus and idempotent
+money handling. Status words used everywhere: **Built**, **Partial** (the core exists, the named part does not)
+and **Next** (decided, not built). Decisions cited as D-<n> in tests and comments are resolved in
+docs/decision-log.md. Known gaps are listed near the end, in [Known gaps and what comes next](#known-gaps-and-what-comes-next).
 
 ## Screens
 
@@ -19,7 +108,7 @@ real casino.
 
 ## Run it from a clean clone
 
-You need Docker with compose v2. No account of any kind is needed: identity runs on the Firebase Auth Emulator,
+You need Docker with compose v2 (`scripts/setup.sh` checks this and the demo tools). No account of any kind is needed: identity runs on the Firebase Auth Emulator,
 the casinos are simulated, billing uses a fake payment provider. The first build downloads base images and
 packages, so it needs network access once.
 
@@ -56,7 +145,7 @@ Try it:
    Open it within 2 minutes: spin, open the Bonus Store, redeem, and watch the status go Pending, then Issued.
 3. A few calls have no service endpoint and stay answered by the in-memory mock for that call only: the sandbox
    check, go-live and the first live deposit, the coin history, the cross-tenant admin tables, the per-day usage
-   chart. They are listed, with what is missing, in [`docs/submission/known-gaps.md`](docs/submission/known-gaps.md).
+   chart. They are listed, with what is missing, in [Known gaps and what comes next](#known-gaps-and-what-comes-next).
 
 Captured on a clean machine state (project name `demo`, images built beforehand). The image builds took
 about 4 to 5 minutes per group of services here, and are mostly the one `pnpm install`; `up --wait` itself took 1 minute:
@@ -614,9 +703,6 @@ Upgrading: changes that need an action when you upgrade from an earlier tree (de
   (only `web` public, no Redis, per-service secret mapping, project-built Postgres image, backup script) is described
   in `docs/deploy.md`.
 
-The full list, with the web calls that no service answers yet, is in
-[`docs/submission/known-gaps.md`](docs/submission/known-gaps.md).
-
 ## Operations
 
 Each service has two database roles: `<service>_owner` (owns the schema, used by `migrate.js` only) and
@@ -635,6 +721,22 @@ reconciles every tenant's ledger and reports usage on an interval; `pnpm --filte
 5. Service routes for the sandbox check, go-live and reading the published rules and wheel back, so the console stops answering them from its mock.
 6. Per-service deployment secrets and the blue-green rollout through Deckhand; observability through Varta.
 7. Move integrations into their own service when a second operator team needs independent releases.
+
+## Known gaps and what comes next
+
+The slice is complete for the task flow. These are the gaps that matter most:
+
+- Some console screens still answer from a mock in live mode: the sandbox check, go-live, coin history and the
+  cross-tenant admin tables have no service route yet.
+- There is no rate limiting, and performance is not measured: no load test, no latency figures, no SLOs.
+- Realtime events are delivered at most once. A client that was offline resyncs over REST.
+- Stripe is an interface only, the production identity provider is not chosen, and the Deckhand deploy and Varta
+  wiring are described but were not run here.
+- A few guards have no test that fails when the wiring is cut, and log redaction has known holes.
+
+The full list is [`docs/submission/known-gaps.md`](docs/submission/known-gaps.md), with a summary table at its top.
+The follow-up tasks (MIO-193 to MIO-216) are in [`backlog/`](backlog/README.md). The ordered next steps are above
+under "Next steps".
 
 ## How this was built
 

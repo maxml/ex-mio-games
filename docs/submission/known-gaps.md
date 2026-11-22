@@ -1,5 +1,25 @@
 # Known gaps
 
+In plain words: the task flow works end to end and is tested. What is left is around the edges. A few console
+screens still answer from a mock, the system has no rate limits or load figures yet, and the deploy and
+analytics wiring is described but was not run here. Nothing below breaks the deposit, spin, redeem and issue
+flow. The table shows the biggest groups with their impact and the task that closes each. The detailed rows
+follow it, unchanged.
+
+| Gap                                                           | Impact                                                                  | Planned task              |
+| ------------------------------------------------------------- | ----------------------------------------------------------------------- | ------------------------- |
+| Console screens answered by a mock in live mode (G-1 to G-16) | The operator sees sample data for the sandbox check, go-live, history   | MIO-202, MIO-203          |
+| No rate limiting (S-5)                                        | A noisy client is not throttled                                         | MIO-152                   |
+| Performance not measured, no SLOs (S-15)                      | No latency or capacity figures to quote                                 | MIO-193 to MIO-197        |
+| Realtime has no missed-event replay (S-1)                     | A client that was offline resyncs over REST                             | Next steps in the README  |
+| Stripe, production identity provider, deploy, Varta           | Described and designed, not run here                                    | S-2 to S-4 below          |
+| Guards without a cut-the-wiring test (S-16, S-22)             | A regression in environment defaults or default seeding could go unseen | MIO-198, MIO-208, MIO-209 |
+| Log redaction holes, missing auth-refusal logs (S-17, S-23)   | Some personal data could reach logs; refusals leave no trace            | MIO-201, MIO-210          |
+| Fail-open migration and deploy defaults (S-24, S-25)          | A misconfigured environment is not refused                              | MIO-211, MIO-212, MIO-214 |
+| Outbox rows with no queue, unreproduced failures (S-26, S-20) | Rows can sit unpublished; two rare failures are not explained           | MIO-216, MIO-205          |
+| CI not proven on the default stack slot (S-19)                | The slot scripts are checked only on other slots                        | MIO-204                   |
+| Spin key upgrade and seed secrecy (S-21)                      | Replay of an old-format spin key, provable fairness                     | MIO-206, MIO-207          |
+
 Two kinds of gap are listed. Part 1 is web calls that no service answers yet. Part 2 is system-level gaps
 that no single call shows. Status words: **open** (not built), **closed** (built and checked against the
 code), **partial** (the core exists, the stated part does not).
