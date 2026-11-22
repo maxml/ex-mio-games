@@ -31,6 +31,7 @@ rewards that the casino issues. Reward status is tracked and exposed through an 
 | MIO-206 | Replay of a spin stored under the old raw key after the key format change            | P2       |
 | MIO-207 | Spin seed secrecy proof and a published commitment for provably fair spins           | P2       |
 | MIO-208 | Test that tenant creation seeds the default rule and wheel through the real event    | P1       |
+| MIO-216 | Outbox events with no bound queue are retried forever                                | P1       |
 
 ## Covers
 

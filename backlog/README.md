@@ -103,7 +103,7 @@ Planning conversion used in `docs/scaling/README.md` (Part E): 6 productive hour
 | EPIC-04 Tenancy                                | 5       | 88         | 107                   |
 | EPIC-05 Identity                               | 8       | 160        | 195                   |
 | EPIC-06 Casino integrations                    | 10      | 139        | 170                   |
-| EPIC-07 Engagement                             | 14      | 202        | 248                   |
+| EPIC-07 Engagement                             | 15      | 212        | 260                   |
 | EPIC-08 Coin ledger                            | 8       | 121        | 148                   |
 | EPIC-09 Monetization                           | 10      | 180        | 219                   |
 | EPIC-10 Product analytics                      | 11      | 100        | 125                   |
@@ -116,13 +116,13 @@ Planning conversion used in `docs/scaling/README.md` (Part E): 6 productive hour
 | EPIC-17 Submission documents                   | 13      | 91         | 116                   |
 | EPIC-18 Performance, capacity and load testing | 5       | 80         | 99                    |
 | P0 (the first sellable slice)                  | 49      | 988        | 1,200                 |
-| P1                                             | 82      | 1,000      | 1,237                 |
+| P1                                             | 83      | 1,010      | 1,249                 |
 | P2                                             | 28      | 231        | 292                   |
 | P3                                             | 6       | 70         | 87                    |
-| **Grand total**                                | **165** | **2,289**  | **2,816**             |
+| **Grand total**                                | **166** | **2,299**  | **2,828**             |
 
 The P0 row is the first sellable slice: MIO-005, MIO-121 and everything they depend on. With the buffer it
-is 1,200 hours, 200 person-days, 9.5 person-months. P0 and P1 together are 2,437 hours.
+is 1,200 hours, 200 person-days, 9.5 person-months. P0 and P1 together are 2,449 hours.
 
 Reproduce every figure above with this read-only command, run from the repository root (the epic and
 priority rows come from the same pass; P0 is the `P0` row):
@@ -132,7 +132,7 @@ awk 'FNR==1{fm=0} /^---$/{fm++; if(fm==2){N[e]++;B[e]+=b;H[e]+=h;PN[p]++;PB[p]+=
 ```
 
 Each output row is `kind name tasks base_hours buffered_hours`. A second read-only check confirms the buffer
-rule on every task (it prints nothing when all 165 tasks agree):
+rule on every task (it prints nothing when all 166 tasks agree):
 
 ```sh
 awk '/^estimate_hours_base:/{b=$2} /^estimate_hours:/{if($2!=int((b*12+9)/10))print FILENAME}' backlog/tasks/*.md
@@ -227,7 +227,7 @@ idempotency_key_reused` for the same key with a different request; the stored re
 | [EPIC-04](epics/EPIC-04-tenancy.md)                    | Tenancy                                                                     | P0       | 5       | 3      | 2      | 0      | 0     |
 | [EPIC-05](epics/EPIC-05-identity.md)                   | Identity                                                                    | P0       | 8       | 6      | 0      | 2      | 0     |
 | [EPIC-06](epics/EPIC-06-integrations.md)               | Casino integrations module and event ingestion                              | P0       | 10      | 6      | 3      | 1      | 0     |
-| [EPIC-07](epics/EPIC-07-engagement.md)                 | Engagement: rules, wheel, bonus store, redemption                           | P0       | 14      | 8      | 4      | 2      | 0     |
+| [EPIC-07](epics/EPIC-07-engagement.md)                 | Engagement: rules, wheel, bonus store, redemption                           | P0       | 15      | 8      | 5      | 2      | 0     |
 | [EPIC-08](epics/EPIC-08-ledger-payments.md)            | Coin ledger in the payments service                                         | P0       | 8       | 5      | 3      | 0      | 0     |
 | [EPIC-09](epics/EPIC-09-monetization.md)               | Monetization: operator billing, plans, metering, entitlements               | P0       | 10      | 5      | 5      | 0      | 0     |
 | [EPIC-10](epics/EPIC-10-analytics.md)                  | Product analytics through Varta                                             | P0       | 11      | 4      | 4      | 2      | 1     |
@@ -239,7 +239,7 @@ idempotency_key_reused` for the same key with a different request; the stored re
 | [EPIC-16](epics/EPIC-16-ai-native-development.md)      | AI-native development and AI-readiness (Part D)                             | P1       | 10      | 0      | 4      | 1      | 5     |
 | [EPIC-17](epics/EPIC-17-submission-docs.md)            | Submission documents, scaling plan, publication gate (Deliverables, Part E) | P1       | 13      | 0      | 11     | 2      | 0     |
 | [EPIC-18](epics/EPIC-18-performance-capacity.md)       | Performance, capacity and load testing                                      | P1       | 5       | 0      | 4      | 1      | 0     |
-| **Total**                                              |                                                                             |          | **165** | **49** | **82** | **28** | **6** |
+| **Total**                                              |                                                                             |          | **166** | **49** | **83** | **28** | **6** |
 
 ## Waiting on someone
 

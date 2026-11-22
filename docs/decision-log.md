@@ -301,10 +301,15 @@ and the roles and RLS scan covers it. (4) Default, which the owner may override:
 an operator are refused on every integration or configuration write (`PUT reward-api`, `PUT wheel`,
 `PUT rules`), audited as `refused`, in identity and in engagement.
 Reason: the first fix round moved defects instead of closing them (D-17, D-26).
-Enforced in: the fix-round commits that implement points 1 to 4. This documentation tree was merged
-from `dd9d464`, which does not contain them yet; the acting-staff refusal on the engagement writes is
-already pinned by `apps/engagement/src/controllers/operator-config.controller.test.ts`.
-TODO-RUN: the coordinator replaces this line with the enforcing tests once the final tree is fixed.
+Enforced in: (1) `packages/service-kit/src/review-migrations-immutable.test.ts` and
+`packages/service-kit/src/review-fr2-migrate.test.ts`; (2) `apps/identity/src/review-r2-reward-api.test.ts`;
+(3) `packages/service-kit/src/review-fr2-audit-intents-rls.test.ts` and
+`tests/compose/src/review-fr2-audit-intents-default-deny.compose.test.ts`, plus the roles and RLS scan;
+(4) `apps/engagement/src/controllers/review-r2-acting-config.test.ts`,
+`apps/engagement/src/controllers/review-fr2-acting-store.test.ts` and
+`apps/identity/src/review-fr2-acting-integration.test.ts`. The compose, `test:db` and `test:pg` suites
+passed on this code on 2026-11-22 (`int/fix-round` at `f3ef110`: 247 of 247, 181 of 181, 50 of 50; see S-12 in
+`docs/submission/known-gaps.md`).
 
 ## Process and analytics
 

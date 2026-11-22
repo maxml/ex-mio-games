@@ -458,13 +458,14 @@ The one failure is a web timing test that ran on a machine at load average 30:
 succeeds" did not find the text `Result unknown` within its wait. It was not re-run in isolation, so it is not
 yet shown to be a flake.
 
-The end-to-end run is recorded above: `scripts/demo.sh` on `dd9d464` passed 40 steps and 194 assertions, with
-Part C cases C-1 to C-8 against the live stack. The Part C compose tests behind those cases are in
-`tests/compose/src/partc-issuance.compose.test.ts`. No output of `pnpm --filter @ex-mio/payments test:db`,
-`pnpm --filter @ex-mio/engagement test:pg` or `pnpm test:compose` is committed, and no CI run exists (the
+The integration suites were run on the stack on 2026-11-22, on `int/fix-round` at `f3ef110` (run "r2"):
+`pnpm test:compose` 247 of 247 passed (17 suites), `pnpm --filter @ex-mio/payments test:db` 181 of 181 passed
+(8 suites), `pnpm --filter @ex-mio/engagement test:pg` 50 of 50 passed (4 suites), and `scripts/demo.sh` passed
+40 steps and 194 assertions with 0 failures, including Part C cases C-1 to C-8 against the live stack. The Part C
+compose tests behind those cases are in `tests/compose/src/partc-issuance.compose.test.ts`. No CI run exists (the
 repository has no remote). The compose counts quoted in [`docs/ai/`](docs/ai/README.md) (98 then 107 of 111) are
-reviewer-reported on an earlier tree. TODO-RUN: the three suites are re-run on the final tree and their summaries
-recorded here (S-11, S-12 and S-13 in [`docs/submission/known-gaps.md`](docs/submission/known-gaps.md)).
+reviewer-reported on an earlier tree; the run above supersedes them (S-11, S-12 and S-13 in
+[`docs/submission/known-gaps.md`](docs/submission/known-gaps.md)).
 
 Both Postgres suites need a database with the migrations applied, and the compose Postgres alone has none: each
 service container applies its own migrations at start, so bring up the whole stack (`docker compose up -d --wait`,
@@ -541,7 +542,7 @@ Checked against the code. The full table with the reasons is section 14 of
 | Operator signup and plan checkout against the fake provider                                  | Built                                                                                                          |
 | Realtime push over Socket.IO with a one-time ticket                                          | Built, at most once                                                                                            |
 | Web: player widget and operator console                                                      | Built; live against the services by default. Sandbox check, go-live and coin history are mock (see known gaps) |
-| Product events for Varta                                                                     | Built: 12 events on stdout; Varta ingestion is live on pre-prod                                                    |
+| Product events for Varta                                                                     | Built: 12 events on stdout; Varta ingestion is live on pre-prod                                                |
 | Redis balance projection                                                                     | Partial: wired, optional, off in default compose                                                               |
 | Missed-event replay on websocket reconnect                                                   | Next                                                                                                           |
 | Rate limiting                                                                                | Next                                                                                                           |
