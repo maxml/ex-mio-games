@@ -373,7 +373,7 @@ Checked against the code. The full table with the reasons is section 14 of
 | Operator signup and plan checkout against the fake provider                                  | Built                                                                  |
 | Realtime push over Socket.IO with a one-time ticket                                          | Built, at most once                                                    |
 | Web: player widget and operator console                                                      | Built, minimal; rules and wheel publishing are mocked (see known gaps) |
-| Product events for Varta                                                                     | Built: 12 events on stdout; no Varta instance received them            |
+| Product events for Varta                                                                     | Built: 12 events on stdout; Varta ingestion is live on pre-prod        |
 | Redis balance projection                                                                     | Partial: wired, optional, off in default compose                       |
 | Missed-event replay on websocket reconnect                                                   | Next                                                                   |
 | Rate limiting                                                                                | Next                                                                   |

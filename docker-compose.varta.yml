@@ -11,6 +11,10 @@
 x-varta-logging: &varta-logging
   # The collector reads the live and the rotated json-file logs. Any other driver
   # leaves it nothing to tail. Rotation keeps the files bounded.
+  #
+  # Once Varta's label support for json-file logs lands (it closes the first-minute
+  # window in which a new container has no project), add this option under `options`:
+  #   labels: "varta.project,varta.service,deckhand.project,deckhand.service,com.docker.compose.project,com.docker.compose.service"
   driver: json-file
   options:
     max-size: 10m
