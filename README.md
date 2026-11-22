@@ -9,6 +9,12 @@ The repository is a monorepo of small services, built from the monorepo starter 
 event bus and idempotent money handling. For the product and the decisions behind it start at
 [`AGENTS.md`](AGENTS.md) and [`docs/README.md`](docs/README.md). Status words used everywhere: **Built**,
 **Partial** (the core exists, the named part does not) and **Next** (decided, not built).
+Decisions cited as D-<n> in tests and comments are resolved in docs/decision-log.md.
+
+## Screens
+
+Operator console and player widget screenshots are in [`docs/screens/README.md`](docs/screens/README.md). The
+shots are from mock mode, not from a live casino.
 
 ## Run it from a clean clone
 
@@ -17,7 +23,7 @@ the casinos are simulated, billing uses a fake payment provider. The first build
 packages, so it needs network access once.
 
 ```sh
-git clone <repository-url> ex-mio-games
+git clone https://github.com/maxml/ex-mio-games ex-mio-games
 cd ex-mio-games
 docker compose up -d --wait      # builds the images, starts nine containers, returns when all are healthy
 ```
@@ -260,8 +266,10 @@ answer, 503 otherwise).
 
 ### Realtime
 
-Engagement hosts the Socket.IO gateway (namespace `/rt`). The browser never talks to it directly: the web app
-proxies `/socket.io/*` to engagement, so the socket opens on the web origin. The socket authenticates with a
+Engagement hosts the Socket.IO gateway (namespace `/rt`). The browser reads `realtimeUrl` from the web `/config`
+(engagement's public URL, `PUBLIC_REALTIME_URL`) and opens the socket there; engagement allows the web origin
+through `REALTIME_ALLOWED_ORIGINS`. The web app's same-origin `/socket.io/*` rewrite to engagement stays as a
+fallback (decision D-27). The socket authenticates with a
 one-time ticket (`aud=realtime`, at most 60 s) from `GET /api/realtime/ticket`. Delivery is at most once and
 there is no replay of events missed while disconnected: the client resyncs over REST after a reconnect. For
 `next dev` outside compose run `REALTIME_UPSTREAM=http://localhost:4002 pnpm --filter @ex-mio/web dev`.
