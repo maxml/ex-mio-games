@@ -5,6 +5,7 @@ earned by depositing, virtual coins, and a Bonus Store where coins buy real rewa
 working vertical slice of it, built for the MIO Games test task. [CI](https://github.com/maxml/ex-mio-games/actions/workflows/ci.yml)
 runs format, lint, typecheck and unit tests on every push, then starts the compose stack and runs the compose
 suites, the database suites and the demo against it.
+Terms used here are explained in the [glossary](docs/glossary.md).
 
 ## What was done
 
