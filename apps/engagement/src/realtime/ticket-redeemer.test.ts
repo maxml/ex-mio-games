@@ -1,4 +1,5 @@
-import { IdentityTicketRedeemer, REDEEM_ROUTE } from './ticket-redeemer';
+import { INTERNAL_ROUTES } from '@ex-mio/contracts';
+import { IdentityTicketRedeemer } from './ticket-redeemer';
 import type { ServiceTokenSource } from '../integrations/identity-client';
 
 /*
@@ -20,7 +21,7 @@ describe('IdentityTicketRedeemer', () => {
     const r = new IdentityTicketRedeemer('http://identity.test/', tokens, { fetchImpl });
     expect(await r.redeem('tkt')).toEqual({ sub: U, tid: T, roles: ['player'] });
     const [url, init] = (fetchImpl as unknown as jest.Mock).mock.calls[0] as [string, RequestInit];
-    expect(url).toBe(`http://identity.test${REDEEM_ROUTE}`);
+    expect(url).toBe(`http://identity.test${INTERNAL_ROUTES.realtimeTicketRedeem}`);
     expect(init.method).toBe('POST');
     expect(JSON.parse(init.body as string)).toEqual({ ticket: 'tkt' });
     expect((init.headers as Record<string, string>)['authorization']).toBe('Bearer svc-token');

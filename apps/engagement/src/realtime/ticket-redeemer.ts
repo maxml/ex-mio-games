@@ -1,13 +1,12 @@
-import { RealtimeTicketRedeemResponse } from '@ex-mio/contracts';
+import { INTERNAL_ROUTES, RealtimeTicketRedeemResponse } from '@ex-mio/contracts';
 import type { ServiceTokenSource } from '../integrations/identity-client';
 
 /**
  * Identity's internal redeem route (D-23): `POST`, tenant-less (the tenant is the ticket's own
  * `tid`), body `{ ticket }`, service token with `aud=identity`, allow-listed for engagement.
  * 200 answers the principal once; a second redeem of the same ticket is 401 REALTIME_TICKET_REPLAYED.
- * Defined here until the contract constant lands with identity's side (int/all-fix).
+ * The route is the contract constant `INTERNAL_ROUTES.realtimeTicketRedeem`.
  */
-export const REDEEM_ROUTE = '/internal/v1/realtime-tickets/redeem';
 
 export type Principal = RealtimeTicketRedeemResponse;
 
@@ -25,7 +24,7 @@ export class IdentityTicketRedeemer implements TicketRedeemer {
 
   async redeem(ticket: string): Promise<Principal | null> {
     const fetchImpl = this.options.fetchImpl ?? fetch;
-    const res = await fetchImpl(`${this.identityUrl.replace(/\/$/, '')}${REDEEM_ROUTE}`, {
+    const res = await fetchImpl(`${this.identityUrl.replace(/\/$/, '')}${INTERNAL_ROUTES.realtimeTicketRedeem}`, {
       method: 'POST',
       headers: {
         authorization: `Bearer ${await this.tokens.tokenFor('identity')}`,
