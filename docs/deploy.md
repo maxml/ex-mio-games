@@ -74,6 +74,10 @@ stops the deploy.
 `<data-dir>/ex-mio/backups/<snapshot>-<database>.sql`, failing on an error or an empty dump. Install it as
 `<data-dir>/ex-mio/backup.sh` and pass `--backup-cmd "sh <data-dir>/ex-mio/backup.sh"` to the deploy.
 
+A change to a datastore definition (for example the db healthcheck) makes Deckhand run the deploy in a
+maintenance window. That requires a `--pause-writers-cmd` hook that stops the project's writer services
+(identity, engagement, payments) before the db is recreated.
+
 ## Demo against a deployment
 
 `scripts/demo.sh` takes `IDENTITY_URL`, `ENGAGEMENT_URL`, `PAYMENTS_URL`, `CASINO_SIM_URL`, `WEB_URL` and

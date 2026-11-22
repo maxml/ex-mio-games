@@ -16,7 +16,7 @@ The AI-assisted, reviewed process shortens the coding share of each phase. It do
 
 ## Weeks 1 and 2: take the existing slice to production
 
-- Close the follow-ups MIO-198 to MIO-216 and the known gaps in `docs/submission/known-gaps.md`: guards that fail open (migrations, deploy defaults, environment defaults), log redaction and auth-refusal logs, console screens still answered by a mock in live mode, outbox rows with no queue, spin key upgrade and seed secrecy, CI on the default stack slot.
+- Close the follow-ups MIO-198 to MIO-218 and the known gaps in `docs/submission/known-gaps.md`: guards that fail open (migrations, deploy defaults, environment defaults), log redaction and auth-refusal logs, console screens still answered by a mock in live mode, outbox rows with no queue, spin key upgrade and seed secrecy, CI on the default stack slot.
 - Real secrets: one secrets file per service on the server, separate database owner and runtime credentials, production identity provider behind the existing interface.
 - Monitoring and alerts on the SLO table (MIO-193) with a load-test baseline (MIO-194), runbooks for the dead-letter queue, `NEEDS_REVIEW`, casino down and broker down.
 - Backups with a measured restore drill.

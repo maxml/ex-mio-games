@@ -11,6 +11,6 @@ are left out.
 | [varta-stream.png](varta-stream.png)       | Varta's `product_events` stream for the ex-mio project during a demo run: each event with its service, actor type and consent, cleaned at the collector and attributed to its service. |
 | [varta-counts.png](varta-counts.png)       | Product analytics on the same stream: events and distinct actors per event, counted duplicate-proof with `count(DISTINCT …)`.                                                          |
 
-The demo run on pre-prod passed steps 1 to 28 (operator signup, plan payment, credentials, deposits,
-launch, spin, redeem request). The reward issuance step needs one config change for the deployed
-engagement service; it is tracked in the repository's known gaps.
+The full demo passes on the pre-production deployment of release `8533c10`: 40 steps, 194 assertions, 0
+failures, including reward issuance, the async settle, the casino-timeout recovery and the rejected
+issuance. Varta received 57 product events of 10 kinds, all attributed.

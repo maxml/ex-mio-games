@@ -18,7 +18,7 @@ Terms used here are explained in the [glossary](docs/glossary.md).
 - Proof: a demo of 40 steps and 194 assertions, and 250 compose tests, with the output in [`evidence/`](evidence/README.md).
 - Design: 14 ADRs and 5 architecture diagrams in [`docs/adrs/`](docs/adrs/) and [`docs/architecture/`](docs/architecture/README.md).
 - Process: AI agents in separate roles, with reviews of up to three rounds per area. See [How AI was used](#how-ai-was-used).
-- Planning: the whole product is split into a backlog of **166 tasks in 18 epics**, each with acceptance criteria
+- Planning: the whole product is split into a backlog of **168 tasks in 18 epics**, each with acceptance criteria
   and a risk class. The prototype implements the first slice (P0, 49 tasks) and the Part C reliability cases; the
   rest of the tasks are planned, not built. Start at [`backlog/README.md`](backlog/README.md). The effort estimate for a
   human team to take it to production is in [`docs/scaling/`](docs/scaling/README.md).
@@ -890,7 +890,7 @@ The slice is complete for the task flow. These are the gaps that matter most:
 - A few guards have no test that fails when the wiring is cut, and log redaction has known holes.
 
 The full list is [`docs/submission/known-gaps.md`](docs/submission/known-gaps.md), with a summary table at its top.
-The follow-up tasks (MIO-193 to MIO-216) are in [`backlog/`](backlog/README.md). The ordered next steps are above
+The follow-up tasks (MIO-193 to MIO-218) are in [`backlog/`](backlog/README.md). The ordered next steps are above
 under "Next steps".
 
 ## How this was built

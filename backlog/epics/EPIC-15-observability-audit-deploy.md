@@ -25,3 +25,5 @@ inventing anything new.
 | MIO-201 | Structured log and security metric for ordinary authorization refusals                             | P1       |
 | MIO-210 | Redaction refuses or masks IBANs, IPv6 addresses and encoded personal data in logs and event props | P1       |
 | MIO-213 | Audit intent finalize uses an index that leads with the event id                                   | P2       |
+| MIO-217 | Health endpoint reports the build SHA                                                              | P2       |
+| MIO-218 | Daily backup schedule for pre-production and production                                            | P2       |
