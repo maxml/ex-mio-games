@@ -142,7 +142,33 @@ sandbox?, payload }`; `tenant_id` is mandatory; the payload schema is registered
   deploy plane
 - **spec:** `node dist/migrate.js` applies pending migrations and exits 0, or exits 1 on failure with the
   reason on stderr. The runtime image has no pnpm and no TypeORM CLI. The app never migrates on boot.
-- **pinned:** `packages/service-kit/src/postgres.test.ts` (options), compose start (`migrate && start`)
+  It also exits 1 when the image ships NO migrations (a missing `dist/model/migrations`) and when any
+  shipped migration is still pending after the run: the applied set must equal the shipped set, and the
+  shipped set must not be empty. Each service Dockerfile fails the build if `dist/model/migrations/*.js`
+  or `dist/migrate.js` is absent.
+- **deploy:** Deckhand runs `migrations.run` with `/bin/sh -lc` in a runtime container with no checkout, so
+  `.deckhand/deploy.yml` runs `docker run <prefix>/<service>:<tag> node dist/migrate.js` inline per service
+  (identity, engagement, payments), never a repo script.
+- **pinned:** `packages/service-kit/src/postgres.test.ts` (options), `review-final-starter.test.ts`
+  (STARTER-7, STARTER-8a/b/c), compose start (`migrate && start`)
+
+## Realtime reconnect resync
+
+- **provider:** `apps/web` `WSProvider` · **consumers:** every page that shows pushed state
+- **spec:** connection-state recovery is off on the server and there is no `(epoch, id)` replay cursor
+  (D-10), so pushes sent while the socket was down are lost. After a reconnect (every `connect` after the
+  first) the client invalidates and refetches all active queries over REST. The first connect does not.
+- **pinned:** `apps/web/src/layers/app/providers/review-final-resync.test.tsx` (RESYNC-1)
+
+## Log and product-event redaction
+
+- **provider:** `packages/logger` (`redact.ts`), `packages/contracts` (`ProductEventProps`) · **consumers:**
+  every service
+- **spec:** allow-lists. A log key outside the list keeps its name and loses its value (nested leaves are
+  censored as `[redacted]`); strings that pass are scrubbed for bearer tokens, `key: value` secrets, URL
+  query/fragment, JWTs and emails. Product-event prop text must use a closed character set. See
+  `docs/observability/redaction.md` and `docs/analytics.md`.
+- **pinned:** `packages/logger/src/review-final-redaction.test.ts` (REDACT-_, PROPS-_)
 
 ## Identity token and tenant claim
 

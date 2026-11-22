@@ -80,9 +80,16 @@ export function WSProvider({
     const { setStatus, setError, reset } = useConnectionStore.getState();
     const socket = getWsClient({ getToken: () => getTokenRef.current?.() ?? null });
 
+    // Connection-state recovery is off on the server and there is no (epoch, id) replay cursor
+    // (D-10), so every push sent while the socket was down is lost. After a RE-connect the client
+    // resyncs over REST: every active query is invalidated and refetched. The first connect has
+    // nothing to catch up on.
+    let connectedBefore = false;
     const onConnect = () => {
       setStatus('open');
       setError(null);
+      if (connectedBefore) void queryClient.invalidateQueries();
+      connectedBefore = true;
     };
     const onConnectError = (error: Error) => setError(error.message);
     const onReconnectAttempt = () => setStatus('reconnecting');
