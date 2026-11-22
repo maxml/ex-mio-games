@@ -51,7 +51,10 @@ export function App() {
                 key={r.id}
                 href={`#/${r.id}`}
                 aria-current={r.id === current.id ? 'page' : undefined}
-                className={cn('rounded-md px-3 py-2 text-sm font-semibold', r.id === current.id ? 'bg-primary text-primary-fg' : 'text-fg hover:bg-surface-2')}
+                className={cn(
+                  'rounded-md px-3 py-2 text-sm font-semibold',
+                  r.id === current.id ? 'bg-primary text-primary-fg' : 'text-fg hover:bg-surface-2',
+                )}
               >
                 {r.label}
               </a>
@@ -61,7 +64,9 @@ export function App() {
             <span className="text-fg-muted">Tenant theme</span>
             <Select size="sm" value={theme.id} onChange={(e) => setThemeId(e.target.value)}>
               {THEMES.map((t) => (
-                <option key={t.id} value={t.id}>{t.name}</option>
+                <option key={t.id} value={t.id}>
+                  {t.name}
+                </option>
               ))}
             </Select>
           </label>

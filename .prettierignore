@@ -1,0 +1,13 @@
+node_modules
+.agents
+.claude
+.codex
+.vscode
+.next
+dist
+coverage
+pnpm-lock.yaml
+# vendored verbatim from Varta; re-vendor, never reformat
+packages/contracts/schemas/varta-product-event.schema.json
+# byte budgets are checked by ci/check-prompts.sh; reformatting would change them
+prompts

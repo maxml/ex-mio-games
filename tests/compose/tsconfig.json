@@ -1,0 +1,12 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "module": "CommonJS",
+    "moduleResolution": "Node",
+    "target": "ES2022",
+    "noEmit": true,
+    "paths": { "@ex-mio/service-kit/testing": ["../../packages/service-kit/src/testing"] },
+    "types": ["node", "jest"]
+  },
+  "include": ["src/**/*"]
+}

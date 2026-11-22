@@ -1,0 +1,31 @@
+@payments = http://localhost:4003
+
+### Own balance (workflow step 5)
+# {{player_token}} is the launch session token (02); it is valid for payments.
+# Payments consumes engagement.spin.completed and credits coins with the key spin:<spin_id>.
+# The read is eventually consistent for a moment after the spin; the ledger itself is exact.
+GET {{payments}}/v1/me/balance
+Authorization: Bearer {{player_token}}
+
+# Response (captured from scripts/demo.sh, after a 200-coin spin):
+# HTTP/1.1 200 OK
+# {"wallet_id":"01a2012d-4b5f-7089-bb44-30ea714130c2","available":200,"held":0,"currency":"COIN"}
+
+### Operator reads one player's balance (own tenant only, production wallet)
+# The operator token needs the payments audience (login with "audience": "payments", see 01).
+GET {{payments}}/v1/players/{{player_id}}/balance
+Authorization: Bearer {{operator_payments_token}}
+
+# Response (captured from scripts/demo.sh on 2026-11-22, run on dd9d464; after a 500-coin spin and one 50-coin redemption):
+# HTTP/1.1 200 OK
+# {"wallet_id":"01a20399-e459-741c-bc03-7118046b196e","available":450,"held":0,"currency":"COIN"}
+
+### There is no route that credits coins. This must not exist.
+POST {{payments}}/v1/credits
+Authorization: Bearer {{operator_payments_token}}
+Content-Type: application/json
+
+{ "player_id": "{{player_id}}", "amount": 1000 }
+
+# Response (shape from the contract, not captured):
+# HTTP/1.1 404 Not Found

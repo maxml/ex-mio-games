@@ -1,0 +1,118 @@
+name: ci
+
+# Proves that a clean clone works with no accounts and no repository secrets:
+# job "checks" runs lint, typecheck and unit tests; job "stack" brings the whole
+# docker compose stack up and runs the compose tests (and the demo, if present).
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+# Least privilege: nothing here writes to the repository and no secret is used.
+permissions:
+  contents: read
+
+# Every action is pinned to a commit SHA (the tag is in the trailing comment).
+jobs:
+  checks:
+    name: prompts, format, lint, typecheck, unit tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          submodules: false
+
+      # Hermetic, seconds: role prompts and agent wrappers (bash and python3 only).
+      - run: bash ci/check-prompts.sh
+
+      # pnpm comes from corepack, at the version in package.json "packageManager".
+      - run: corepack enable
+
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - run: pnpm format:check
+
+      - run: pnpm nx run-many -t lint --parallel=2
+
+      - run: pnpm nx run-many -t typecheck --parallel=2
+
+      - run: pnpm nx run-many -t test --parallel=2
+
+  stack:
+    name: stack comes up healthy, compose tests pass
+    needs: checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      # The archify submodule is docs-only and large: do not fetch it.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          submodules: false
+
+      - run: corepack enable
+
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      # docker-compose.yml carries a working local default for every variable, so
+      # no .env is needed; copy one only if the repository ships a root example.
+      - name: Local environment file
+        run: if [ -f .env.example ]; then cp .env.example .env; fi
+
+      - name: Start the stack and wait for every container to be healthy
+        run: docker compose up -d --build --wait --wait-timeout 600
+
+      - name: Compose tests (health, roles, tenancy, idempotency, bus)
+        run: pnpm test:compose
+
+      # Money and row-level-security proofs against the compose Postgres. The payments
+      # suites connect as payments_app / payments_owner themselves (defaults in
+      # apps/payments/src/testing/pg.ts, same as docker/postgres/init.sh); the migrations were
+      # applied by the payments container at start.
+      - name: Payments Postgres suites (ledger, RLS)
+        run: pnpm --filter @ex-mio/payments test:db
+        env:
+          POSTGRES_HOST: localhost
+          POSTGRES_PORT: '54329'
+
+      # The store contract the in-memory fake also passes, against the real Postgres store,
+      # as the runtime role engagement_app (not the owner, RLS forced). The app role owns nothing, so it
+      # cannot migrate: the schema is applied by the owner role first (idempotent; the container already
+      # did it at start), then the tests run as the app role.
+      - name: Engagement migrations as the owner role
+        run: >
+          docker compose exec -T
+          -e MIGRATION_DATABASE_URL=postgresql://engagement_owner:engagement-owner-dev@postgres:5432/engagement
+          engagement node dist/migrate.js
+
+      - name: Engagement Postgres store contract (RLS)
+        run: pnpm --filter @ex-mio/engagement test:pg
+        env:
+          DATABASE_URL: postgresql://engagement_app:engagement-app-dev@localhost:54329/engagement
+
+      - name: Demo
+        run: if [ -f scripts/demo.sh ]; then bash scripts/demo.sh; fi
+
+      - name: Container logs on failure
+        if: failure()
+        run: docker compose logs --no-color --tail 300
+
+      - name: Stop and remove the stack
+        if: always()
+        run: docker compose down -v

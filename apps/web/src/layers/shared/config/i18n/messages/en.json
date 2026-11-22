@@ -1,0 +1,15 @@
+{
+  "header": {
+    "brand": "ex-mio-games"
+  },
+  "home": {
+    "title": "ex-mio-games",
+    "subtitle": "Type-safe full-stack monorepo",
+    "apiHealthTitle": "API health",
+    "apiReachable": "Status: {status}",
+    "apiUnreachable": "API unreachable"
+  },
+  "apiHealth": {
+    "liveTitle": "API health (live)"
+  }
+}

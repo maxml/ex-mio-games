@@ -1,5 +1,17 @@
 import { useEffect, useRef, useState } from 'react';
-import { Badge, Button, Card, CoinBalance, StatusPill, StoreItemCard, TabPanel, Tabs, Toast, Wheel, cn } from '../components';
+import {
+  Badge,
+  Button,
+  Card,
+  CoinBalance,
+  StatusPill,
+  StoreItemCard,
+  TabPanel,
+  Tabs,
+  Toast,
+  Wheel,
+  cn,
+} from '../components';
 import type { StoreItem } from '../components';
 import { WHEEL_REWARDS } from '../mock/data';
 import { appStore, requestSpin, simulateDeposit, startRedeem, useApp } from '../state/store';
@@ -21,7 +33,10 @@ export function PlayerScreen() {
       {/* Casino page mock: the widget is embedded in someone else's site. */}
       <div className="border-b border-border bg-surface-2">
         <div className="mx-auto flex max-w-5xl flex-wrap items-center justify-between gap-3 px-4 py-3">
-          <p className="font-display text-lg font-bold">{theme.name} <span className="text-sm font-normal text-fg-muted">(casino page mock)</span></p>
+          <p className="font-display text-lg font-bold">
+            {theme.name}{' '}
+            <span className="text-sm font-normal text-fg-muted">(casino page mock)</span>
+          </p>
           <nav aria-label="Casino mock" className="flex gap-4 text-sm text-fg-muted">
             <span>Slots</span>
             <span>Live</span>
@@ -34,7 +49,12 @@ export function PlayerScreen() {
         </div>
       </div>
       <div className="mx-auto max-w-5xl px-4 py-6">
-        <div className={cn('mx-auto', phone ? 'max-w-[375px] rounded-lg border border-border p-2' : 'max-w-xl')}>
+        <div
+          className={cn(
+            'mx-auto',
+            phone ? 'max-w-[375px] rounded-lg border border-border p-2' : 'max-w-xl',
+          )}
+        >
           <PlayerWidget />
         </div>
       </div>
@@ -102,11 +122,25 @@ function PlayerWidget() {
 
   return (
     <div style={themeStyle(theme)} className="text-fg">
-      <Card aria-label="MIO Games widget" title="Daily Wheel" actions={<CoinBalance coins={balance} />} description={spinsLabel}>
+      <Card
+        aria-label="MIO Games widget"
+        title="Daily Wheel"
+        actions={<CoinBalance coins={balance} />}
+        description={spinsLabel}
+      >
         {/* Always mounted, so the result is announced even when the Wheel tab is not showing. */}
-        <div className="sr-only" role="status" aria-live="polite" data-testid="result-live">{result}</div>
+        <div className="sr-only" role="status" aria-live="polite" data-testid="result-live">
+          {result}
+        </div>
 
-        <Tabs tabs={TABS} value={tab} onChange={setTab} label="Widget sections" idPrefix="pw" className="mb-4" />
+        <Tabs
+          tabs={TABS}
+          value={tab}
+          onChange={setTab}
+          label="Widget sections"
+          idPrefix="pw"
+          className="mb-4"
+        />
         <Toast message={toast} onDismiss={() => setToast('')} className="mb-3 empty:hidden" />
 
         {tab === 'wheel' && (
@@ -114,20 +148,34 @@ function PlayerWidget() {
             <Wheel
               segments={WHEEL_REWARDS}
               spin={player.lastSpin}
-              onSpinEnd={(id) => id === player.lastSpin?.id && finishReveal(id, player.lastSpin.coins)}
+              onSpinEnd={(id) =>
+                id === player.lastSpin?.id && finishReveal(id, player.lastSpin.coins)
+              }
               size={300}
             />
-            <p className="mt-3 min-h-7 text-center font-display text-lg font-bold" data-testid="result-text">
+            <p
+              className="mt-3 min-h-7 text-center font-display text-lg font-bold"
+              data-testid="result-text"
+            >
               {spinning ? 'Spinning...' : result}
             </p>
             <div className="mt-2 flex flex-col gap-2">
-              <Button size="lg" onClick={doSpin} loading={spinning} aria-disabled={player.spins < 1 || spinning || undefined}>
+              <Button
+                size="lg"
+                onClick={doSpin}
+                loading={spinning}
+                aria-disabled={player.spins < 1 || spinning || undefined}
+              >
                 {player.spins < 1 ? 'No spins left' : 'Spin'}
               </Button>
               {player.spins < 1 && (
-                <p className="text-center text-sm text-fg-muted">Spins come from deposits. Make a deposit to get more.</p>
+                <p className="text-center text-sm text-fg-muted">
+                  Spins come from deposits. Make a deposit to get more.
+                </p>
               )}
-              <Button variant="secondary" onClick={deposit}>Simulate a 40 EUR deposit at the casino</Button>
+              <Button variant="secondary" onClick={deposit}>
+                Simulate a 40 EUR deposit at the casino
+              </Button>
             </div>
           </TabPanel>
         )}
@@ -135,12 +183,24 @@ function PlayerWidget() {
         {tab === 'store' && (
           <TabPanel idPrefix="pw" id="store">
             <label className="mb-3 flex items-center gap-2 text-sm text-fg-muted">
-              <input type="checkbox" checked={player.casinoDown} onChange={(e) => appStore.dispatch({ type: 'player/casinoDown', on: e.target.checked })} />
+              <input
+                type="checkbox"
+                checked={player.casinoDown}
+                onChange={(e) =>
+                  appStore.dispatch({ type: 'player/casinoDown', on: e.target.checked })
+                }
+              />
               Demo: make the casino fail the next reward (shows failed, then refunded)
             </label>
             <div className="grid gap-3 sm:grid-cols-2">
               {items.map((it) => (
-                <StoreItemCard key={it.id} item={it} balance={balance} busy={busyItem === it.id} onRedeem={redeem} />
+                <StoreItemCard
+                  key={it.id}
+                  item={it}
+                  balance={balance}
+                  busy={busyItem === it.id}
+                  onRedeem={redeem}
+                />
               ))}
             </div>
             <h3 className="mb-2 mt-5 font-display text-base font-semibold">Your redemptions</h3>
@@ -149,7 +209,10 @@ function PlayerWidget() {
             ) : (
               <ul className="divide-y divide-border rounded-md border border-border">
                 {player.redemptions.map((r) => (
-                  <li key={r.id} className="flex flex-wrap items-center justify-between gap-2 px-3 py-2 text-sm">
+                  <li
+                    key={r.id}
+                    className="flex flex-wrap items-center justify-between gap-2 px-3 py-2 text-sm"
+                  >
                     <span>{r.item}</span>
                     <span className="flex items-center gap-2">
                       {r.status === 'refunded' && <Badge>{`+${r.coins} coins back`}</Badge>}
@@ -171,7 +234,13 @@ function PlayerWidget() {
                     <span className="block">{h.what}</span>
                     <span className="text-xs text-fg-muted">{h.at}</span>
                   </span>
-                  <span className={cn('font-semibold tabular-nums', h.delta > 0 && 'text-success', h.delta < 0 && 'text-fg-muted')}>
+                  <span
+                    className={cn(
+                      'font-semibold tabular-nums',
+                      h.delta > 0 && 'text-success',
+                      h.delta < 0 && 'text-fg-muted',
+                    )}
+                  >
                     {h.delta > 0 ? `+${h.delta}` : h.delta < 0 ? `${h.delta}` : 'spins'}
                   </span>
                 </li>

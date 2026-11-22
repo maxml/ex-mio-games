@@ -1,0 +1,41 @@
+@engagement = http://localhost:4002
+
+### Bonus Store: active items of the caller's tenant (workflow step 6)
+# {{player_token}} is the launch session token (02); it is valid for engagement.
+GET {{engagement}}/v1/store/items
+Authorization: Bearer {{player_token}}
+
+# Response (captured from scripts/demo.sh on 2026-11-22, run on dd9d464; the item in the run has no stock or per-player limit):
+# HTTP/1.1 200 OK
+# [{"id":"01a20399-a3b6-7fed-a8c5-4f6bff8c1552","name":"5 EUR bonus","description":"Bonus credited to the casino wallet","image_url":null,"price":50,"reward":{"type":"bonus","params":{"currency":"EUR","amount_minor":500}},"stock":null,"per_player_limit":null,"active":true,"version":1}]
+
+### Operator creates an item (role operator_admin only; staff may read, not create)
+# The operator token needs the engagement audience (login with "audience": "engagement", see 01).
+POST {{engagement}}/v1/store/items
+Authorization: Bearer {{operator_engagement_token}}
+Content-Type: application/json
+
+{
+  "name": "Free bonus 5 EUR",
+  "price": 40,
+  "reward": { "type": "bonus", "params": { "amount_minor": 500, "currency": "EUR" } },
+  "stock": 100,
+  "per_player_limit": 2
+}
+
+# Response (shape from the contract, not captured):
+# HTTP/1.1 201 Created
+# { "id": "0190...-item", "name": "Free bonus 5 EUR", "description": "", "image_url": null, "price": 40,
+#   "reward": { "type": "bonus", "params": { "amount_minor": 500, "currency": "EUR" } },
+#   "stock": 100, "per_player_limit": 2, "active": true, "version": 1 }
+
+### A non-integer or non-positive price is refused
+POST {{engagement}}/v1/store/items
+Authorization: Bearer {{operator_engagement_token}}
+Content-Type: application/json
+
+{ "name": "Bad", "price": 0.5, "reward": { "type": "bonus", "params": {} } }
+
+# Response (shape from the contract, not captured):
+# HTTP/1.1 422 Unprocessable Entity
+# { "message": "price must be a positive whole number of coins", "code": "item_price_invalid" }

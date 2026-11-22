@@ -88,7 +88,8 @@ for (const file of walk(src)) {
       // A named colour held in a constant (`const ALERT = 'crimson'`) is caught by the literal itself.
       if (/\.tsx?$/.test(file)) {
         for (const m of line.matchAll(/(['"`])\s*([A-Za-z]+)\s*\1/g)) {
-          if (NAMED.has(m[2].toLowerCase())) hits.push(`${where}   <- string literal that is a named colour "${m[2]}"`);
+          if (NAMED.has(m[2].toLowerCase()))
+            hits.push(`${where}   <- string literal that is a named colour "${m[2]}"`);
         }
       }
     });

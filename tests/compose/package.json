@@ -1,0 +1,68 @@
+{
+  "name": "@ex-mio/compose-tests",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Tests that run against the live docker compose stack: health, database roles, tenant isolation, idempotency and the bus (exactly-once, dead-letter).",
+  "nx": {
+    "tags": [
+      "type:test",
+      "scope:shared"
+    ]
+  },
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "lint": "eslint src --max-warnings=0",
+    "test": "echo 'compose tests need a running stack: use pnpm test:compose' && exit 0",
+    "test:compose": "jest --runInBand"
+  },
+  "dependencies": {
+    "@ex-mio/contracts": "workspace:^1.0.0"
+  },
+  "devDependencies": {
+    "@ex-mio/bus": "workspace:^1.0.0",
+    "@ex-mio/idempotency": "workspace:^1.0.0",
+    "@ex-mio/service-kit": "workspace:^1.0.0",
+    "@ex-mio/tenancy": "workspace:^1.0.0",
+    "@types/amqplib": "~0.10.8",
+    "@types/jest": "^30.0.0",
+    "@types/node": "24.13.3",
+    "@types/pg": "^8.11.10",
+    "amqplib": "~0.10.9",
+    "jest": "^30.0.2",
+    "pg": "^8.13.1",
+    "ts-jest": "^29.4.0",
+    "typeorm": "^0.3.20",
+    "typescript": "^5.6.2"
+  },
+  "jest": {
+    "preset": "ts-jest",
+    "testEnvironment": "node",
+    "roots": [
+      "<rootDir>/src"
+    ],
+    "testMatch": [
+      "**/*.compose.test.ts"
+    ],
+    "moduleNameMapper": {
+      "^@ex-mio/contracts$": "<rootDir>/../../packages/contracts/src",
+      "^@ex-mio/service-kit/testing$": "<rootDir>/../../packages/service-kit/src/testing",
+      "^@ex-mio/(tenancy|bus|idempotency|service-kit|logger)$": "<rootDir>/../../packages/$1/src"
+    },
+    "transform": {
+      "^.+\\.ts$": [
+        "ts-jest",
+        {
+          "diagnostics": false,
+          "tsconfig": {
+            "module": "CommonJS",
+            "experimentalDecorators": true,
+            "emitDecoratorMetadata": true
+          }
+        }
+      ]
+    },
+    "testTimeout": 60000
+  },
+  "author": "maxml",
+  "license": "MIT"
+}

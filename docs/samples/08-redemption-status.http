@@ -1,0 +1,47 @@
+@engagement = http://localhost:4002
+
+### Final status of a redemption (workflow step 8)
+# Public words: pending | issuing | issued | failed_refunded.
+# REQUESTED, RESERVED, UNKNOWN and NEEDS_REVIEW show as "pending"; ISSUED and COMPLETED as "issued";
+# REJECTED_FUNDS, REJECTED, RELEASED and REFUNDED as "failed_refunded".
+# For NEEDS_REVIEW the player gets no reason, and a player never gets the history (always []).
+# {{player_token}} is the launch session token (02).
+GET {{engagement}}/v1/redemptions/{{redemption_id}}
+Authorization: Bearer {{player_token}}
+
+# Response (captured from scripts/demo.sh on 2026-11-22, run on dd9d464, a casino A order read shortly after it was issued;
+# the state later moves from ISSUED to COMPLETED, and the public status stays "issued"):
+# HTTP/1.1 200 OK
+# {"id":"01a20399-ed06-73b9-8fb6-614f20ae112f","item_id":"01a20399-a3b6-7fed-a8c5-4f6bff8c1552","price":50,"status":"issued","state":"ISSUED","attempts":1,"casino_reference":"bonus-43840e0a-951e-474d-ae09-49d5dd526c4a","failure_reason":null,"history":[],"created_at":"2026-11-22T14:12:29.062Z","updated_at":"2026-11-22T14:12:30.589Z"}
+
+### Same redemption after the casino rejected it: coins released, stock returned
+GET {{engagement}}/v1/redemptions/{{rejected_redemption_id}}
+Authorization: Bearer {{player_token}}
+
+# Response (captured from scripts/demo.sh on 2026-11-22, run on dd9d464, C-8; the casino's reason in the run was "rejected"):
+# HTTP/1.1 200 OK
+# {"id":"01a2039b-74bd-7451-b07a-f444636a39d8","item_id":"01a2039b-6cfa-7d0d-94d3-b661832b34ed","price":50,"status":"failed_refunded","state":"RELEASED","attempts":1,"casino_reference":"tkt-809ac6a3-12b4-43b5-b6df-7cde68f2fa2c","failure_reason":"casino_rejected:rejected","history":[],"created_at":"2026-11-22T14:14:09.341Z","updated_at":"2026-11-22T14:15:15.615Z"}
+
+### Operator view, filtered by state (operator_admin or operator_staff; token with the engagement audience, see 01)
+GET {{engagement}}/v1/operator/redemptions?status=NEEDS_REVIEW
+Authorization: Bearer {{operator_engagement_token}}
+
+# Response (shape from the contract, not captured):
+# HTTP/1.1 200 OK
+# [ { "id": "...", "status": "pending", "state": "NEEDS_REVIEW", "failure_reason": "unknown_too_long",
+#     "history": [ { "from": "...", "to": "NEEDS_REVIEW", "cause": "...", "at": "2026-11-21T10:20:00.000Z" } ], "...": "..." } ]
+# The operator view carries the full history: objects { from, to, cause, at }, oldest first.
+
+### Operator resolves a review (operator_admin only; reason of 3 to 500 characters is audited)
+POST {{engagement}}/v1/operator/redemptions/{{redemption_id}}/resolve
+Authorization: Bearer {{operator_engagement_token}}
+Content-Type: application/json
+
+{ "outcome": "not_issued", "reason": "casino confirmed no bonus was created" }
+
+# Response (shape from the contract, not captured):
+# HTTP/1.1 200 OK  the redemption in the operator view; "not_issued" moves it to REJECTED ("failed_refunded") and "issued" to ISSUED.
+#                  Allowed only when a fresh status lookup agrees (rejected, or not_found past the issue deadline).
+# HTTP/1.1 409 Conflict { "message": "...", "code": "release_not_allowed" }  for not_issued the casino does not back
+# HTTP/1.1 409 Conflict { "message": "...", "code": "illegal_transition" }    not in NEEDS_REVIEW, or "issued" not confirmed by the casino
+# The operator's word alone never moves coins.

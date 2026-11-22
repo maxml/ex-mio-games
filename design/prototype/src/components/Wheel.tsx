@@ -47,7 +47,14 @@ function restAngle(spin: WheelSpin, n: number): number {
   return (360 - ((spin.index + 0.5) * step + jitter)) % 360;
 }
 
-export function Wheel({ segments, spin, onSpinEnd, size = 320, durationMs = 4200, className }: WheelProps) {
+export function Wheel({
+  segments,
+  spin,
+  onSpinEnd,
+  size = 320,
+  durationMs = 4200,
+  className,
+}: WheelProps) {
   const n = segments.length;
   const step = 360 / n;
   // A wheel that mounts with a result already in hand (tab switch, remount) shows it at rest.
@@ -89,15 +96,24 @@ export function Wheel({ segments, spin, onSpinEnd, size = 320, durationMs = 4200
       aria-label={`Wheel of Fortune with ${n} segments: ${segments.map((s) => s.label).join(', ')}`}
     >
       {/* Pointer */}
-      <svg viewBox="-10 0 20 16" className="absolute left-1/2 top-0 z-10 w-[8%] -translate-x-1/2 -translate-y-1/4" aria-hidden>
-        <path d="M-9 0 H9 L0 16 Z" style={{ fill: 'var(--wheel-rim)', stroke: 'var(--surface)', strokeWidth: 1.5 }} />
+      <svg
+        viewBox="-10 0 20 16"
+        className="absolute left-1/2 top-0 z-10 w-[8%] -translate-x-1/2 -translate-y-1/4"
+        aria-hidden
+      >
+        <path
+          d="M-9 0 H9 L0 16 Z"
+          style={{ fill: 'var(--wheel-rim)', stroke: 'var(--surface)', strokeWidth: 1.5 }}
+        />
       </svg>
       <svg
         viewBox="-104 -104 208 208"
         className="h-full w-full"
         style={{
           transform: `rotate(${rotation}deg)`,
-          transition: animating ? `transform ${durationMs}ms cubic-bezier(0.12, 0.7, 0.12, 1)` : 'none',
+          transition: animating
+            ? `transform ${durationMs}ms cubic-bezier(0.12, 0.7, 0.12, 1)`
+            : 'none',
         }}
         onTransitionEnd={finish}
         aria-hidden
@@ -110,7 +126,11 @@ export function Wheel({ segments, spin, onSpinEnd, size = 320, durationMs = 4200
             <g key={s.id}>
               <path
                 d={slicePath(start, start + step, 98)}
-                style={{ fill: `var(--wheel-${(i % 6) + 1})`, stroke: 'var(--wheel-rim)', strokeWidth: 1 }}
+                style={{
+                  fill: `var(--wheel-${(i % 6) + 1})`,
+                  stroke: 'var(--wheel-rim)',
+                  strokeWidth: 1,
+                }}
               />
               {/* The label sits on its segment but is turned back by the segment angle plus the wheel's
                   current rotation, so on screen it is upright at rest, mid-spin and after any spin. */}
@@ -119,13 +139,20 @@ export function Wheel({ segments, spin, onSpinEnd, size = 320, durationMs = 4200
                   data-label-turn={s.id}
                   style={{
                     transform: `rotate(${-(mid + rotation)}deg)`,
-                    transition: animating ? `transform ${durationMs}ms cubic-bezier(0.12, 0.7, 0.12, 1)` : 'none',
+                    transition: animating
+                      ? `transform ${durationMs}ms cubic-bezier(0.12, 0.7, 0.12, 1)`
+                      : 'none',
                   }}
                 >
                   <text
                     textAnchor="middle"
                     dominantBaseline="middle"
-                    style={{ fill: 'var(--wheel-fg)', fontSize: n > 8 ? 9 : 11, fontWeight: 700, fontFamily: 'var(--font-sans)' }}
+                    style={{
+                      fill: 'var(--wheel-fg)',
+                      fontSize: n > 8 ? 9 : 11,
+                      fontWeight: 700,
+                      fontFamily: 'var(--font-sans)',
+                    }}
                   >
                     {s.label}
                   </text>

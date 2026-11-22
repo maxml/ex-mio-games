@@ -1,0 +1,309 @@
+# Local stack: `docker compose up -d --wait` brings up everything, with no external
+# account. Every app runs in its own container, starts only after the things it
+# needs report healthy, and has its own database and database role.
+#
+# Host ports (override with env): postgres 54329, rabbitmq 55672 (+ management UI
+# 15672), redis 56379, firebase auth emulator 9099, web 3000, identity 4001,
+# engagement 4002, payments 4003, casino-sim 4004. The infrastructure ports are
+# not the defaults on purpose, so a database already running on the host does not
+# collide. All credentials below are local-development values.
+#
+# Several stacks at once: `scripts/stack-up.sh` gives each worktree a slot N and writes every
+# port variable (slot 0 = the defaults above, slot N = default + 10*N) to `.env.stack`.
+# THE TRAP: `--env-file` is read only when passed, so bring a slot up and down through the
+# scripts, which build the one argument list. The two host URLs baked into service config
+# (PUBLIC_REALTIME_URL, REALTIME_ALLOWED_ORIGINS) are derived from the same variables below.
+# Built services use one shared image name, ex-mio/<service>:${MIO_IMAGE_TAG:-dev}. stack-up.sh
+# sets the tag from the content of the build inputs, so every slot at the same code runs the
+# same images and builds only what is missing.
+
+x-node-health: &node-health
+  interval: 5s
+  timeout: 3s
+  retries: 20
+  start_period: 20s
+
+x-service-env: &service-env
+  NODE_ENV: development
+  LOG_LEVEL: info
+  AMQP_URL: amqp://mio:mio-dev@rabbitmq:5672
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres-dev}
+      IDENTITY_OWNER_DB_PASSWORD: identity-owner-dev
+      IDENTITY_APP_DB_PASSWORD: identity-app-dev
+      ENGAGEMENT_OWNER_DB_PASSWORD: engagement-owner-dev
+      ENGAGEMENT_APP_DB_PASSWORD: engagement-app-dev
+      PAYMENTS_OWNER_DB_PASSWORD: payments-owner-dev
+      PAYMENTS_APP_DB_PASSWORD: payments-app-dev
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./docker/postgres/init.sh:/docker-entrypoint-initdb.d/10-init.sh:ro
+    ports:
+      - '${POSTGRES_PORT:-54329}:5432'
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U postgres -d postgres']
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  rabbitmq:
+    image: rabbitmq:3.13-management-alpine
+    restart: unless-stopped
+    environment:
+      RABBITMQ_DEFAULT_USER: mio
+      RABBITMQ_DEFAULT_PASS: mio-dev
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+    ports:
+      - '${RABBITMQ_PORT:-55672}:5672'
+      - '${RABBITMQ_MANAGEMENT_PORT:-15672}:15672'
+    healthcheck:
+      test: ['CMD', 'rabbitmq-diagnostics', '-q', 'ping']
+      interval: 5s
+      timeout: 10s
+      retries: 20
+      start_period: 15s
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    # Data survives a restart: append-only file, fsync once a second.
+    command: ['redis-server', '--appendonly', 'yes', '--appendfsync', 'everysec']
+    volumes:
+      - redis_data:/data
+    ports:
+      - '${REDIS_PORT:-56379}:6379'
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  firebase-auth:
+    image: ex-mio/firebase-auth:${MIO_IMAGE_TAG:-dev}
+    build:
+      context: .
+      dockerfile: docker/firebase-emulator/Dockerfile
+    restart: unless-stopped
+    environment:
+      FIREBASE_PROJECT: demo-ex-mio
+    ports:
+      - '${FIREBASE_AUTH_PORT:-9099}:9099'
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - "fetch('http://127.0.0.1:9099/').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
+      interval: 5s
+      timeout: 3s
+      retries: 30
+      start_period: 20s
+
+  identity:
+    image: ex-mio/identity:${MIO_IMAGE_TAG:-dev}
+    build:
+      context: .
+      dockerfile: apps/identity/Dockerfile
+    restart: unless-stopped
+    environment:
+      <<: *service-env
+      PORT: '4001'
+      # Runtime role: not the table owner. The owner URL is given to the migrate step only.
+      DATABASE_URL: postgresql://identity_app:identity-app-dev@postgres:5432/identity
+      BASE_DOMAIN: mio.localhost
+      # D-30 (F1): the reward-API PUT refuses http for a production endpoint unless the host is listed.
+      REWARD_API_ALLOW_HOSTS: casino-sim
+      PLATFORM_ADMIN_EMAIL: root@mio.test
+      PLATFORM_ADMIN_PASSWORD: platform-dev-password-0000
+      CREDENTIALS_KEK: dev-credentials-kek-0000000000
+      SERVICE_CLIENT_SECRETS: '{"engagement":"engagement-dev-secret-0000","payments":"payments-dev-secret-00000"}'
+      IDENTITY_PROVIDER: firebase-emulator
+      FIREBASE_AUTH_EMULATOR_HOST: firebase-auth:9099
+      FIREBASE_PROJECT: demo-ex-mio
+    # Migrations run as their own step (node dist/migrate.js, as the owner role), then the
+    # server starts as the app role. Replicas started together are serialized by an
+    # advisory lock in migrate.js.
+    command:
+      - sh
+      - -c
+      - MIGRATION_DATABASE_URL=postgresql://identity_owner:identity-owner-dev@postgres:5432/identity node dist/migrate.js && exec node dist/main.js
+    ports:
+      - '${IDENTITY_PORT:-4001}:4001'
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      firebase-auth:
+        condition: service_healthy
+    healthcheck:
+      <<: *node-health
+      test:
+        - CMD
+        - node
+        - -e
+        - "fetch('http://127.0.0.1:4001/healthz/ready').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
+
+  engagement:
+    image: ex-mio/engagement:${MIO_IMAGE_TAG:-dev}
+    build:
+      context: .
+      dockerfile: apps/engagement/Dockerfile
+    restart: unless-stopped
+    environment:
+      <<: *service-env
+      PORT: '4002'
+      DATABASE_URL: postgresql://engagement_app:engagement-app-dev@postgres:5432/engagement
+      REDIS_URL: redis://redis:6379
+      IDENTITY_URL: http://identity:4001
+      SERVICE_CLIENT_SECRET: engagement-dev-secret-0000
+      # The redemption saga calls payments (reserve, commit, release) with a service token.
+      PAYMENTS_URL: http://payments:4003
+      # D-30 (F1): the reward API transport refuses internal addresses and, in production, plain
+      # http. The simulator is the one host the engagement stack may reach over http.
+      REWARD_API_ALLOW_HOSTS: casino-sim
+      # D-27: the browser opens the realtime socket on engagement's own public URL (web's
+      # PUBLIC_REALTIME_URL), so the web origin is allowed to connect cross-origin.
+      REALTIME_ALLOWED_ORIGINS: http://localhost:${WEB_PORT:-3000}
+    command:
+      - sh
+      - -c
+      - MIGRATION_DATABASE_URL=postgresql://engagement_owner:engagement-owner-dev@postgres:5432/engagement node dist/migrate.js && exec node dist/main.js
+    ports:
+      - '${ENGAGEMENT_PORT:-4002}:4002'
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      <<: *node-health
+      test:
+        - CMD
+        - node
+        - -e
+        - "fetch('http://127.0.0.1:4002/healthz/ready').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
+
+  payments:
+    image: ex-mio/payments:${MIO_IMAGE_TAG:-dev}
+    build:
+      context: .
+      dockerfile: apps/payments/Dockerfile
+    restart: unless-stopped
+    environment:
+      <<: *service-env
+      PORT: '4003'
+      # Runtime role: not the table owner. The owner URL is given to the migrate step only.
+      DATABASE_URL: postgresql://payments_app:payments-app-dev@postgres:5432/payments
+      # The one auth entry point reads keys and tenant status from identity (D-4).
+      IDENTITY_URL: http://identity:4001
+      SERVICE_CLIENT_SECRET: payments-dev-secret-00000
+      # The fake provider verifies webhooks with this secret; the source holds no default (D-20).
+      FAKE_PROVIDER_WEBHOOK_SECRET: dev-fake-provider-webhook-secret-0000
+      # Reconciliation and usage report run in the worker every hour; `node dist/ledger-report.js` runs one pass.
+      LEDGER_JOBS_INTERVAL_SECONDS: '3600'
+    command:
+      - sh
+      - -c
+      - MIGRATION_DATABASE_URL=postgresql://payments_owner:payments-owner-dev@postgres:5432/payments node dist/migrate.js && exec node dist/main.js
+    ports:
+      - '${PAYMENTS_PORT:-4003}:4003'
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    healthcheck:
+      <<: *node-health
+      test:
+        - CMD
+        - node
+        - -e
+        - "fetch('http://127.0.0.1:4003/healthz/ready').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
+
+  casino-sim:
+    image: ex-mio/casino-sim:${MIO_IMAGE_TAG:-dev}
+    build:
+      context: .
+      dockerfile: apps/casino-sim/Dockerfile
+    restart: unless-stopped
+    environment:
+      PORT: '4004'
+      LOG_LEVEL: info
+      # Fault injection and issued-reward inspection (/__faults, /__reset, /__issued, /casino-b/__settle).
+      # The simulator exists only in this dev stack; it is never deployed.
+      SIM_FAULTS: '1'
+      # D-27: an operator registers this service as its casino's reward API with
+      # `PUT /v1/operator/integrations/:casino/reward-api`, base URL http://casino-sim:4004 (the
+      # address engagement reaches it on inside this network). Nothing is registered by default.
+    ports:
+      - '${CASINO_SIM_PORT:-4004}:4004'
+    healthcheck:
+      <<: *node-health
+      test:
+        - CMD
+        - node
+        - -e
+        - "fetch('http://127.0.0.1:4004/healthz/ready').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
+
+  web:
+    image: ex-mio/web:${MIO_IMAGE_TAG:-dev}
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+      args:
+        # Build time (NEXT_PUBLIC_): `http` = the real services (default), `mock` = in-memory demo data.
+        NEXT_PUBLIC_MIO_API: ${MIO_API:-http}
+    restart: unless-stopped
+    environment:
+      PORT: '3000'
+      # Server-side calls to the services over the compose network (the BFF reads these three).
+      API_URL: http://identity:4001
+      IDENTITY_URL: http://identity:4001
+      ENGAGEMENT_URL: http://engagement:4002
+      PAYMENTS_URL: http://payments:4003
+      # A tenant is `<slug>.<BASE_DOMAIN>`, the same value identity runs with.
+      BASE_DOMAIN: mio.localhost
+      # Local stand-in for the payment provider's callback (the fake provider sends none): the same dev secret
+      # as payments' FAKE_PROVIDER_WEBHOOK_SECRET. Leave unset anywhere but a local stack.
+      FAKE_PROVIDER_WEBHOOK_SECRET: dev-fake-provider-webhook-secret-0000
+      # D-32 F7: the web image runs NODE_ENV=production, so the stand-in needs this explicit local-only
+      # switch. It must never be set in a deployment.
+      MIO_FAKE_PROVIDER: '1'
+      # The stack is served over plain http on localhost: a `Secure` session cookie would not be sent back.
+      MIO_INSECURE_COOKIE: '1'
+      # D-27: `/config` returns this as `realtimeUrl`, the engagement public URL the browser opens the
+      # socket on. The same-origin `/socket.io` rewrite to engagement stays as a fallback.
+      PUBLIC_REALTIME_URL: http://localhost:${ENGAGEMENT_PORT:-4002}
+    ports:
+      - '${WEB_PORT:-3000}:3000'
+    depends_on:
+      identity:
+        condition: service_healthy
+      engagement:
+        condition: service_healthy
+      payments:
+        condition: service_healthy
+      casino-sim:
+        condition: service_healthy
+    healthcheck:
+      <<: *node-health
+      test:
+        - CMD
+        - node
+        - -e
+        - "fetch('http://127.0.0.1:3000/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
+
+volumes:
+  postgres_data:
+  rabbitmq_data:
+  redis_data:

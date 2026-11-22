@@ -1,0 +1,6 @@
+repo: Varta
+branch: feat/var-product-analytics
+path: api/product-event.schema.json
+commit: f412ad5882956680bb660ec2fbb66608f4bfe3e1
+sha256: cf5fc9e73699fbfb24a094a9b28ac980f92c84ce1235e26c26ccc0d52215e2ec
+note: vendored verbatim (D-19); the file last changed in that commit and is unchanged at the branch tip cb6d413. Do not edit; re-vendor and update this file together.

@@ -1,0 +1,17 @@
+**/node_modules
+**/.next
+**/dist
+**/coverage
+**/.nx
+.git
+.github
+.vscode
+**/*.log
+.DS_Store
+
+# Never bake secrets into the build context / image. Keep only the placeholder
+# *.env.example files. Pass real secrets at runtime (docker run -e / --env-file)
+# and public web env (NEXT_PUBLIC_*) via build args.
+**/.env
+**/.env.*
+!**/.env.example

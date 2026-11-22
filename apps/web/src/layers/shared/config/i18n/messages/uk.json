@@ -1,0 +1,15 @@
+{
+  "header": {
+    "brand": "ex-mio-games"
+  },
+  "home": {
+    "title": "ex-mio-games",
+    "subtitle": "Типобезпечний повностековий монорепозиторій",
+    "apiHealthTitle": "Стан API",
+    "apiReachable": "Статус: {status}",
+    "apiUnreachable": "API недоступний"
+  },
+  "apiHealth": {
+    "liveTitle": "Стан API (наживо)"
+  }
+}
