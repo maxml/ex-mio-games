@@ -11,6 +11,9 @@ break each piece of work before it was merged.
 | `decisions.md` | Human decisions against AI proposals, including the ones where the human overruled the AI |
 | `defects-found.md` | Defects that independent AI review caught before merge, with the test that now pins each one, and one fully traced example |
 | `verification.md` | How AI output was checked, and what went wrong along the way |
+| `case-studies.md` | Six defects on `int/rc`: how each was caught, the fixing commit and the test that pins it |
+| `../decision-log.md` | What each `D-<n>` cited in tests and comments means, with the reason and where it is enforced |
+| `limits.md` | What the AI got wrong, fixes that moved a defect, and what the process does not cover |
 
 All of it happened on one day, 2026-11-21, with a deadline of the evening of 2026-11-22. The numbers
 below come from that run.

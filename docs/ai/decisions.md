@@ -49,6 +49,28 @@ numbered decision, usually in answer to a reviewer finding. The owner can revers
 | D-15: webhook auth uses each casino's own signature scheme; operator word alone never moves coins or stock | Reconciliation of the contracts between areas |
 | Re-spec rule: after three review rounds that find the same class, rewrite the spec instead of patching | A patch loop on one area did not converge |
 
+## Human decision against AI suggestion, by topic
+
+Who decided, and why. "Owner" means the human. "AI proposed, owner accepted" means an agent put the
+option forward and the owner approved it or did not reverse it. The ADRs in `docs/adrs/` record the
+result; the "Decisions by the owner" table above has the dates.
+
+| Decision | Who decided | Why |
+| --- | --- | --- |
+| Money first: every coin credit, debit and refund goes through the payments service only | Owner | One place to prove the money rules. The AI's first design let engagement call a credit endpoint; a reviewer caught it and D-1 moved the credit into payments' inbox |
+| Payments are a separate service | Owner | Isolation of the money path (ADR 0001) |
+| Broker is RabbitMQ, with acknowledgement-only state | Owner, over an AI recommendation of a Kafka-compatible log | The owner needs only receipt acknowledgement; replay and history can live in the database. Smaller to run (ADR 0003) |
+| Tenant plus user key (`tenant_id + user_id`); tenants are not a service | Owner | Keeps the costly-to-change part simple (ADR 0002) |
+| Identity behind an interface, Firebase first, run on the emulator | Owner set the interface and the emulator; the AI proposed one provider tenant per MIO tenant (D-7) and, later, no provider account for players (D-21) | A clean clone must run with no accounts; the provider stays swappable (ADR 0007) |
+| The ledger is Postgres tables, never files | Owner | Hard requirement for money (ADR 0004) |
+| Realtime websocket is mandatory | Owner. The AI chose the host (engagement, namespace `/rt`), the ticket auth and commit-only pushes (D-10, D-23, D-25) | The owner required it; a gap check then found that no server gateway existed, only the client and the contract (case study 6) |
+| All analytics go through one panel (Varta) | Owner, over an AI plan for a separate stream | One panel for everything; Varta was built for it (ADR 0009) |
+| Sandbox credits, wallets and metering are separate per environment | AI proposed (D-13, D-15), owner did not reverse | A sandbox flag must not remove a paid operation from the bill; a reviewer then found one gap (case study 1) |
+| Audit decision follows the guard outcome | AI (D-24), owner did not reverse | The audit log must describe authorization, not the HTTP status (case study 2) |
+| Three review rounds at most, then rewrite the spec | Owner rule (D-17); the AI had allowed one more narrow round for identity (D-14) | A fix that did not close its findings does not count as a round |
+
+Case studies are in `case-studies.md`.
+
 ## What the table shows
 
 - 8 owner decisions overruled an AI recommendation. In each, the AI had presented options and a
