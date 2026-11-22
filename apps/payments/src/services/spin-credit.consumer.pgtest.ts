@@ -21,6 +21,9 @@ beforeAll(async () => {
 afterAll(async () => h.close());
 
 const AT = '2026-11-05T10:00:00.000Z';
+// INV-ENV-INPUT (D-29): `readByPlayer` and `reserve` take the environment as a required input, with
+// no default. Every read and reserve in this file names the environment it means.
+const PROD = { sandbox: false } as const;
 
 async function n(table: string, tenant: string, where = ''): Promise<number> {
   const { rows } = await h.admin.query(
@@ -356,7 +359,9 @@ describe('D1-10 the tenant comes from the envelope only', () => {
     expect((await h.dbWallet(b, pb)).available).toBe(3);
     expect(await awards(a, spin)).toBe(1);
     expect(await awards(b, spin)).toBe(1);
-    await expect(h.as(b, () => h.balances.readByPlayer(pa))).rejects.toMatchObject({
+    // Control: the same read resolves inside A, so B's wallet_not_found is the tenant boundary.
+    expect(await h.as(a, () => h.balances.readByPlayer(pa, PROD))).toMatchObject({ available: 7 });
+    await expect(h.as(b, () => h.balances.readByPlayer(pa, PROD))).rejects.toMatchObject({
       code: 'wallet_not_found',
     });
   });
@@ -418,18 +423,18 @@ describe('D1-13 the Redis projection follows the event, eventually', () => {
     h.cache.calls.length = 0;
     await h.consume(spinCompleted(t, p, 5));
     expect(h.cache.calls).toEqual([]);
-    expect(await h.as(t, () => h.balances.readByPlayer(p))).toMatchObject({ available: 5 });
+    expect(await h.as(t, () => h.balances.readByPlayer(p, PROD))).toMatchObject({ available: 5 });
     const afterRead = [...h.cache.calls];
     await h.consume(spinCompleted(t, p, 7));
     expect(h.cache.calls).toEqual(afterRead); // the second spin added no cache call at all
     // Eventually consistent: the cached 5 is still served until the event is applied.
-    expect(await h.as(t, () => h.balances.readByPlayer(p))).toMatchObject({ available: 5 });
+    expect(await h.as(t, () => h.balances.readByPlayer(p, PROD))).toMatchObject({ available: 5 });
     const { rows } = await h.admin.query(
       `SELECT envelope FROM outbox WHERE tenant_id = $1 AND type = 'payments.coins.credited' ORDER BY created_at DESC, event_id DESC LIMIT 1`,
       [t],
     );
     await h.as(t, () => h.balances.onCoinEvent(parseEvent(rows[0].envelope)));
-    expect(await h.as(t, () => h.balances.readByPlayer(p))).toMatchObject({ available: 12 });
+    expect(await h.as(t, () => h.balances.readByPlayer(p, PROD))).toMatchObject({ available: 12 });
   });
 });
 
@@ -442,14 +447,14 @@ describe('X-2 a sandbox spin never credits the production wallet (D-15, D-13; re
   const reserveOf = (t: string, p: string, amount: number) =>
     h.as(t, () =>
       h.ledger.reserve(
-        { player_id: p, reserve_id: uuidv7(), amount, currency: 'COIN' },
+        { player_id: p, reserve_id: uuidv7(), amount, currency: 'COIN', ...PROD },
         `x2-${uuidv7()}`,
       ),
     );
   const productionAvailable = async (t: string, p: string): Promise<number> => {
     h.cache.store.clear(); // read the database, not a value cached by an earlier test
     try {
-      return (await h.as(t, () => h.balances.readByPlayer(p))).available;
+      return (await h.as(t, () => h.balances.readByPlayer(p, PROD))).available;
     } catch (err) {
       expect(err).toMatchObject({ code: 'wallet_not_found' });
       return 0;

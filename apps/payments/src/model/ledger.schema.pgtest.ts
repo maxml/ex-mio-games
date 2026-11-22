@@ -304,6 +304,9 @@ describe('INV-L2 the journal is append-only for the runtime role', () => {
 // missing one, any new table that is not listed here fails the test.
 const TABLE_GRANTS: Record<string, string[]> = {
   accounts: ['INSERT', 'SELECT'],
+  // 1732300002000-AuditIntents (D-21/D-23 F4): the service-kit audit port inserts the intent, the
+  // finalize and the sweeper DELETE ... RETURNING it. No UPDATE: an intent is never rewritten.
+  audit_intents: ['DELETE', 'INSERT', 'SELECT'],
   balances: ['INSERT', 'SELECT'], // UPDATE is column-level, see COLUMN_UPDATES
   billing_plans: ['SELECT'],
   billing_webhook_events: ['INSERT', 'SELECT'],
@@ -503,7 +506,21 @@ describe('INV-L6 ledger tables are tenant-isolated by RLS', () => {
     'outbox',
     'migrations',
     'reconciliation_tenants',
+    // D-21 audit intents: written before the handler and swept across ALL tenants after 60 s by the
+    // service-kit sweeper, the same cross-tenant reader shape as `outbox`. It has no tenant_id to
+    // key a policy on; the test below pins that it stays a 3-column envelope holder.
+    'audit_intents',
   ];
+  // Mutation: add `tenant_id` (or any ledger column such as `amount`) to audit_intents in
+  // createAuditIntentsTable -> red here: a tenant-keyed table must leave this list and get RLS.
+  it('audit_intents, the one global table added after the ledger, holds only the audit envelope', async () => {
+    const { rows } = await admin.query(
+      `SELECT a.attname FROM pg_attribute a
+        WHERE a.attrelid = 'public.audit_intents'::regclass AND a.attnum > 0 AND NOT a.attisdropped
+        ORDER BY a.attname COLLATE "C"`,
+    );
+    expect(rows.map((r) => r.attname)).toEqual(['created_at', 'envelope', 'event_id']);
+  });
   it('every other table in public has ENABLE + FORCE row level security and a policy', async () => {
     const { rows } = await admin.query(
       `SELECT c.relname, c.relrowsecurity AS enabled, c.relforcerowsecurity AS forced,
