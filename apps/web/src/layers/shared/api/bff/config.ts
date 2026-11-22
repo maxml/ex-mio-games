@@ -32,7 +32,13 @@ export function readBffConfig(env: Record<string, string | undefined> = process.
     paymentsUrl: trim(env.PAYMENTS_URL ?? 'http://payments:4003'),
     engagementUrl: trim(env.ENGAGEMENT_URL ?? 'http://engagement:4002'),
     baseDomain: env.BASE_DOMAIN ?? 'mio.localhost',
-    fakeProviderSecret: env.FAKE_PROVIDER_WEBHOOK_SECRET ?? '',
+    // D-32 F7: the BFF signs fake-provider webhooks only outside production, or with the explicit
+    // local-only switch MIO_FAKE_PROVIDER=1 (docker-compose.yml only, never the deploy manifest).
+    // Otherwise the secret is dropped and the stand-in never runs.
+    fakeProviderSecret:
+      env.NODE_ENV !== 'production' || env.MIO_FAKE_PROVIDER === '1'
+        ? (env.FAKE_PROVIDER_WEBHOOK_SECRET ?? '')
+        : '',
     casinoSimUrl: trim(env.CASINO_SIM_URL ?? ''),
     wheelId: env.MIO_WHEEL_ID ?? '',
     casinoPath: env.MIO_SANDBOX_CASINO ?? 'casino-a',

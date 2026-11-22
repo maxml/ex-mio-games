@@ -66,11 +66,16 @@ const event = (): EventEnvelope =>
     },
   });
 
+// D-32 F1: a connection with no tenant sees no intent unless it opts in to the platform scan, so the
+// helper opts in the way the audit port does (a transaction with `app.platform_scan`).
 const intents = async (id: string) =>
   Number(
-    (
-      await ds.query(`SELECT count(*)::int AS n FROM "audit_intents" WHERE "event_id" = $1`, [id])
-    )[0].n,
+    await ds.transaction(async (tx) => {
+      await tx.query(`SET LOCAL app.platform_scan = 'on'`);
+      return (
+        await tx.query(`SELECT count(*)::int AS n FROM "audit_intents" WHERE "event_id" = $1`, [id])
+      )[0].n;
+    }),
   );
 const outboxRows = async (id: string): Promise<EventEnvelope[]> =>
   (await ds.query(`SELECT "envelope" FROM "outbox" WHERE "event_id" = $1`, [id])).map(
@@ -80,10 +85,14 @@ const outboxRows = async (id: string): Promise<EventEnvelope[]> =>
 const age = async (id: string, seconds: number) => {
   const owner = await pgAs('identity_owner');
   try {
+    // FORCE RLS applies to the owner too (D-32 F1): opt in to the platform scan like the port does.
+    await owner.query('BEGIN');
+    await owner.query(`SET LOCAL app.platform_scan = 'on'`);
     await owner.query(
       `UPDATE "audit_intents" SET "created_at" = now() - make_interval(secs => $2) WHERE "event_id" = $1`,
       [id, seconds],
     );
+    await owner.query('COMMIT');
   } finally {
     await owner.end();
   }

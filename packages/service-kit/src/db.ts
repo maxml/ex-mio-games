@@ -7,6 +7,9 @@ import { withTenantTransaction } from '@ex-mio/tenancy';
 
 export const DATA_SOURCE = Symbol('DATA_SOURCE');
 
+/** The opt-in flag of a platform scan: honoured only by policies, and only with no tenant set. */
+export const PLATFORM_SCAN_SETTING = 'app.platform_scan';
+
 /**
  * A transaction handle. Services receive one from `Db` and pass it to
  * repositories; they never see the driver or a connection.
@@ -38,8 +41,17 @@ export class Db {
     return withTenantTransaction(this.dataSource, fn, tenantId);
   }
 
-  platformTx<T>(fn: (tx: Tx) => Promise<T>): Promise<T> {
-    return this.dataSource.transaction(fn);
+  /**
+   * `scan: true` opts this transaction into the explicit platform-scan flag (`app.platform_scan`),
+   * the same flag the work queue uses (WorkQueueScanNoTenant). A policy that honours it still needs
+   * NO tenant set, so a tenant transaction never gets it. Only the audit port and sweeper pass it.
+   */
+  platformTx<T>(fn: (tx: Tx) => Promise<T>, opts?: { scan?: boolean }): Promise<T> {
+    if (!opts?.scan) return this.dataSource.transaction(fn);
+    return this.dataSource.transaction(async (tx) => {
+      await tx.query(`SET LOCAL ${PLATFORM_SCAN_SETTING} = 'on'`);
+      return fn(tx);
+    });
   }
 
   /** Run an effect at most once per idempotency key; see @ex-mio/idempotency. */

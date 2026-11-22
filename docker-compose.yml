@@ -276,6 +276,9 @@ services:
       # Local stand-in for the payment provider's callback (the fake provider sends none): the same dev secret
       # as payments' FAKE_PROVIDER_WEBHOOK_SECRET. Leave unset anywhere but a local stack.
       FAKE_PROVIDER_WEBHOOK_SECRET: dev-fake-provider-webhook-secret-0000
+      # D-32 F7: the web image runs NODE_ENV=production, so the stand-in needs this explicit local-only
+      # switch. It must never be set in a deployment.
+      MIO_FAKE_PROVIDER: '1'
       # The stack is served over plain http on localhost: a `Secure` session cookie would not be sent back.
       MIO_INSECURE_COOKIE: '1'
       # D-27: `/config` returns this as `realtimeUrl`, the engagement public URL the browser opens the

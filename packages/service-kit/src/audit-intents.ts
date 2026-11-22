@@ -1,7 +1,7 @@
 import { Logger } from '@nestjs/common';
 import type { EventEnvelope } from '@ex-mio/contracts';
 import { TENANT_SETTING } from '@ex-mio/tenancy';
-import type { Db, Tx } from './db';
+import { PLATFORM_SCAN_SETTING, type Db, type Tx } from './db';
 
 /*
  * Two-step audit of an allowed acting or internal request (decision D-11, D-21 M1).
@@ -53,8 +53,6 @@ export async function createAuditIntentsTable(q: {
 export async function addAuditIntentsTenantRls(q: {
   query: (sql: string) => Promise<unknown>;
 }): Promise<void> {
-  const tenant = `"tenant_id" = NULLIF(current_setting('${TENANT_SETTING}', true), '')::uuid`;
-  const noTenant = `NULLIF(current_setting('${TENANT_SETTING}', true), '') IS NULL`;
   await q.query(`ALTER TABLE "audit_intents" ADD COLUMN "tenant_id" uuid`);
   await q.query(
     `UPDATE "audit_intents" SET "tenant_id" = ("envelope"->>'tenant_id')::uuid WHERE "tenant_id" IS NULL`,
@@ -80,7 +78,37 @@ export async function addAuditIntentsTenantRls(q: {
   await q.query(`ALTER TABLE "audit_intents" FORCE ROW LEVEL SECURITY`);
   await q.query(
     `CREATE POLICY "audit_intents_tenant_isolation" ON "audit_intents"
-       USING (${tenant} OR ${noTenant}) WITH CHECK (${tenant} OR ${noTenant})`,
+       USING (${AUDIT_INTENTS_POLICY}) WITH CHECK (${AUDIT_INTENTS_POLICY})`,
+  );
+}
+
+const TENANT_MATCH = `"tenant_id" = NULLIF(current_setting('${TENANT_SETTING}', true), '')::uuid`;
+const NO_TENANT = `NULLIF(current_setting('${TENANT_SETTING}', true), '') IS NULL`;
+const SCAN_ON = `COALESCE(current_setting('${PLATFORM_SCAN_SETTING}', true), '') = 'on'`;
+/**
+ * F1 (re-review 2): tenant rows are visible only to their tenant. The platform path (audit port,
+ * finalize, sweeper) must opt in with `app.platform_scan` AND have no tenant set, like the work queue.
+ * No setting means no rows; "no tenant" alone is never enough.
+ */
+const AUDIT_INTENTS_POLICY = `${TENANT_MATCH} OR (${SCAN_ON} AND ${NO_TENANT})`;
+
+/** Forward migration: replace the earlier `tenant OR no tenant` policy with the explicit-scan one. */
+export async function tightenAuditIntentsPolicy(q: {
+  query: (sql: string) => Promise<unknown>;
+}): Promise<void> {
+  await q.query(
+    `ALTER POLICY "audit_intents_tenant_isolation" ON "audit_intents"
+       USING (${AUDIT_INTENTS_POLICY}) WITH CHECK (${AUDIT_INTENTS_POLICY})`,
+  );
+}
+
+export async function loosenAuditIntentsPolicy(q: {
+  query: (sql: string) => Promise<unknown>;
+}): Promise<void> {
+  const either = `${TENANT_MATCH} OR ${NO_TENANT}`;
+  await q.query(
+    `ALTER POLICY "audit_intents_tenant_isolation" ON "audit_intents"
+       USING (${either}) WITH CHECK (${either})`,
   );
 }
 
@@ -130,11 +158,13 @@ const rowsOf = (res: unknown): Rows => {
 
 export function createOutboxAuditPort(getDb: () => Db): OutboxAuditPort {
   const port = (async (event: EventEnvelope): Promise<void> => {
-    await getDb().platformTx((tx: Tx) =>
-      tx.query(`INSERT INTO "audit_intents" ("event_id", "envelope") VALUES ($1, $2)`, [
-        event.event_id,
-        JSON.stringify(event),
-      ]),
+    await getDb().platformTx(
+      (tx: Tx) =>
+        tx.query(`INSERT INTO "audit_intents" ("event_id", "envelope") VALUES ($1, $2)`, [
+          event.event_id,
+          JSON.stringify(event),
+        ]),
+      { scan: true },
     );
   }) as OutboxAuditPort;
 
@@ -148,36 +178,42 @@ export function createOutboxAuditPort(getDb: () => Db): OutboxAuditPort {
 
   port.finalize = async (event) => {
     const db = getDb();
-    await db.platformTx(async (tx: Tx) => {
-      const gone = rowsOf(
-        await tx.query(`DELETE FROM "audit_intents" WHERE "event_id" = $1 RETURNING "event_id"`, [
-          event.event_id,
-        ]),
-      );
-      if (gone.length !== 1) throw new AuditIntentGoneError(event.event_id);
-      await db.publish(tx, event);
-    });
+    await db.platformTx(
+      async (tx: Tx) => {
+        const gone = rowsOf(
+          await tx.query(`DELETE FROM "audit_intents" WHERE "event_id" = $1 RETURNING "event_id"`, [
+            event.event_id,
+          ]),
+        );
+        if (gone.length !== 1) throw new AuditIntentGoneError(event.event_id);
+        await db.publish(tx, event);
+      },
+      { scan: true },
+    );
   };
 
   port.sweep = async (olderThanSeconds = AUDIT_INTENT_SWEEP_AFTER_SECONDS) => {
     const db = getDb();
-    return db.platformTx(async (tx: Tx) => {
-      const old = rowsOf(
-        await tx.query(
-          `DELETE FROM "audit_intents" WHERE "created_at" < now() - make_interval(secs => $1)
+    return db.platformTx(
+      async (tx: Tx) => {
+        const old = rowsOf(
+          await tx.query(
+            `DELETE FROM "audit_intents" WHERE "created_at" < now() - make_interval(secs => $1)
            RETURNING "event_id", "envelope"`,
-          [olderThanSeconds],
-        ),
-      );
-      for (const row of old) {
-        const event = row.envelope;
-        const payload = event.payload as { decision: string; status: number };
-        payload.decision = 'aborted';
-        payload.status = 500;
-        await db.publish(tx, event);
-      }
-      return old.length;
-    });
+            [olderThanSeconds],
+          ),
+        );
+        for (const row of old) {
+          const event = row.envelope;
+          const payload = event.payload as { decision: string; status: number };
+          payload.decision = 'aborted';
+          payload.status = 500;
+          await db.publish(tx, event);
+        }
+        return old.length;
+      },
+      { scan: true },
+    );
   };
 
   return port;
