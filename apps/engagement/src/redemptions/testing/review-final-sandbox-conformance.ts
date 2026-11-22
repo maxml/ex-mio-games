@@ -87,6 +87,22 @@ export function sandboxStockConformance(name: string, make: () => Promise<StoreH
       expect(await h.stockOf(item)).toBe(2);
     });
 
+    // D-29 INV-ENV-INPUT-6/9: the stored environment is the input's, read back by both readers;
+    // the same key in the other environment is another order. Mutation: placeOrder stores
+    // `sandbox: false` whatever the scope -> red.
+    it('SBX-5 the order stores the real environment and its readers report it', async () => {
+      const h = await make();
+      const item = await h.addItem({ price: 10, stock: null });
+      const key = { operationKey: 'same-key-5', itemId: item };
+      const s = await h.store.placeOrder(as(h, 5, true), key);
+      const p = await h.store.placeOrder(as(h, 5, false), key);
+      expect(p.redemption.id).not.toBe(s.redemption.id);
+      expect((await h.store.getOwn(as(h, 5, true), s.redemption.id))?.sandbox).toBe(true);
+      expect((await h.store.getOwn(as(h, 5, false), p.redemption.id))?.sandbox).toBe(false);
+      expect(await h.store.getOwn(as(h, 5, false), s.redemption.id)).toBeNull();
+      expect((await h.store.getForOperator(h.tenantId, s.redemption.id))?.sandbox).toBe(true);
+    });
+
     it('SBX-4 an item out of stock in production can still be ordered in sandbox (the stock step is skipped)', async () => {
       const h = await make();
       const item = await h.addItem({ price: 10, stock: 0 });
