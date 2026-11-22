@@ -36,19 +36,23 @@ of correctness; the production gate is Deckhand's (health gate, smoke, rollback)
   Dependabot branch), accepted because the minutes are free and the run on `main` is the record.
 - **Docs-only change** (only `*.md` and `docs/`): job `stack` is skipped; job `checks` still runs, because
   prettier checks the Markdown. Nothing in `docs/` is read by a test or a build.
-- **Dependabot PRs** get job `checks` only (with dependency review). The full stack runs on the branch the
+- **Dependabot PRs** get job `checks` only. The full stack runs on the branch the
   bumps are combined on and on `main`.
 - `concurrency` cancels a superseded run of the same ref; every job has `timeout-minutes`; actions are
   pinned to full commit SHAs; the token is `contents: read`; checkout does not persist credentials.
 
 ## Scanners
 
-| Scanner                           | Trigger        | Blocks                                                  |
-| --------------------------------- | -------------- | ------------------------------------------------------- |
-| Dependency review (`checks` step) | `pull_request` | the PR, on a vulnerability of high severity the PR adds |
-| Dependabot alerts                 | continuous     | nothing: triage by severity                             |
+| Scanner                              | Trigger    | Blocks                         |
+| ------------------------------------ | ---------- | ------------------------------ |
+| Secret scanning with push protection | push       | the push, on a detected secret |
+| Human review of the lockfile diff    | every bump | the bump (see "Dependabot")    |
 
-Owner of triage: the maintainer. Code scanning and DAST are not set up.
+Owner of triage: the maintainer. Not set up yet: the dependency graph and Dependabot alerts are off
+in the repository settings, so the dependency review action is refused (HTTP 403) and was taken out of
+the workflow. Turning them on (Settings, Code security) and adding
+`actions/dependency-review-action` (`fail-on-severity: high`) as a `pull_request` step of `checks` is
+the open item. Code scanning and DAST are not set up.
 
 ## Dependabot
 
