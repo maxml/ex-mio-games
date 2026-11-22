@@ -2,8 +2,10 @@
 
 ### Casino B deposit webhook: a different external schema, the same internal logic (workflow steps 1-3)
 # No signature headers. The signature is inside the body:
-#   signature = hex HMAC-SHA256(secret, "${sent_at}.${type}.${txn_id}.${customer_ref}.${amount_cents}.${ccy}")
-# Any other type, for example payment.refunded, is acknowledged and ignored.
+#   signature = hex HMAC-SHA256(hmac_secret, JSON.stringify([sent_at, type, txn_id, customer_ref, amount_cents, ccy]))
+# that is, a JSON array of those six values, not a dotted string. sent_at must be within +-300 s of the server clock
+# (older answers 401 "stale"), so the fixed value below only shows the shape.
+# Any other type, for example payment.refunded, is acknowledged and ignored (when its signature verifies).
 POST {{engagement}}/v1/integrations/casino-b-demo/events
 Content-Type: application/json
 
@@ -14,7 +16,7 @@ Content-Type: application/json
   "signature": "{{casino_b_signature}}"
 }
 
-# Response: expected, to be replaced with captured output
+# Response (shape from the contract, not captured):
 # HTTP/1.1 200 OK
 # { "status": "accepted", "inbound_event_id": "0190...-inbound-b" }
 #
@@ -32,6 +34,6 @@ Content-Type: application/json
   "signature": "{{casino_b_signature_refund}}"
 }
 
-# Response: expected, to be replaced with captured output
+# Response (shape from the contract, not captured):
 # HTTP/1.1 200 OK
 # { "status": "ignored", "inbound_event_id": null }

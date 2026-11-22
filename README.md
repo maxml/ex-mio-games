@@ -285,8 +285,8 @@ can be run for one project with `pnpm nx run <project>:<target>`.
 | One service or package                                                              | `pnpm --filter @ex-mio/<name> test` (identity, engagement, payments, contracts, service-kit, bus, tenancy, idempotency, logger, casino-sim) | nothing running                                                |
 | Web                                                                                 | `pnpm --filter @ex-mio/web test` (vitest)                                                                                                   | nothing running                                                |
 | Design system, contrast and colour gate                                             | `pnpm --filter @ex-mio/ui test`                                                                                                             | nothing running                                                |
-| Payments against Postgres                                                           | `pnpm --filter @ex-mio/payments test:db`                                                                                                    | `docker compose up -d --wait postgres`                         |
-| Engagement store against Postgres                                                   | `pnpm --filter @ex-mio/engagement test:pg`                                                                                                  | `docker compose up -d --wait postgres`                         |
+| Payments against Postgres                                                           | `pnpm --filter @ex-mio/payments test:db`                                                                                                    | `docker compose up -d --wait` (see below)                      |
+| Engagement store against Postgres                                                   | `pnpm --filter @ex-mio/engagement test:pg` with `DATABASE_URL` set (see below)                                                              | `docker compose up -d --wait` (see below)                      |
 | Whole stack: health, roles, tenant isolation, idempotency, bus, ingest, saga, audit | `pnpm test:compose`                                                                                                                         | `docker compose up -d --wait` (the stack on its default ports) |
 | Lint (layering, package boundaries)                                                 | `pnpm lint`                                                                                                                                 | nothing running                                                |
 | Typecheck                                                                           | `pnpm typecheck`                                                                                                                            | nothing running                                                |
@@ -312,10 +312,26 @@ yet shown to be a flake.
 No output of `pnpm --filter @ex-mio/payments test:db`, `pnpm --filter @ex-mio/engagement test:pg` or
 `pnpm test:compose` is committed on this tree, and no CI run exists (the repository has no remote). The compose
 counts quoted in [`docs/ai/`](docs/ai/README.md) (98 then 107 of 111) are reviewer-reported on an earlier tree.
-See S-12 in [`docs/submission/known-gaps.md`](docs/submission/known-gaps.md). `test:pg` needs `DATABASE_URL` set
-as the engagement service role, for example
-`postgresql://engagement:engagement-dev@localhost:54329/engagement` (from the header of
-`apps/engagement/src/redemptions/redemption-store.pg.itest.ts`).
+See S-12 in [`docs/submission/known-gaps.md`](docs/submission/known-gaps.md).
+
+Both Postgres suites need a database with the migrations applied, and the compose Postgres alone has none: each
+service container applies its own migrations at start, so bring up the whole stack (`docker compose up -d --wait`,
+as CI does). The roles are created by `docker/postgres/init.sh`: `<service>_app` (runtime, no DDL, row-level
+security forced) and `<service>_owner` (migrations); the role `engagement` does not exist.
+
+- `test:db` connects as `payments_app`, `payments_owner` and `postgres` itself, with the dev passwords from
+  `init.sh` (`apps/payments/src/testing/pg.ts`). `POSTGRES_HOST` (default `localhost`) and `POSTGRES_PORT`
+  (default `54329`) are the only variables.
+- `test:pg` takes `DATABASE_URL` as the runtime role, and the schema must be applied by the owner role first
+  (idempotent; the container did it at start, this repeats it):
+
+  ```sh
+  docker compose exec -T \
+    -e MIGRATION_DATABASE_URL=postgresql://engagement_owner:engagement-owner-dev@postgres:5432/engagement \
+    engagement node dist/migrate.js
+  DATABASE_URL=postgresql://engagement_app:engagement-app-dev@localhost:54329/engagement \
+    pnpm --filter @ex-mio/engagement test:pg
+  ```
 
 ```text
 $ pnpm lint

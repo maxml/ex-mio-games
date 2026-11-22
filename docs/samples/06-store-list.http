@@ -1,10 +1,11 @@
 @engagement = http://localhost:4002
 
 ### Bonus Store: active items of the caller's tenant (workflow step 6)
+# {{player_token}} is the launch session token (02); it is valid for engagement.
 GET {{engagement}}/v1/store/items
 Authorization: Bearer {{player_token}}
 
-# Response: expected, to be replaced with captured output
+# Response (shape from the contract, not captured):
 # HTTP/1.1 200 OK
 # [
 #   {
@@ -14,9 +15,10 @@ Authorization: Bearer {{player_token}}
 #   }
 # ]
 
-### Operator creates an item (roles owner or admin)
+### Operator creates an item (role operator_admin only; staff may read, not create)
+# The operator token needs the engagement audience (login with "audience": "engagement", see 01).
 POST {{engagement}}/v1/store/items
-Authorization: Bearer {{operator_token}}
+Authorization: Bearer {{operator_engagement_token}}
 Content-Type: application/json
 
 {
@@ -27,17 +29,19 @@ Content-Type: application/json
   "per_player_limit": 2
 }
 
-# Response: expected, to be replaced with captured output
+# Response (shape from the contract, not captured):
 # HTTP/1.1 201 Created
-# { "id": "0190...-item", "name": "Free bonus 5 EUR", "price": 40, "stock": 100, "active": true, "version": 1, "...": "..." }
+# { "id": "0190...-item", "name": "Free bonus 5 EUR", "description": "", "image_url": null, "price": 40,
+#   "reward": { "type": "bonus", "params": { "amount_minor": 500, "currency": "EUR" } },
+#   "stock": 100, "per_player_limit": 2, "active": true, "version": 1 }
 
 ### A non-integer or non-positive price is refused
 POST {{engagement}}/v1/store/items
-Authorization: Bearer {{operator_token}}
+Authorization: Bearer {{operator_engagement_token}}
 Content-Type: application/json
 
 { "name": "Bad", "price": 0.5, "reward": { "type": "bonus", "params": {} } }
 
-# Response: expected, to be replaced with captured output
+# Response (shape from the contract, not captured):
 # HTTP/1.1 422 Unprocessable Entity
-# { "code": "item_price_invalid", "message": "..." }
+# { "message": "price must be a positive whole number of coins", "code": "item_price_invalid" }

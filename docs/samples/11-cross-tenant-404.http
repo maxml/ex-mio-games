@@ -8,16 +8,17 @@
 GET {{engagement}}/v1/redemptions/{{tenant_b_redemption_id}}
 Authorization: Bearer {{tenant_a_player_token}}
 
-# Response: expected, to be replaced with captured output
+# Response (captured from scripts/demo.sh):
 # HTTP/1.1 404 Not Found
-# { "code": "redemption_not_found", "message": "..." }
+# {"message":"redemption not found","code":"redemption_not_found"}
 
 ### Another player of the SAME tenant reads this redemption: also 404
 GET {{engagement}}/v1/redemptions/{{player_77_redemption_id}}
 Authorization: Bearer {{player_12_token}}
 
-# Response: expected, to be replaced with captured output
+# Response (shape from the contract, not captured):
 # HTTP/1.1 404 Not Found
+# { "message": "redemption not found", "code": "redemption_not_found" }
 
 ### Spin with another player's credit_id
 POST {{engagement}}/v1/spins
@@ -27,32 +28,38 @@ Content-Type: application/json
 
 { "credit_id": "{{player_77_credit_id}}" }
 
-# Response: expected, to be replaced with captured output
+# Response (shape from the contract, not captured):
 # HTTP/1.1 404 Not Found   (that credit is left untouched)
+# message "credit not found"
 
 ### Operator of tenant A asks for tenant B's player balance
+# The operator token needs the payments audience (see 01).
 GET {{payments}}/v1/players/{{tenant_b_player_id}}/balance
-Authorization: Bearer {{tenant_a_operator_token}}
+Authorization: Bearer {{tenant_a_operator_payments_token}}
 
-# Response: expected, to be replaced with captured output
+# Response (shape from the contract, not captured):
 # HTTP/1.1 404 Not Found
-# { "code": "wallet_not_found", "message": "..." }
+# { "message": "...", "code": "wallet_not_found" }
 
 ### Tenant A's store never lists tenant B's items
 GET {{engagement}}/v1/store/items
 Authorization: Bearer {{tenant_a_player_token}}
 
-# Response: expected, to be replaced with captured output
+# Response (shape from the contract, not captured):
 # HTTP/1.1 200 OK  (only tenant A's items)
 
 ### Internal coin routes refuse player and operator tokens
-POST {{payments}}/internal/v1/coins/reserve
-Authorization: Bearer {{tenant_a_operator_token}}
+# The route is tenant-scoped in the path and takes a service token (caller svc:engagement, audience payments).
+# A user token of any kind is not a service token, so it is refused at the auth entry point with 401, before any handler runs.
+# The body needs sandbox (required) and a UUID for reserve_id and player_id.
+POST {{payments}}/internal/v1/tenants/{{tenant_a_id}}/reserves
+Authorization: Bearer {{tenant_a_operator_payments_token}}
 Idempotency-Key: reserve-hostile-0001
 Content-Type: application/json
 
-{ "reserve_id": "0190...-r", "player_id": "{{player_id}}", "amount": 1 }
+{ "reserve_id": "{{any_uuid}}", "player_id": "{{player_id}}", "amount": 1, "sandbox": false }
 
-# Response: expected, to be replaced with captured output
-# HTTP/1.1 403 Forbidden
-# Only the engagement service identity may call /internal/v1/coins/*.
+# Response (shape from the contract, not captured):
+# HTTP/1.1 401 Unauthorized
+# { "code": "TOKEN_INVALID", "message": "TOKEN_INVALID" }
+# A real service token from any caller other than the engagement service gets 403 SERVICE_CALL_FORBIDDEN.

@@ -1,5 +1,7 @@
 @engagement = http://localhost:4002
 
+# {{player_token}} is the launch session token (02).
+
 ### 1. Duplicate deposit webhook: same event id, delivered twice (Part C: duplicate deposits)
 # Send the exact request of 02-casino-a-deposit.http a second time.
 POST {{engagement}}/v1/integrations/casino-a-demo/events
@@ -9,7 +11,7 @@ x-a-signature: {{casino_a_signature}}
 
 {"eventId":"evt-a-0001","playerId":"A-PLAYER-77","amount":{"value":5000,"currency":"EUR"},"status":"SUCCESS","ts":1790000000}
 
-# Response: expected, to be replaced with captured output
+# Response (shape from the contract, not captured):
 # HTTP/1.1 200 OK
 # The first delivery's body, unchanged: { "status": "accepted", "inbound_event_id": "0190...-inbound" }
 # No second row, no second outbox message, no second spin credit.
@@ -22,15 +24,16 @@ Content-Type: application/json
 
 {}
 
-# Response: expected, to be replaced with captured output
+# Response (captured from scripts/demo.sh: the same key sent twice returns the same body):
 # HTTP/1.1 201 Created
 # The recorded spin, same segment_index and spin_id; no second credit consumed.
-# { "spin_id": "0190...-spin", "segment_index": 3, "segment_label": "50 coins", "reward_coins": 50 }
+# {"spin_id":"01a2012d-49ac-7223-b6b6-7b6c69073dd5","segment_index":0,"segment_label":"200 coins","reward_coins":200}
 
 ### 3. Same key while the first request is still running
-# Fire two identical requests in parallel: one gets 201, the other 409 { "code": "in_progress" } (retryable).
+# Fire two identical requests in parallel: one gets 201, the other 409 { "message": "the same request is still running, retry with the same key", "code": "in_progress" } (retryable).
+# For a redemption the same race answers 409 { "code": "idempotency_in_progress" }.
 
-### 4. Same key, different body
+### 4. Same key, different credit_id
 POST {{engagement}}/v1/spins
 Authorization: Bearer {{player_token}}
 Idempotency-Key: spin-0001-player-77
@@ -38,8 +41,9 @@ Content-Type: application/json
 
 { "credit_id": "0190...-other-credit" }
 
-# Response: expected, to be replaced with captured output
+# Response (shape from the contract, not captured):
 # HTTP/1.1 422 Unprocessable Entity
+# message "Idempotency-Key was used with a different request"; nothing changes.
 
 ### 5. Redemption replay: same key, same item
 POST {{engagement}}/v1/redemptions
@@ -49,7 +53,8 @@ Content-Type: application/json
 
 { "item_id": "0190...-item" }
 
-# Response: expected, to be replaced with captured output
+# Response (captured from scripts/demo.sh):
+# HTTP/1.1 202 Accepted, header Idempotent-Replayed: true
 # The existing redemption, same id; one stock unit, one reserve, one casino reward.
 
 ### 6. Same redemption key, another item
@@ -60,6 +65,6 @@ Content-Type: application/json
 
 { "item_id": "0190...-another-item" }
 
-# Response: expected, to be replaced with captured output
+# Response (shape from the contract, not captured):
 # HTTP/1.1 422 Unprocessable Entity
-# { "code": "idempotency_key_reused", "message": "..." }
+# { "message": "this idempotency key was already used for another item", "code": "idempotency_key_reused" }
