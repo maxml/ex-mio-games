@@ -4,6 +4,7 @@ import {
   type BillingPlan,
   type CreateAttemptRequest,
   type Invoice,
+  type OperatorPlan,
   type PaymentAttempt,
   type ProviderSnapshot,
   type Subscription,
@@ -55,6 +56,29 @@ export class BillingService {
     return this.db.tenantTx((tx) =>
       this.repo.currentSubscription(tx, tenantId, ['pending', 'active', 'past_due']),
     );
+  }
+
+  /** D-27: the tenant's current plan with the provider's subscription id; `null` when it has none. */
+  operatorPlan(): Promise<OperatorPlan | null> {
+    const { tenantId } = currentTenant();
+    return this.db.tenantTx(async (tx) => {
+      const sub = await this.repo.currentSubscription(tx, tenantId, [
+        'pending',
+        'active',
+        'past_due',
+      ]);
+      if (!sub) return null;
+      const plan = await this.repo.planById(tx, sub.plan_id);
+      if (!plan) return null;
+      return {
+        subscription_id: sub.id,
+        status: sub.status,
+        plan: { id: plan.id, code: plan.code, name: plan.name },
+        provider: sub.provider,
+        provider_subscription_id: sub.provider_subscription_id,
+        current_period_end: sub.current_period_end,
+      };
+    });
   }
 
   listInvoices(): Promise<Invoice[]> {

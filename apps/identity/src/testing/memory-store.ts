@@ -6,6 +6,7 @@ import type {
   CredentialRow,
   PlayerLinkRow,
   Repos,
+  RewardApiRow,
   SigningKeyRow,
   TenantRow,
   Tx,
@@ -47,6 +48,7 @@ export class MemoryStore {
   readonly playerLinks: Array<PlayerLinkRow & { tenant_id: string }> = [];
   readonly jti: Array<{ tenant_id: string; jti: string; expires_at: number }> = [];
   readonly credentials: CredentialRow[] = [];
+  readonly rewardApis: RewardApiRow[] = [];
   readonly audit: AuditRow[] = [];
   readonly keys: SigningKeyRow[] = [];
   readonly outbox: EventEnvelope[] = [];
@@ -303,6 +305,28 @@ export class MemoryStore {
           const before = { status: c.status, retiring_until: c.retiring_until };
           Object.assign(c, patch);
           asTx(tx).undo.push(() => Object.assign(c, before));
+        },
+      },
+      rewardApis: {
+        async upsert(tx, row) {
+          await tick();
+          const old = s.rewardApis.find(
+            (r) =>
+              r.tenant_id === row.tenant_id &&
+              r.platform === row.platform &&
+              r.environment === row.environment,
+          );
+          if (!old) {
+            s.push(tx, s.rewardApis, { ...row });
+            return;
+          }
+          const before = { ...old };
+          Object.assign(old, row);
+          asTx(tx).undo.push(() => Object.assign(old, before));
+        },
+        async list(_tx, tenantId) {
+          await tick();
+          return s.rewardApis.filter((r) => r.tenant_id === tenantId).map((r) => ({ ...r }));
         },
       },
       audit: {

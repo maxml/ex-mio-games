@@ -151,6 +151,9 @@ services:
       SERVICE_CLIENT_SECRET: engagement-dev-secret-0000
       # The redemption saga calls payments (reserve, commit, release) with a service token.
       PAYMENTS_URL: http://payments:4003
+      # D-27: the browser opens the realtime socket on engagement's own public URL (web's
+      # PUBLIC_REALTIME_URL), so the web origin is allowed to connect cross-origin.
+      REALTIME_ALLOWED_ORIGINS: http://localhost:${WEB_PORT:-3000}
     command:
       - sh
       - -c
@@ -219,6 +222,9 @@ services:
       # Fault injection and issued-reward inspection (/__faults, /__reset, /__issued, /casino-b/__settle).
       # The simulator exists only in this dev stack; it is never deployed.
       SIM_FAULTS: '1'
+      # D-27: an operator registers this service as its casino's reward API with
+      # `PUT /v1/operator/integrations/:casino/reward-api`, base URL http://casino-sim:4004 (the
+      # address engagement reaches it on inside this network). Nothing is registered by default.
     ports:
       - '${CASINO_SIM_PORT:-4004}:4004'
     healthcheck:
@@ -238,6 +244,9 @@ services:
       PORT: '3000'
       # Server-side calls to the identity service over the compose network.
       API_URL: http://identity:4001
+      # D-27: `/config` returns this as `realtimeUrl`, the engagement public URL the browser opens the
+      # socket on. The same-origin `/socket.io` rewrite to engagement stays as a fallback.
+      PUBLIC_REALTIME_URL: http://localhost:${ENGAGEMENT_PORT:-4002}
     ports:
       - '${WEB_PORT:-3000}:3000'
     depends_on:

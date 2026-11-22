@@ -19,13 +19,16 @@ describe('web /config route', () => {
     expect(res.status).toBe(200);
     expect(res.headers.get('content-type')).toContain('application/json');
     expect(res.headers.get('cache-control')).toContain('no-store');
-    await expect(res.json()).resolves.toEqual({ apiUrl: '' });
+    await expect(res.json()).resolves.toEqual({ apiUrl: '', realtimeUrl: '' });
   });
 
   it('reflects the runtime PUBLIC_API_URL when set (runtime, not baked)', async () => {
     process.env.PUBLIC_API_URL = 'https://api.example.com';
     const res = GET();
 
-    await expect(res.json()).resolves.toEqual({ apiUrl: 'https://api.example.com' });
+    await expect(res.json()).resolves.toEqual({
+      apiUrl: 'https://api.example.com',
+      realtimeUrl: '',
+    });
   });
 });

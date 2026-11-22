@@ -46,7 +46,7 @@ export function wireServices(d: WireDeps): Services {
     ...(d.keyGenerator ? { keyGenerator: d.keyGenerator } : {}),
   });
   const staff = new StaffService(d.uow, d.repos, d.provider, tenants, access);
-  const credentials = new CredentialsService(d.uow, d.repos, d.clock, access, d.kek);
+  const credentials = new CredentialsService(d.uow, d.repos, d.clock, access, d.kek, audit);
   const players = new PlayersService(d.uow, d.repos, access);
   const launch = new LaunchService(
     d.uow,

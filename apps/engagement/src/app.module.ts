@@ -10,6 +10,7 @@ import {
 } from '@ex-mio/service-kit';
 import type { Config } from './config';
 import { IngestController } from './controllers/ingest.controller';
+import { OperatorConfigController } from './controllers/operator-config.controller';
 import { ProjectionsController } from './controllers/projections.controller';
 import { SpinController } from './controllers/spin.controller';
 import { IdentityHttpClient, ServiceTokenSource } from './integrations/identity-client';
@@ -38,14 +39,15 @@ import { REALTIME_BINDINGS } from './realtime/realtime.events';
 import { IdentityTicketRedeemer } from './realtime/ticket-redeemer';
 import { StoreModule } from './redemptions/store.module';
 import { IngestionService } from './services/ingestion.service';
+import { OperatorConfigService } from './services/operator-config.service';
 import { ProjectionsService } from './services/projections.service';
 import { SpinCreditsService } from './services/spin-credits.service';
 import { SpinService } from './services/spin.service';
 
 @Module({
   imports: [ModelModule],
-  providers: [ProjectionsService, SpinCreditsService],
-  exports: [ProjectionsService, SpinCreditsService],
+  providers: [ProjectionsService, SpinCreditsService, OperatorConfigService],
+  exports: [ProjectionsService, SpinCreditsService, OperatorConfigService],
 })
 class ProjectionsModule {}
 
@@ -75,12 +77,17 @@ export function createAppModule(config: Config): DynamicModule {
       ...REALTIME_BINDINGS, // pushed to the player's room by the gateway
     ],
     publishes: true,
-    // the handler needs ProjectionsService, SpinCreditsService and the gateway
+    // the handler needs ProjectionsService, SpinCreditsService, OperatorConfigService and the gateway
     imports: [ProjectionsModule, realtime],
     handler: {
-      inject: [ProjectionsService, SpinCreditsService, RealtimeGateway],
+      inject: [ProjectionsService, SpinCreditsService, RealtimeGateway, OperatorConfigService],
       useFactory:
-        (projections: ProjectionsService, credits: SpinCreditsService, gateway: RealtimeGateway) =>
+        (
+          projections: ProjectionsService,
+          credits: SpinCreditsService,
+          gateway: RealtimeGateway,
+          operatorConfig: OperatorConfigService,
+        ) =>
         async (tx, event) => {
           if (event.type === 'engagement.deposit.confirmed') {
             await credits.onDepositConfirmed(tx, event);
@@ -88,6 +95,8 @@ export function createAppModule(config: Config): DynamicModule {
           }
           if (event.type === 'identity.tenant.created') {
             await projections.onTenantCreated(tx, event);
+            // D-27: a new operator starts with a default wheel and rule, in the same transaction.
+            await operatorConfig.seedDefaults(tx, event.tenant_id);
             return;
           }
           // Spin result, balance change, redemption status: queued, and pushed only after this
@@ -145,7 +154,12 @@ export function createAppModule(config: Config): DynamicModule {
         }),
       }),
     ],
-    controllers: [ProjectionsController, IngestController, SpinController],
+    controllers: [
+      ProjectionsController,
+      IngestController,
+      SpinController,
+      OperatorConfigController,
+    ],
     providers: [
       IngestionService,
       SpinService,

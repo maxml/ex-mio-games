@@ -26,6 +26,12 @@ export interface PublicRuntimeConfig {
    * `single_host: false` deployment with per-service subdomains.
    */
   apiUrl: string;
+  /**
+   * Browser-facing origin of the realtime gateway (engagement's public URL, Socket.IO). Empty means
+   * "no dedicated origin": the client falls back to the web origin, where `next.config.mjs` proxies
+   * `/socket.io`. The gateway must allow the web origin (`REALTIME_ALLOWED_ORIGINS`).
+   */
+  realtimeUrl: string;
 }
 
 /** True when running on the server (no DOM). Kept tiny so it inlines/tree-shakes. */
@@ -100,6 +106,10 @@ function sameOriginWsBase(): string {
 export function resolveWsBaseUrl(explicit?: string): string {
   if (explicit) return httpToWs(explicit);
 
+  // D-27: the gateway's own public origin, from `/config` (`realtimeUrl`), wins over the API origin.
+  const realtime = isServer() ? undefined : injectedConfig()?.realtimeUrl;
+  if (realtime) return httpToWs(realtime);
+
   const apiBase = resolveApiBaseUrl();
   if (apiBase) return httpToWs(apiBase);
 
@@ -117,7 +127,10 @@ export function resolveWsBaseUrl(explicit?: string): string {
  * is never leaked to the client.
  */
 export function getPublicRuntimeConfig(): PublicRuntimeConfig {
-  return { apiUrl: process.env.PUBLIC_API_URL ?? '' };
+  return {
+    apiUrl: process.env.PUBLIC_API_URL ?? '',
+    realtimeUrl: process.env.PUBLIC_REALTIME_URL ?? '',
+  };
 }
 
 /** Join a base (possibly `''` for same-origin) and a path into a request URL. */

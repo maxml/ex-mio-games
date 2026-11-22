@@ -3,6 +3,7 @@ import type { DataSource } from 'typeorm';
 import { DATA_SOURCE, Db } from '@ex-mio/service-kit';
 import { InboundEventsRepository } from '../integrations/ports';
 import { makeDataSource } from './data-source';
+import { OperatorConfigRepository } from './operator-config.repository';
 import {
   PgInboundEventsRepository,
   PgRulesRepository,
@@ -27,6 +28,7 @@ import {
     },
     Db,
     ProjectionsRepository,
+    OperatorConfigRepository,
     { provide: InboundEventsRepository, useClass: PgInboundEventsRepository },
     { provide: RulesRepository, useClass: PgRulesRepository },
     { provide: SpinCreditsRepository, useClass: PgSpinCreditsRepository },
@@ -37,6 +39,7 @@ import {
     DATA_SOURCE,
     Db,
     ProjectionsRepository,
+    OperatorConfigRepository,
     InboundEventsRepository,
     RulesRepository,
     SpinCreditsRepository,

@@ -98,6 +98,35 @@ spins. When another source appears it adds a value to `source`, not a new event.
 Varta never merges an anonymous visitor with a known player, so the anonymous `widget_opened` step and
 the `player_launched` step are counted as two populations, not joined per person.
 
+## Captured example
+
+One clean `docker compose up` followed by `scripts/demo.sh` (two operators, one player each plus a second
+player in casino A, a 3-times-delivered duplicate deposit, a 10-way spin race, a 5-way same-key redemption).
+The lines were collected from the services' stdout with `docker compose logs`, filtered on
+`"kind":"product_event"` (29 lines), and counted per event and tenant. Tenant A is the casino A operator,
+tenant B the casino B operator.
+
+| Funnel step                   | Event                             | Tenant A | Tenant B | Note                                                                       |
+| ----------------------------- | --------------------------------- | -------: | -------: | -------------------------------------------------------------------------- |
+| operator signs up             | `identity.operator_signed_up`     |        1 |        1 |                                                                            |
+| operator picks a plan         | `payments.plan_selected`          |        1 |        1 |                                                                            |
+| plan paid                     | `payments.payment_succeeded`      |        1 |        1 |                                                                            |
+| operator gets a casino key    | `identity.credential_issued`      |        1 |        1 |                                                                            |
+| player enters from the casino | `identity.player_launched`        |        4 |        2 | two launches per player (one token per audience)                           |
+| player deposits at the casino | `engagement.deposit_ingested`     |        2 |        1 | tenant A received 4 deliveries of 2 deposits: one deposit came 3 times     |
+| player spins                  | `engagement.spin_completed`       |        2 |        1 | the 10-way race produced exactly one spin                                  |
+| coins reach the wallet        | `payments.coins_credited`         |        2 |        1 |                                                                            |
+| player orders a reward        | `engagement.redemption_requested` |        4 |        1 | 5 parallel same-key requests are one order                                 |
+| order reaches an end          | `engagement.redemption_resolved`  |        1 |        0 | the one `rejected_funds` (a player with no coins); see the README known gaps |
+
+Operator activation is 2 of 2 operators through signup, plan, payment and key. The player loop of tenant A
+runs 4 launches, 2 deposits, 2 spins, 2 credits and 4 orders. Two lines as emitted:
+
+```json
+{"level":"info","service":"engagement","kind":"product_event","event":"engagement.deposit_ingested","event_v":1,"tenant_id":"<tenant uuid>","actor_type":"player","actor_id":"<player uuid>","consent":"essential","props":{"casino":"casino-a","sandbox":false,"amount_minor":5000,"currency":"EUR"}}
+{"level":"info","service":"engagement","kind":"product_event","event":"engagement.deposit_ingested","event_v":1,"tenant_id":"<tenant uuid>","actor_type":"player","actor_id":"<player uuid>","consent":"essential","props":{"casino":"casino-b","sandbox":false,"amount_minor":5000,"currency":"EUR"}}
+```
+
 ## Known limits
 
 - The web BFF reads the tenant of an anonymous `widget_opened` from the launch token's key id,
