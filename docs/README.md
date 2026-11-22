@@ -21,6 +21,7 @@ Index only: where to go when you need to know something.
 | How AI was used and how its output was checked        | [`ai/`](ai/README.md)                                        |
 | Scaling, the first 90 days, the team                  | [`scaling/`](scaling/README.md)                              |
 | Request samples for the 8-step workflow               | [`samples/`](samples/README.md)                              |
+| Where to change: a casino, a reward type, a rule      | [`how-to/where-to-change.md`](how-to/where-to-change.md)     |
 | Security rules and how to report a problem            | [`../SECURITY.md`](../SECURITY.md)                           |
 | Where an AI agent starts                              | [`../AGENTS.md`](../AGENTS.md)                               |
 

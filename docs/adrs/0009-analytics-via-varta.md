@@ -41,5 +41,5 @@ Bad: stdout lines are not a durable queue, so an event can be lost between the l
 ## Built vs designed
 
 - Built: the event contract (`ProductEventLine`, matching Varta's product-event schema, with a conformance test against a vendored copy) and the logger function `logProductEvent`.
-- Built: identity, engagement, payments and the web backend emit 12 product events to stdout (`docs/analytics.md`), and Varta ingestion of them is live on pre-prod (`docs/observability/varta.md`).
+- Built: identity, engagement, payments and the web backend emit 12 product events to stdout (`docs/analytics.md`), and the ingest path is verified and conformance-checked against Varta's schema; the events reach Varta when MIO is deployed with the varta labels (`docs/observability/varta.md`).
 - Next: emission of business events through the outbox, distinct-count reads, and the Varta-side funnel view. The submission writes events to stdout under Varta's contract and does not modify Varta.

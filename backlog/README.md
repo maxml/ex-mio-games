@@ -165,6 +165,9 @@ awk '/^estimate_hours_base:/{b=$2} /^estimate_hours:/{if($2!=int((b*12+9)/10))pr
 6. **Fix and re-review.** Each re-review starts with the question "what did this fix move?", not "is it fixed?".
 7. **Merge.** After review and green tests, with documentation updated in the same merge. Status becomes `done`.
 
+The `status` fields in `backlog/tasks/` are the planning snapshot taken before the build. Work that was built
+was not moved to `done`, so most tasks still say `todo`; read them as the plan, not as progress.
+
 ## Graph rules
 
 The dependency graph must agree with "tests before code". Three kinds of task, in this order:

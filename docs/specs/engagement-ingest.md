@@ -333,7 +333,7 @@ credit once and payments down means retry from the outbox; the L2 spec and tests
 area only emits the event); the real identity client behind `TENANT_INTEGRATIONS` and
 `PLAYER_DIRECTORY` (L1; the dev static config stands in); operator CRUD APIs for rules and tables, rate
 limiting, seed rotation schedule and the audit script (MIO-069; its prerequisite `SEEDS.seed(version)` is
-in scope), websocket pushes of `spin.granted` (L5/realtime), `docs/integrations/adding-a-casino.md`.
+in scope), websocket pushes of `spin.granted` (L5/realtime), `docs/how-to/where-to-change.md` (adding a casino).
 
 Deferred with a named reason: MIO-151 "spin with an operator or platform token is 403" waits until L1
 issues a principal kind (foundation tenancy has none). `GET /v1/me/spins` is no longer deferred: it is in

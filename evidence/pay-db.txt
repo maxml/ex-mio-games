@@ -1,0 +1,20 @@
+# commit 33462ab (later commits change docs, test email strings and deploy wording only), 2026-11-22
+# command: pnpm --filter @ex-mio/payments test:db
+# Trimmed: 255 repetitive JSON product-event log lines are replaced by the first 5 and this note; the test summary is complete.
+
+
+> @ex-mio/payments@0.1.0 test:db <repo>/apps/payments
+> jest --testMatch '**/*.pgtest.ts' --runInBand
+
+{"level":"info","ts":"2026-11-22T17:39:29.204Z","service":"app","env":"test","version":"0.1.0","kind":"product_event","event_id":"01a20457-7134-7d55-8560-4238c4cf7648","event":"payments.coins_credited","event_v":1,"tenant_id":"01a20457-70ed-7b78-aa57-b60f91f381a3","actor_type":"player","actor_id":"01a20457-70ee-77b8-abaa-7bcd12a60da7","consent":"essential","props":{"source":"spin","coins":7,"sandbox":false}}
+{"level":"info","ts":"2026-11-22T17:39:30.015Z","service":"app","env":"test","version":"0.1.0","kind":"product_event","event_id":"01a20457-745f-7139-a39e-86383fe51871","event":"payments.coins_credited","event_v":1,"tenant_id":"01a20457-7427-7d27-992d-41a1fdf3097e","actor_type":"player","actor_id":"01a20457-7427-791f-a994-76c00cf4d572","consent":"essential","props":{"source":"spin","coins":7,"sandbox":false}}
+{"level":"info","ts":"2026-11-22T17:39:30.552Z","service":"app","env":"test","version":"0.1.0","kind":"product_event","event_id":"01a20457-7678-75a0-b432-af409969af0a","event":"payments.coins_credited","event_v":1,"tenant_id":"01a20457-765d-77f0-86cf-7c1cc517e341","actor_type":"player","actor_id":"01a20457-765d-79b1-9ee1-2a16be73222a","consent":"essential","props":{"source":"spin","coins":20,"sandbox":false}}
+{"level":"info","ts":"2026-11-22T17:39:30.601Z","service":"app","env":"test","version":"0.1.0","kind":"product_event","event_id":"01a20457-76a9-7564-ac6a-92ea904d76b2","event":"payments.coins_credited","event_v":1,"tenant_id":"01a20457-765d-77f0-86cf-7c1cc517e341","actor_type":"player","actor_id":"01a20457-765d-79b1-9ee1-2a16be73222a","consent":"essential","props":{"source":"spin","coins":3,"sandbox":false}}
+{"level":"info","ts":"2026-11-22T17:39:30.658Z","service":"app","env":"test","version":"0.1.0","kind":"product_event","event_id":"01a20457-76e2-7eee-a007-64199be4867c","event":"payments.coins_credited","event_v":1,"tenant_id":"01a20457-765d-77f0-86cf-7c1cc517e341","actor_type":"player","actor_id":"01a20457-765d-79b1-9ee1-2a16be73222a","consent":"essential","props":{"source":"spin","coins":3,"sandbox":false}}
+# ... 250 more product_event lines omitted ...
+
+Test Suites: 8 passed, 8 total
+Tests:       181 passed, 181 total
+Snapshots:   0 total
+Time:        26.358 s
+Ran all test suites.

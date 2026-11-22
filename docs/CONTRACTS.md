@@ -111,7 +111,7 @@ sandbox, payload }`; `tenant_id` is mandatory; the payload schema is registered 
 - **spec:** `docs/specs/engagement-ingest.md`. `POST /v1/integrations/{tenantSlug}/events`: the casino's own
   signature (D-15 Q-1) verified in the engagement adapters with the secrets that identity serves to
   `svc:engagement` (`TenantIntegration`), then schema, the player resolved to an internal id through identity,
-  then one transaction for the `UNIQUE (tenant_id, source, external_event_id)` row and the
+  then one transaction for the `UNIQUE (tenant_id, sandbox, source, external_event_id)` row and the
   `engagement.deposit.confirmed` outbox message, which carries `player_id` only, never the raw casino id (X-1).
   The adapter's port is the one in `casino-adapter.ts`, and `sandbox` on the envelope comes from the verified
   integration credential (X-3, D-13).

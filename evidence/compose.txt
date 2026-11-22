@@ -1,0 +1,89 @@
+# commit 33462ab (later commits change docs, test email strings and deploy wording only), 2026-11-22
+# command: pnpm test:compose
+
+
+> ex-mio@0.1.0 test:compose <repo>
+> pnpm --filter @ex-mio/compose-tests test:compose
+
+
+> @ex-mio/compose-tests@0.1.0 test:compose <repo>/tests/compose
+> jest --runInBand
+
+MATRIX acting identity POST /v1/auth/realtime-ticket [own] -> 403 ACTING_FORBIDDEN audit=[{"decision":"refused","status":403}]
+MATRIX acting identity POST /v1/auth/acting [own] -> 403 ACTING_FORBIDDEN audit=[{"decision":"refused","status":403}]
+MATRIX acting identity POST /v1/staff [own] -> 201  audit=[{"decision":"allowed","status":201}]
+MATRIX acting identity GET /v1/staff [own] -> 200  audit=[{"decision":"allowed","status":200}]
+MATRIX acting identity GET /v1/players/:userId [own] -> 200  audit=[{"decision":"allowed","status":200}]
+MATRIX acting identity GET /v1/players/:userId [other] -> 404 NOT_FOUND audit=[{"decision":"allowed","status":404}]
+MATRIX acting identity GET /v1/tenants/:id [own] -> 200  audit=[{"decision":"allowed","status":200}]
+MATRIX acting identity GET /v1/tenants/:id [other] -> 403 ACTING_TENANT_MISMATCH audit=[{"decision":"refused","status":403}]
+MATRIX acting identity POST /v1/tenants/:id/suspend [own] -> 403 ACTING_TENANT_MISMATCH audit=[{"decision":"refused","status":403}]
+MATRIX acting identity GET /v1/credentials [own] -> 200  audit=[{"decision":"allowed","status":200}]
+MATRIX acting identity POST /v1/credentials [own] -> 403 ACTING_FORBIDDEN audit=[{"decision":"refused","status":403}]
+MATRIX acting identity POST /v1/credentials/:keyId/rotate [own] -> 403 ACTING_FORBIDDEN audit=[{"decision":"refused","status":403}]
+MATRIX acting identity PUT /v1/operator/integrations/:casino/reward-api [own] -> 403 ACTING_FORBIDDEN audit=[{"decision":"refused","status":403}]
+MATRIX acting identity GET /v1/audit [own] -> 200  audit=[{"decision":"allowed","status":200}]
+MATRIX acting engagement PUT /v1/operator/wheel [own] -> 403 ACTING_FORBIDDEN audit=[{"decision":"refused","status":403}]
+MATRIX acting engagement PUT /v1/operator/rules [own] -> 403 ACTING_FORBIDDEN audit=[{"decision":"refused","status":403}]
+MATRIX acting engagement GET /v1/tenant-projection [own] -> 200  audit=[{"decision":"allowed","status":200}]
+MATRIX acting engagement POST /v1/redemptions [own] -> 403 forbidden audit=[{"decision":"refused","status":403}]
+MATRIX acting engagement GET /v1/redemptions/:id [own] -> 403 forbidden audit=[{"decision":"refused","status":403}]
+MATRIX acting engagement GET /v1/me/redemptions [own] -> 403 forbidden audit=[{"decision":"refused","status":403}]
+MATRIX acting engagement GET /v1/operator/redemptions [own] -> 403 forbidden audit=[{"decision":"refused","status":403}]
+MATRIX acting engagement GET /v1/operator/redemptions/:id [own] -> 403 forbidden audit=[{"decision":"refused","status":403}]
+MATRIX acting engagement POST /v1/operator/redemptions/:id/resolve [own] -> 403 ACTING_FORBIDDEN audit=[{"decision":"refused","status":403}]
+MATRIX acting engagement POST /v1/spins [own] -> 403 forbidden audit=[{"decision":"refused","status":403}]
+MATRIX acting engagement GET /v1/wheel [own] -> 200  audit=[{"decision":"allowed","status":200}]
+MATRIX acting engagement GET /v1/wheel/:wheelId [own] -> 404  audit=[{"decision":"allowed","status":404}]
+MATRIX acting engagement GET /v1/me/spins [own] -> 200  audit=[{"decision":"allowed","status":200}]
+MATRIX acting engagement GET /v1/store/items [own] -> 200  audit=[{"decision":"allowed","status":200}]
+MATRIX acting engagement GET /v1/operator/store/items [own] -> 403 forbidden audit=[{"decision":"refused","status":403}]
+MATRIX acting engagement POST /v1/store/items [own] -> 403 forbidden audit=[{"decision":"refused","status":403}]
+MATRIX acting engagement PATCH /v1/store/items/:id [own] -> 403 forbidden audit=[{"decision":"refused","status":403}]
+MATRIX acting payments GET /v1/me/balance [own] -> 403 forbidden audit=[{"decision":"refused","status":403}]
+MATRIX acting payments GET /v1/players/:player_id/balance [own] -> 404 wallet_not_found audit=[{"decision":"allowed","status":404}]
+MATRIX acting payments GET /v1/players/:player_id/balance [other] -> 404 wallet_not_found audit=[{"decision":"allowed","status":404}]
+MATRIX acting payments GET /v1/billing/plans [own] -> 200  audit=[{"decision":"allowed","status":200}]
+MATRIX acting payments POST /v1/billing/attempts [own] -> 403 forbidden audit=[{"decision":"refused","status":403}]
+MATRIX acting payments GET /v1/billing/attempts/:id [own] -> 404 attempt_not_found audit=[{"decision":"allowed","status":404}]
+MATRIX acting payments POST /v1/billing/attempts/:id/cancel [own] -> 403 forbidden audit=[{"decision":"refused","status":403}]
+MATRIX acting payments GET /v1/billing/subscription [own] -> 200  audit=[{"decision":"allowed","status":200}]
+MATRIX acting payments GET /v1/billing/invoices [own] -> 200  audit=[{"decision":"allowed","status":200}]
+MATRIX acting payments GET /v1/billing/usage [own] -> 400 validation_failed audit=[{"decision":"allowed","status":400}]
+MATRIX acting payments GET /v1/platform/ledger/reconciliation [own] -> 200  audit=[{"decision":"allowed","status":200}]
+MATRIX acting payments GET /v1/operator/plan [own] -> 403 forbidden audit=[{"decision":"refused","status":403}]
+MATRIX svc:engagement identity POST /internal/v1/realtime-tickets/redeem -> 401 TOKEN_INVALID audit=[{"decision":"allowed","status":401}]
+MATRIX svc:payments identity POST /internal/v1/realtime-tickets/redeem -> 403 SERVICE_CALL_FORBIDDEN audit=[{"decision":"refused","status":403}]
+MATRIX svc:engagement identity GET /internal/v1/tenants/:tenantId/status -> 200  audit=[{"decision":"allowed","status":200}]
+MATRIX svc:payments identity GET /internal/v1/tenants/:tenantId/status -> 200  audit=[{"decision":"allowed","status":200}]
+MATRIX svc:engagement identity POST /internal/v1/tenants/:tenantId/players/resolve -> 200  audit=[{"decision":"allowed","status":200}]
+MATRIX svc:payments identity POST /internal/v1/tenants/:tenantId/players/resolve -> 403 SERVICE_CALL_FORBIDDEN audit=[{"decision":"refused","status":403}]
+MATRIX svc:engagement identity GET /internal/v1/tenants/:tenantId/integration -> 200  audit=[{"decision":"allowed","status":200}]
+MATRIX svc:payments identity GET /internal/v1/tenants/:tenantId/integration -> 403 SERVICE_CALL_FORBIDDEN audit=[{"decision":"refused","status":403}]
+MATRIX svc:engagement identity GET /internal/v1/integrations/by-slug/:slug -> 200  audit=[{"decision":"allowed","status":200}]
+MATRIX svc:payments identity GET /internal/v1/integrations/by-slug/:slug -> 403 SERVICE_CALL_FORBIDDEN audit=[{"decision":"refused","status":403}]
+MATRIX svc:engagement identity GET /internal/v1/tenants/:tenantId/players/:userId/link -> 404 NOT_FOUND audit=[{"decision":"allowed","status":404}]
+MATRIX svc:payments identity GET /internal/v1/tenants/:tenantId/players/:userId/link -> 403 SERVICE_CALL_FORBIDDEN audit=[{"decision":"refused","status":403}]
+MATRIX svc:engagement payments POST /internal/v1/tenants/:tenantId/reserves -> 409 insufficient_funds audit=[{"decision":"allowed","status":409}]
+MATRIX svc:engagement payments POST /internal/v1/tenants/:tenantId/reserves/:reserveId/capture -> 404 reserve_not_found audit=[{"decision":"allowed","status":404}]
+MATRIX svc:engagement payments POST /internal/v1/tenants/:tenantId/reserves/:reserveId/release -> 404 reserve_not_found audit=[{"decision":"allowed","status":404}]
+MATRIX svc:engagement payments POST /internal/v1/tenants/:tenantId/reserves/:reserveId/refund -> 404 reserve_not_found audit=[{"decision":"allowed","status":404}]
+MATRIX svc:engagement payments GET /internal/v1/tenants/:tenantId/players/:playerId/balance -> 400 validation_failed audit=[{"decision":"allowed","status":400}]
+MATRIX operator_admin identity: 200 POST /v1/auth/realtime-ticket [own] | 403 POST /v1/auth/acting [own] | 201 POST /v1/staff [own] | 200 GET /v1/staff [own] | 200 GET /v1/players/:userId [own] | 404 GET /v1/players/:userId [other] | 200 GET /v1/tenants/:id [own] | 404 GET /v1/tenants/:id [other] | 404 POST /v1/tenants/:id/suspend [own] | 200 GET /v1/credentials [own] | 201 POST /v1/credentials [own] | 404 POST /v1/credentials/:keyId/rotate [own] | 200 PUT /v1/operator/integrations/:casino/reward-api [own] | 200 GET /v1/audit [own]
+MATRIX operator_admin engagement: 200 PUT /v1/operator/wheel [own] | 200 PUT /v1/operator/rules [own] | 200 GET /v1/tenant-projection [own] | 403 POST /v1/redemptions [own] | 403 GET /v1/redemptions/:id [own] | 403 GET /v1/me/redemptions [own] | 200 GET /v1/operator/redemptions [own] | 404 GET /v1/operator/redemptions/:id [own] | 404 POST /v1/operator/redemptions/:id/resolve [own] | 403 POST /v1/spins [own] | 200 GET /v1/wheel [own] | 404 GET /v1/wheel/:wheelId [own] | 200 GET /v1/me/spins [own] | 200 GET /v1/store/items [own] | 200 GET /v1/operator/store/items [own] | 201 POST /v1/store/items [own] | 404 PATCH /v1/store/items/:id [own]
+MATRIX operator_admin payments: 403 GET /v1/me/balance [own] | 404 GET /v1/players/:player_id/balance [own] | 404 GET /v1/players/:player_id/balance [other] | 200 GET /v1/billing/plans [own] | 400 POST /v1/billing/attempts [own] | 404 GET /v1/billing/attempts/:id [own] | 400 POST /v1/billing/attempts/:id/cancel [own] | 200 GET /v1/billing/subscription [own] | 200 GET /v1/billing/invoices [own] | 400 GET /v1/billing/usage [own] | 403 GET /v1/platform/ledger/reconciliation [own] | 404 GET /v1/operator/plan [own]
+MATRIX operator_staff identity: 200 POST /v1/auth/realtime-ticket [own] | 403 POST /v1/auth/acting [own] | 403 POST /v1/staff [own] | 200 GET /v1/staff [own] | 200 GET /v1/players/:userId [own] | 404 GET /v1/players/:userId [other] | 403 GET /v1/tenants/:id [own] | 404 GET /v1/tenants/:id [other] | 404 POST /v1/tenants/:id/suspend [own] | 403 GET /v1/credentials [own] | 403 POST /v1/credentials [own] | 403 POST /v1/credentials/:keyId/rotate [own] | 403 PUT /v1/operator/integrations/:casino/reward-api [own] | 403 GET /v1/audit [own]
+MATRIX operator_staff engagement: 403 PUT /v1/operator/wheel [own] | 403 PUT /v1/operator/rules [own] | 200 GET /v1/tenant-projection [own] | 403 POST /v1/redemptions [own] | 403 GET /v1/redemptions/:id [own] | 403 GET /v1/me/redemptions [own] | 200 GET /v1/operator/redemptions [own] | 404 GET /v1/operator/redemptions/:id [own] | 403 POST /v1/operator/redemptions/:id/resolve [own] | 403 POST /v1/spins [own] | 200 GET /v1/wheel [own] | 404 GET /v1/wheel/:wheelId [own] | 200 GET /v1/me/spins [own] | 200 GET /v1/store/items [own] | 200 GET /v1/operator/store/items [own] | 403 POST /v1/store/items [own] | 403 PATCH /v1/store/items/:id [own]
+MATRIX operator_staff payments: 403 GET /v1/me/balance [own] | 404 GET /v1/players/:player_id/balance [own] | 404 GET /v1/players/:player_id/balance [other] | 200 GET /v1/billing/plans [own] | 403 POST /v1/billing/attempts [own] | 404 GET /v1/billing/attempts/:id [own] | 403 POST /v1/billing/attempts/:id/cancel [own] | 200 GET /v1/billing/subscription [own] | 200 GET /v1/billing/invoices [own] | 400 GET /v1/billing/usage [own] | 403 GET /v1/platform/ledger/reconciliation [own] | 403 GET /v1/operator/plan [own]
+MATRIX player identity: 200 POST /v1/auth/realtime-ticket [own] | 403 POST /v1/auth/acting [own] | 403 POST /v1/staff [own] | 403 GET /v1/staff [own] | 200 GET /v1/players/:userId [own] | 404 GET /v1/players/:userId [other] | 403 GET /v1/tenants/:id [own] | 404 GET /v1/tenants/:id [other] | 404 POST /v1/tenants/:id/suspend [own] | 403 GET /v1/credentials [own] | 403 POST /v1/credentials [own] | 403 POST /v1/credentials/:keyId/rotate [own] | 403 PUT /v1/operator/integrations/:casino/reward-api [own] | 403 GET /v1/audit [own]
+MATRIX player engagement: 403 PUT /v1/operator/wheel [own] | 403 PUT /v1/operator/rules [own] | 200 GET /v1/tenant-projection [own] | 404 POST /v1/redemptions [own] | 404 GET /v1/redemptions/:id [own] | 200 GET /v1/me/redemptions [own] | 403 GET /v1/operator/redemptions [own] | 403 GET /v1/operator/redemptions/:id [own] | 403 POST /v1/operator/redemptions/:id/resolve [own] | 409 POST /v1/spins [own] | 200 GET /v1/wheel [own] | 404 GET /v1/wheel/:wheelId [own] | 200 GET /v1/me/spins [own] | 200 GET /v1/store/items [own] | 403 GET /v1/operator/store/items [own] | 403 POST /v1/store/items [own] | 403 PATCH /v1/store/items/:id [own]
+MATRIX player payments: 404 GET /v1/me/balance [own] | 403 GET /v1/players/:player_id/balance [own] | 403 GET /v1/players/:player_id/balance [other] | 403 GET /v1/billing/plans [own] | 403 POST /v1/billing/attempts [own] | 403 GET /v1/billing/attempts/:id [own] | 403 POST /v1/billing/attempts/:id/cancel [own] | 403 GET /v1/billing/subscription [own] | 403 GET /v1/billing/invoices [own] | 403 GET /v1/billing/usage [own] | 403 GET /v1/platform/ledger/reconciliation [own] | 403 GET /v1/operator/plan [own]
+MATRIX other_tenant identity: 200 POST /v1/auth/realtime-ticket [own] | 403 POST /v1/auth/acting [own] | 201 POST /v1/staff [own] | 200 GET /v1/staff [own] | 404 GET /v1/players/:userId [own] | 200 GET /v1/players/:userId [other] | 404 GET /v1/tenants/:id [own] | 200 GET /v1/tenants/:id [other] | 403 POST /v1/tenants/:id/suspend [own] | 200 GET /v1/credentials [own] | 201 POST /v1/credentials [own] | 404 POST /v1/credentials/:keyId/rotate [own] | 200 PUT /v1/operator/integrations/:casino/reward-api [own] | 200 GET /v1/audit [own]
+MATRIX other_tenant engagement: 200 PUT /v1/operator/wheel [own] | 200 PUT /v1/operator/rules [own] | 200 GET /v1/tenant-projection [own] | 403 POST /v1/redemptions [own] | 403 GET /v1/redemptions/:id [own] | 403 GET /v1/me/redemptions [own] | 200 GET /v1/operator/redemptions [own] | 404 GET /v1/operator/redemptions/:id [own] | 404 POST /v1/operator/redemptions/:id/resolve [own] | 403 POST /v1/spins [own] | 200 GET /v1/wheel [own] | 404 GET /v1/wheel/:wheelId [own] | 200 GET /v1/me/spins [own] | 200 GET /v1/store/items [own] | 200 GET /v1/operator/store/items [own] | 201 POST /v1/store/items [own] | 404 PATCH /v1/store/items/:id [own]
+MATRIX other_tenant payments: 403 GET /v1/me/balance [own] | 404 GET /v1/players/:player_id/balance [own] | 404 GET /v1/players/:player_id/balance [other] | 200 GET /v1/billing/plans [own] | 400 POST /v1/billing/attempts [own] | 404 GET /v1/billing/attempts/:id [own] | 400 POST /v1/billing/attempts/:id/cancel [own] | 200 GET /v1/billing/subscription [own] | 200 GET /v1/billing/invoices [own] | 400 GET /v1/billing/usage [own] | 403 GET /v1/platform/ledger/reconciliation [own] | 404 GET /v1/operator/plan [own]
+
+Test Suites: 18 passed, 18 total
+Tests:       250 passed, 250 total
+Snapshots:   0 total
+Time:        199.71 s
+Ran all test suites.

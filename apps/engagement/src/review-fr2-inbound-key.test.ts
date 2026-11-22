@@ -10,7 +10,7 @@ import { InboundEventsEnvKey1733000001000 } from './model/migrations/17330000010
  *
  * FR2-MIG-1 a database that ran the RESTORED 1732800000000 (key (tenant_id, id), with rows of both
  *   environments): the key becomes (tenant_id, sandbox, id) and no row is lost.
- * FR2-MIG-2 a database that ran the EDITED 1732800000000 (int/final 2736a6e..dd9d464; key already
+ * FR2-MIG-2 a database that ran the EDITED 1732800000000 (the integration branch, 2736a6e..dd9d464; key already
  *   (tenant_id, sandbox, id)): the migration is a no-op, and running it twice is a no-op.
  *   Mutation: drop the early return -> FR2-MIG-2 still green (DROP + ADD the same key), so the guard is
  *   an optimisation, not a correctness condition; reported, not a defect.

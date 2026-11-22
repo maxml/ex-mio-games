@@ -1,0 +1,13 @@
+# commit 33462ab (later commits change docs, test email strings and deploy wording only), 2026-11-22
+# command: pnpm --filter @ex-mio/engagement test:pg
+
+
+> @ex-mio/engagement@0.1.0 test:pg <repo>/apps/engagement
+> jest --maxWorkers=1 --testMatch "**/*.itest.ts"
+
+
+Test Suites: 4 passed, 4 total
+Tests:       50 passed, 50 total
+Snapshots:   0 total
+Time:        9.098 s
+Ran all test suites.

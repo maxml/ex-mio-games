@@ -1,6 +1,6 @@
 # Six case studies: defect, how it was caught, fix, pinning test
 
-Every SHA below is a commit on `int/rc` and can be opened with `git show <sha>`. Every test name can
+Every SHA below is a commit on the integration branch at `dd9d464` and can be opened with `git show <sha>`. Every test name can
 be found with `grep -rn "<name>" apps packages tests`. The process behind each case: a spec and red
 tests written by one agent, code written by a separate coder against the frozen tests, a hostile
 review by a stronger model that re-applies mutations itself, and the question asked of every fix:

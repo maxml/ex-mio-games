@@ -1,6 +1,6 @@
 # Spec: environment input (INV-ENV-INPUT)
 
-Status: Stage A (spec only; the reviewer writes the red tests, the coder makes them green). Base: `int/final`
+Status: Stage A (spec only; the reviewer writes the red tests, the coder makes them green). Base: the integration branch
 e6f3ff4. Binding decisions: D-13 (sandbox on the envelope, server-side only), D-26 (INV-ENV schema level),
 D-28 (the environment comes from the credential or launch token, never from the user), D-29 (this rule), D-30
 (F12 supersedes the earlier "default to production"; realtime tickets are per environment).

@@ -54,7 +54,7 @@ A casino knows a player by its own id. `identity` maps `(tenant, platform, exter
 
 1. The adapter verifies an HMAC over the body with a timestamp window (secret per tenant, rotatable). Unsigned or stale events are rejected.
 2. The payload is validated against the adapter's schema. Invalid events are rejected and counted.
-3. Deduplication is `UNIQUE (tenant, source, external_event_id)`; a duplicate deposit returns the original result and creates no second spin.
+3. Deduplication is `UNIQUE (tenant_id, sandbox, source, external_event_id)`; a duplicate deposit returns the original result and creates no second spin.
 4. The canonical event, the effect (a spin credit) and the outbox row commit in one transaction. Consumers use an inbox so redelivery changes nothing.
 
 Rejections are answered with a code and written to the log with the tenant slug; there is no rejection counter metric yet (Partial). The row keeps a per-tenant HMAC of the casino's player id, never the raw id.

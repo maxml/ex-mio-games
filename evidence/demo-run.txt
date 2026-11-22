@@ -1,0 +1,542 @@
+# commit 33462ab (later commits change docs, test email strings and deploy wording only), 2026-11-22
+# command: scripts/demo.sh (fresh stack slot)
+
+MIO Games demo, run suffix 69250
+
+=== Step 01. Stack is up: every service answers readiness
+  > GET 4001/healthz/ready
+  < 200 {"status":"ok","uptime":12.746721422,"version":"0.0.1","checks":{"db":{"status":"ok","latencyMs":0},"amqp":{"status":"ok","latencyMs":0}}}
+    PASS  HTTP 200
+    PASS  .status=="ok"
+  > GET 4002/healthz/ready
+  < 200 {"status":"ok","uptime":21.358643896,"version":"0.0.1","checks":{"db":{"status":"ok","latencyMs":1},"amqp":{"status":"ok","latencyMs":0},"redis":{"status":"ok","latencyMs":0}}}
+    PASS  HTTP 200
+    PASS  .status=="ok"
+  > GET 4003/healthz/ready
+  < 200 {"status":"ok","uptime":21.311717051,"version":"0.0.1","checks":{"db":{"status":"ok","latencyMs":0},"amqp":{"status":"ok","latencyMs":0}}}
+    PASS  HTTP 200
+    PASS  .status=="ok"
+  > GET 4004/healthz/ready
+  < 200 {"status":"ok","uptime":29.912390046,"version":"0.1.0","checks":{}}
+    PASS  HTTP 200
+    PASS  .status=="ok"
+  > GET 3000/health
+  < 200 {"status":"ok","version":null}
+    PASS  HTTP 200
+  > POST 4004/__reset
+  < 200 {"ok":true}
+    PASS  HTTP 200
+
+=== Step 02. Casino A operator signs up (creates tenant demo-a-69250 and its first admin)
+  > POST 4001/v1/operators/signup [content-type: application/json] [host: localhost] body={"tenant_name":"Casino demo-a-69250","slug":"demo-a-69250","email":"boss@demo-a-69250.test","password":"<redacted>"}
+  < 201 {"tenant":{"id":"01a20458-b08f-7bae-ac69-b6e390fddc88","type":"operator","name":"Casino demo-a-69250","slug":"demo-a-69250","status":"active"},"user":{"id":"01a20458-b08f-7c36-a8e2-3448c9a55d63","email":"boss@demo-a-69250.test","roles":["operator_admin"]}}
+    PASS  HTTP 201
+    PASS  .tenant.type=="operator" and .tenant.status=="active"
+  > POST 4001/v1/auth/login [content-type: application/json] [host: demo-a-69250.mio.localhost] body={"email":"boss@demo-a-69250.test","password":"<redacted>","audience":"identity"}
+  < 200 {"access_token":"<redacted>","token_type":"Bearer","expires_in":900}
+    PASS  HTTP 200
+  > POST 4001/v1/auth/login [content-type: application/json] [host: demo-a-69250.mio.localhost] body={"email":"boss@demo-a-69250.test","password":"<redacted>","audience":"payments"}
+  < 200 {"access_token":"<redacted>","token_type":"Bearer","expires_in":900}
+    PASS  HTTP 200
+  > POST 4001/v1/auth/login [content-type: application/json] [host: demo-a-69250.mio.localhost] body={"email":"boss@demo-a-69250.test","password":"<redacted>","audience":"engagement"}
+  < 200 {"access_token":"<redacted>","token_type":"Bearer","expires_in":900}
+    PASS  HTTP 200
+
+=== Step 03. Casino B operator signs up (creates tenant demo-b-69250 and its first admin)
+  > POST 4001/v1/operators/signup [content-type: application/json] [host: localhost] body={"tenant_name":"Casino demo-b-69250","slug":"demo-b-69250","email":"boss@demo-b-69250.test","password":"<redacted>"}
+  < 201 {"tenant":{"id":"01a20458-b3cf-70f8-8d6c-b2bb2eb6120d","type":"operator","name":"Casino demo-b-69250","slug":"demo-b-69250","status":"active"},"user":{"id":"01a20458-b3cf-728a-a51c-aa065361b652","email":"boss@demo-b-69250.test","roles":["operator_admin"]}}
+    PASS  HTTP 201
+    PASS  .tenant.type=="operator" and .tenant.status=="active"
+  > POST 4001/v1/auth/login [content-type: application/json] [host: demo-b-69250.mio.localhost] body={"email":"boss@demo-b-69250.test","password":"<redacted>","audience":"identity"}
+  < 200 {"access_token":"<redacted>","token_type":"Bearer","expires_in":900}
+    PASS  HTTP 200
+  > POST 4001/v1/auth/login [content-type: application/json] [host: demo-b-69250.mio.localhost] body={"email":"boss@demo-b-69250.test","password":"<redacted>","audience":"payments"}
+  < 200 {"access_token":"<redacted>","token_type":"Bearer","expires_in":900}
+    PASS  HTTP 200
+  > POST 4001/v1/auth/login [content-type: application/json] [host: demo-b-69250.mio.localhost] body={"email":"boss@demo-b-69250.test","password":"<redacted>","audience":"engagement"}
+  < 200 {"access_token":"<redacted>","token_type":"Bearer","expires_in":900}
+    PASS  HTTP 200
+
+=== Step 04. Casino A operator picks the Pro plan and pays with the fake provider (test card 4242...)
+  > GET 4003/v1/billing/plans [authorization: Bearer <redacted>]
+  < 200 [{"id":"d69b0cbd-50ee-41f5-92ff-5cb011c061c8","code":"free","name":"Free","interval":"month","price_minor":0,"currency":"USD"},{"id":"453bb880-7c04-4d14-b750-4ec4878d0a86","code":"pro","name":"Pro","interval":"month","price_minor":4900,"currency":"USD"},{"id":"51aba815-1e07-43ff-b2d8-f167799915ef","code":"scale","name":"Scale","interval":"month","price_minor":19900,"currency":"USD"}]
+    PASS  HTTP 200
+    PASS  map(.code)|index("pro")!=null
+  > POST 4003/v1/billing/attempts [content-type: application/json] [authorization: Bearer <redacted>] [idempotency-key: plan-69250-A] body={"plan_id":"453bb880-7c04-4d14-b750-4ec4878d0a86","card_number":"<redacted>"}
+  < 201 {"id":"01a20458-b7a9-74f3-8c5c-a6ec0864ae7a","plan_id":"453bb880-7c04-4d14-b750-4ec4878d0a86","subscription_id":"01a20458-b7a6-73fa-9c7a-1f7c5b6568b2","state":"processing","card_last4":"4242","card_brand":"visa","created_at":"2026-11-22T17:40:52.771Z","updated_at":"2026-11-22T17:40:52.771Z"}
+    PASS  HTTP 201
+    PASS  .state=="processing" and .card_last4=="4242"
+    note: the provider's callback carries ITS subscription id; the operator reads it from GET /v1/operator/plan, then signs the callback like the provider does.
+  > GET 4003/v1/operator/plan [authorization: Bearer <redacted>]
+  < 200 {"subscription_id":"01a20458-b7a6-73fa-9c7a-1f7c5b6568b2","status":"pending","plan":{"id":"453bb880-7c04-4d14-b750-4ec4878d0a86","code":"pro","name":"Pro"},"provider":"fake","provider_subscription_id":"sub_fake_2_7xdk0jw1","current_period_end":"2026-11-22T17:40:52.774Z"}
+    PASS  HTTP 200
+    PASS  plan subscription = 01a20458-b7a6-73fa-9c7a-1f7c5b6568b2
+  > POST 4003/v1/billing/webhooks [content-type: application/json] [x-webhook-signature: e24eb2a44a9b2a4aaa1a21b5cb152665befb64500dd5a7fb248e0e191f318de9] body={"eventId":"evt-69250-A","tenantId":"01a20458-b08f-7bae-ac69-b6e390fddc88","subscriptionId":"sub_fake_2_7xdk0jw1","status":"active","version":1, ...(416 chars)
+  < 200 {"outcome":"applied"}
+    PASS  HTTP 200
+    PASS  .outcome=="applied"
+  > GET 4003/v1/billing/attempts/01a20458-b7a9-74f3-8c5c-a6ec0864ae7a [authorization: Bearer <redacted>]
+  < 200 {"id":"01a20458-b7a9-74f3-8c5c-a6ec0864ae7a","plan_id":"453bb880-7c04-4d14-b750-4ec4878d0a86","subscription_id":"01a20458-b7a6-73fa-9c7a-1f7c5b6568b2","state":"succeeded","card_last4":"4242","card_brand":"visa","created_at":"2026-11-22T17:40:52.771Z","updated_at":"2026-11-22T17:40:53.171Z"}
+    PASS  HTTP 200
+    PASS  .state=="succeeded"
+  > GET 4003/v1/billing/subscription [authorization: Bearer <redacted>]
+  < 200 {"id":"01a20458-b7a6-73fa-9c7a-1f7c5b6568b2","plan_id":"453bb880-7c04-4d14-b750-4ec4878d0a86","status":"active","provider":"fake","provider_subscription_id":"sub_fake_2_7xdk0jw1","provider_version":1,"current_period_start":"2026-11-01T00:00:00.000Z","current_period_end":"2026-12-01T00:00:00.000Z"}
+    PASS  HTTP 200
+    PASS  .status=="active"
+
+=== Step 05. Casino A integration credentials (key id, API key, HMAC secret shown once)
+  > POST 4001/v1/credentials [content-type: application/json] [authorization: Bearer <redacted>] body={"platform":"casino-a","environment":"production"}
+  < 201 {"key_id":"key_01a20458b08f7baeac69b6e390fddc88_nszX-NhIiL2J","api_key":"<redacted>","hmac_secret":"<redacted>"}
+    PASS  HTTP 201
+    PASS  (.key_id|length)>0 and (.hmac_secret|length)>0 and (.api_key|length)>0
+
+=== Step 06. Casino A: the engagement service built its tenant copy from the bus event
+  > GET 4002/v1/tenant-projection [authorization: Bearer <redacted>]
+  < 200 {"tenant_id":"01a20458-b08f-7bae-ac69-b6e390fddc88","name":"Casino demo-a-69250","slug":"demo-a-69250","applied_count":1}
+    PASS  HTTP 200
+    PASS  .slug=="demo-a-69250"
+
+=== Step 07. Casino A operator registers its reward API (casino-sim, production) so MIO can issue bonuses
+  > PUT 4001/v1/operator/integrations/casino-a/reward-api [content-type: application/json] [authorization: Bearer <redacted>] body={"environment":"production","base_url":"http://casino-sim:4004","api_key":"<redacted>"}
+  < 200 {"platform":"casino-a","environment":"production","base_url":"http://casino-sim:4004","has_api_key":true,"issue_deadline_ms":null}
+    note: no route of the stack answers with the secret again; it is sealed at rest and served to engagement only.
+    PASS  HTTP 200
+    PASS  .has_api_key==true and (has("api_key")|not)
+
+=== Step 08. Casino A operator publishes one weighted reward table and one deposit rule (deposit >= 20.00 EUR gives 1 spin)
+    note: A new tenant already has a default wheel and rule; the operator replaces them with the next version.
+  > PUT 4002/v1/operator/wheel [content-type: application/json] [authorization: Bearer <redacted>] body={"name":"Demo wheel","segments":[{"label":"200 coins","weight":6,"reward":{"type":"coins","amount":200}},{"label":"300 coins","weight":3,"reward":{"type":"coins","amount":300}},{"label":"500 coins","w ...(350 chars)
+  < 200 {"id":"01a20458-b123-712b-be94-c83a5845026a","version":2}
+    PASS  HTTP 200
+    PASS  .version>=2
+  > PUT 4002/v1/operator/rules [content-type: application/json] [authorization: Bearer <redacted>] body={"name":"Deposit 20 EUR, 1 spin","min_amount_minor":2000,"currency":"EUR","spins":1}
+  < 200 {"id":"deposit","version":2}
+    PASS  HTTP 200
+    PASS  .version>=2
+    PASS  rule and reward table published for demo-a-69250
+
+=== Step 09. Casino B operator picks the Pro plan and pays with the fake provider (test card 4242...)
+  > GET 4003/v1/billing/plans [authorization: Bearer <redacted>]
+  < 200 [{"id":"d69b0cbd-50ee-41f5-92ff-5cb011c061c8","code":"free","name":"Free","interval":"month","price_minor":0,"currency":"USD"},{"id":"453bb880-7c04-4d14-b750-4ec4878d0a86","code":"pro","name":"Pro","interval":"month","price_minor":4900,"currency":"USD"},{"id":"51aba815-1e07-43ff-b2d8-f167799915ef","code":"scale","name":"Scale","interval":"month","price_minor":19900,"currency":"USD"}]
+    PASS  HTTP 200
+    PASS  map(.code)|index("pro")!=null
+  > POST 4003/v1/billing/attempts [content-type: application/json] [authorization: Bearer <redacted>] [idempotency-key: plan-69250-B] body={"plan_id":"453bb880-7c04-4d14-b750-4ec4878d0a86","card_number":"<redacted>"}
+  < 201 {"id":"01a20458-bec6-7643-ae7f-840e5836a429","plan_id":"453bb880-7c04-4d14-b750-4ec4878d0a86","subscription_id":"01a20458-bec5-77b1-8912-5eb60befdd90","state":"processing","card_last4":"4242","card_brand":"visa","created_at":"2026-11-22T17:40:54.595Z","updated_at":"2026-11-22T17:40:54.595Z"}
+    PASS  HTTP 201
+    PASS  .state=="processing" and .card_last4=="4242"
+    note: the provider's callback carries ITS subscription id; the operator reads it from GET /v1/operator/plan, then signs the callback like the provider does.
+  > GET 4003/v1/operator/plan [authorization: Bearer <redacted>]
+  < 200 {"subscription_id":"01a20458-bec5-77b1-8912-5eb60befdd90","status":"pending","plan":{"id":"453bb880-7c04-4d14-b750-4ec4878d0a86","code":"pro","name":"Pro"},"provider":"fake","provider_subscription_id":"sub_fake_4_i5i6gfri","current_period_end":"2026-11-22T17:40:54.597Z"}
+    PASS  HTTP 200
+    PASS  plan subscription = 01a20458-bec5-77b1-8912-5eb60befdd90
+  > POST 4003/v1/billing/webhooks [content-type: application/json] [x-webhook-signature: 7b761a2b198367e5806596cea5277563095d051351907beb0f08369c52b6cd27] body={"eventId":"evt-69250-B","tenantId":"01a20458-b3cf-70f8-8d6c-b2bb2eb6120d","subscriptionId":"sub_fake_4_i5i6gfri","status":"active","version":1, ...(416 chars)
+  < 200 {"outcome":"applied"}
+    PASS  HTTP 200
+    PASS  .outcome=="applied"
+  > GET 4003/v1/billing/attempts/01a20458-bec6-7643-ae7f-840e5836a429 [authorization: Bearer <redacted>]
+  < 200 {"id":"01a20458-bec6-7643-ae7f-840e5836a429","plan_id":"453bb880-7c04-4d14-b750-4ec4878d0a86","subscription_id":"01a20458-bec5-77b1-8912-5eb60befdd90","state":"succeeded","card_last4":"4242","card_brand":"visa","created_at":"2026-11-22T17:40:54.595Z","updated_at":"2026-11-22T17:40:55.087Z"}
+    PASS  HTTP 200
+    PASS  .state=="succeeded"
+  > GET 4003/v1/billing/subscription [authorization: Bearer <redacted>]
+  < 200 {"id":"01a20458-bec5-77b1-8912-5eb60befdd90","plan_id":"453bb880-7c04-4d14-b750-4ec4878d0a86","status":"active","provider":"fake","provider_subscription_id":"sub_fake_4_i5i6gfri","provider_version":1,"current_period_start":"2026-11-01T00:00:00.000Z","current_period_end":"2026-12-01T00:00:00.000Z"}
+    PASS  HTTP 200
+    PASS  .status=="active"
+
+=== Step 10. Casino B integration credentials (key id, API key, HMAC secret shown once)
+  > POST 4001/v1/credentials [content-type: application/json] [authorization: Bearer <redacted>] body={"platform":"casino-b","environment":"production"}
+  < 201 {"key_id":"key_01a20458b3cf70f88d6cb2bb2eb6120d_D6TUTVXXQ7_Z","api_key":"<redacted>","hmac_secret":"<redacted>"}
+    PASS  HTTP 201
+    PASS  (.key_id|length)>0 and (.hmac_secret|length)>0 and (.api_key|length)>0
+
+=== Step 11. Casino B: the engagement service built its tenant copy from the bus event
+  > GET 4002/v1/tenant-projection [authorization: Bearer <redacted>]
+  < 200 {"tenant_id":"01a20458-b3cf-70f8-8d6c-b2bb2eb6120d","name":"Casino demo-b-69250","slug":"demo-b-69250","applied_count":1}
+    PASS  HTTP 200
+    PASS  .slug=="demo-b-69250"
+
+=== Step 12. Casino B operator registers its reward API (casino-sim, production) so MIO can issue bonuses
+  > PUT 4001/v1/operator/integrations/casino-b/reward-api [content-type: application/json] [authorization: Bearer <redacted>] body={"environment":"production","base_url":"http://casino-sim:4004","api_key":"<redacted>"}
+  < 200 {"platform":"casino-b","environment":"production","base_url":"http://casino-sim:4004","has_api_key":true,"issue_deadline_ms":null}
+    note: no route of the stack answers with the secret again; it is sealed at rest and served to engagement only.
+    PASS  HTTP 200
+    PASS  .has_api_key==true and (has("api_key")|not)
+
+=== Step 13. Casino B operator publishes one weighted reward table and one deposit rule (deposit >= 20.00 EUR gives 1 spin)
+    note: A new tenant already has a default wheel and rule; the operator replaces them with the next version.
+  > PUT 4002/v1/operator/wheel [content-type: application/json] [authorization: Bearer <redacted>] body={"name":"Demo wheel","segments":[{"label":"200 coins","weight":6,"reward":{"type":"coins","amount":200}},{"label":"300 coins","weight":3,"reward":{"type":"coins","amount":300}},{"label":"500 coins","w ...(350 chars)
+  < 200 {"id":"01a20458-b51b-7ffd-9ccc-9f5787f1969e","version":2}
+    PASS  HTTP 200
+    PASS  .version>=2
+  > PUT 4002/v1/operator/rules [content-type: application/json] [authorization: Bearer <redacted>] body={"name":"Deposit 20 EUR, 1 spin","min_amount_minor":2000,"currency":"EUR","spins":1}
+  < 200 {"id":"deposit","version":2}
+    PASS  HTTP 200
+    PASS  .version>=2
+    PASS  rule and reward table published for demo-b-69250
+
+=== Step 14. Casino A operator adds a Bonus Store item (50 coins for a 5.00 EUR bonus)
+  > POST 4002/v1/store/items [content-type: application/json] [authorization: Bearer <redacted>] body={"name":"5 EUR bonus","description":"Bonus credited to the casino wallet","price":50,"reward":{"type":"bonus","params":{"amount_minor":500,"currency":"EUR"}}}
+  < 201 {"id":"01a20458-c56f-7830-ae42-b1a521c585d5","name":"5 EUR bonus","description":"Bonus credited to the casino wallet","image_url":null,"price":50,"reward":{"type":"bonus","params":{"currency":"EUR","amount_minor":500}},"stock":null,"per_player_limit":null,"active":true,"version":1}
+    PASS  HTTP 201
+
+=== Step 15. Casino B operator adds a Bonus Store item
+  > POST 4002/v1/store/items [content-type: application/json] [authorization: Bearer <redacted>] body={"name":"5 EUR bonus","description":"Bonus credited to the casino wallet","price":50,"reward":{"type":"bonus","params":{"amount_minor":500,"currency":"EUR"}}}
+  < 201 {"id":"01a20458-c5f9-7f2b-888b-d9897e8e4185","name":"5 EUR bonus","description":"Bonus credited to the casino wallet","image_url":null,"price":50,"reward":{"type":"bonus","params":{"currency":"EUR","amount_minor":500}},"stock":null,"per_player_limit":null,"active":true,"version":1}
+    PASS  HTTP 201
+
+=== Step 16. Casino A (schema A: eventId/playerId/amount.value, HMAC over timestamp.body): casino-sim sends a signed 50.00 EUR deposit
+  > POST 4004/casino-a/__deposit [content-type: application/json] body={"target_url":"http://engagement:4002/v1/integrations/demo-a-69250/events","secret":"<redacted>","player_id":"A-PLAYER-77","amount_minor":5000,"currency":"EUR","event_id":"evt-a-69250-1"}
+  < 200 {"delivered":[200]}
+    PASS  HTTP 200
+    PASS  .delivered==[200]
+
+=== Step 17. Casino B (schema B: type/data.txn_id/customer_ref, signature inside the body): casino-sim sends a signed 50.00 EUR deposit
+  > POST 4004/casino-b/__deposit [content-type: application/json] body={"target_url":"http://engagement:4002/v1/integrations/demo-b-69250/events","secret":"<redacted>","player_id":"B-PLAYER-12","amount_minor":5000,"currency":"EUR","event_id":"evt-b-69250-1"}
+  < 200 {"delivered":[200]}
+    PASS  HTTP 200
+    PASS  .delivered==[200]
+
+=== Step 18. Player A launches from casino A with a signed launch token
+  > POST 4001/v1/auth/launch [content-type: application/json] body={"token":"<redacted>","audience":"engagement"}
+  < 200 {"access_token":"<redacted>","token_type":"Bearer","expires_in":900,"user_id":"01a20458-c6ed-7158-be6c-336b88962d22","tenant_id":"01a20458-b08f-7bae-ac69-b6e390fddc88"}
+    PASS  HTTP 200
+    PASS  launched tenant = 01a20458-b08f-7bae-ac69-b6e390fddc88
+  > POST 4001/v1/auth/launch [content-type: application/json] body={"token":"<redacted>","audience":"payments"}
+  < 200 {"access_token":"<redacted>","token_type":"Bearer","expires_in":900,"user_id":"01a20458-c6ed-7158-be6c-336b88962d22","tenant_id":"01a20458-b08f-7bae-ac69-b6e390fddc88"}
+    PASS  HTTP 200
+
+=== Step 19. Player B launches from casino B
+  > POST 4001/v1/auth/launch [content-type: application/json] body={"token":"<redacted>","audience":"engagement"}
+  < 200 {"access_token":"<redacted>","token_type":"Bearer","expires_in":900,"user_id":"01a20458-c7bc-79d5-9c5c-46f05e4cdf65","tenant_id":"01a20458-b3cf-70f8-8d6c-b2bb2eb6120d"}
+    PASS  HTTP 200
+    PASS  launched tenant = 01a20458-b3cf-70f8-8d6c-b2bb2eb6120d
+  > POST 4001/v1/auth/launch [content-type: application/json] body={"token":"<redacted>","audience":"payments"}
+  < 200 {"access_token":"<redacted>","token_type":"Bearer","expires_in":900,"user_id":"01a20458-c7bc-79d5-9c5c-46f05e4cdf65","tenant_id":"01a20458-b3cf-70f8-8d6c-b2bb2eb6120d"}
+    PASS  HTTP 200
+
+=== Step 20. Casino A player holds exactly one spin credit (granted over the bus by the rules engine)
+  > GET 4002/v1/me/spins [authorization: Bearer <redacted>]
+  < 200 {"available":1}
+    PASS  HTTP 200
+    PASS  .available==1
+
+=== Step 21. Casino B player holds exactly one spin credit (granted over the bus by the rules engine)
+  > GET 4002/v1/me/spins [authorization: Bearer <redacted>]
+  < 200 {"available":1}
+    PASS  HTTP 200
+    PASS  .available==1
+
+=== Step 22. Realtime: Socket.IO client on the WEB origin (/socket.io is rewritten by Next to engagement), one-time ticket
+  > POST 4001/v1/auth/realtime-ticket [content-type: application/json] [authorization: Bearer <redacted>] body={}
+  < 200 {"ticket":"<redacted>","expires_in":60}
+    PASS  HTTP 200
+  > GET /socket.io/?EIO=4&transport=polling (the URL the socket.io client uses, trailing slash)
+  < HTTP/1.1 200 OK 
+  > GET /socket.io?EIO=4&transport=polling (web origin, after following the redirect)
+  < 0{"sid":"H5bO0Pob1UVh9UEgAAAB","upgrades":["websocket"],"pingInterval":25000,"pingTimeout":20000,"maxPayload":1000000}
+    PASS  engine.io handshake through the web origin over HTTP long-polling
+    PASS  namespace connect packet accepted = ok
+  < 40/rt,{"sid":"xtzRUwo1EnhxWjJyAAAC"}
+    PASS  connected to namespace /rt with the ticket (long-polling transport)
+
+=== Step 23. Realtime: does the WebSocket upgrade also pass through the Next proxy?
+  > GET /socket.io?EIO=4&transport=websocket&sid=<sid>  + Upgrade: websocket (web origin, no trailing slash)
+  < HTTP/1.1 101 Switching Protocols
+  > GET /socket.io/?EIO=4&transport=websocket + Upgrade: websocket (web origin, trailing slash as the client sends it)
+  < HTTP/1.1 101 Switching Protocols
+  > GET /socket.io/?EIO=4&transport=websocket + Upgrade: websocket (engagement origin, direct, for comparison)
+  < HTTP/1.1 101 Switching Protocols
+    WEBSOCKET_THROUGH_NEXT_PROXY (no slash): upgraded (101 Switching Protocols)
+    WEBSOCKET_THROUGH_NEXT_PROXY (trailing slash): upgraded (101 Switching Protocols)
+    WEBSOCKET_ON_ENGAGEMENT_DIRECT: upgraded (101 Switching Protocols)
+    LONG_POLLING_THROUGH_NEXT_PROXY: works (handshake, namespace connect and the packet poll above)
+
+=== Step 24. Player A spins the wheel: server-authoritative result from the configured weighted table
+  > GET 4002/v1/wheel [authorization: Bearer <redacted>]
+  < 200 {"wheel_id":"01a20458-b123-712b-be94-c83a5845026a","segments":[{"label":"200 coins"},{"label":"300 coins"},{"label":"500 coins"}]}
+    PASS  HTTP 200
+    PASS  (.segments|length)==3 and (.segments[0]|has("weight")|not)
+  > POST 4002/v1/spins [content-type: application/json] [authorization: Bearer <redacted>] [idempotency-key: spin-a-69250-1] body={}
+  < 201 {"spin_id":"1475316d-4e21-8945-af90-747a5992c4e4","segment_index":0,"segment_label":"200 coins","reward_coins":200}
+    PASS  HTTP 201
+    PASS  .reward_coins as $c | [200,300,500]|index($c)!=null
+  > POST 4002/v1/spins [content-type: application/json] [authorization: Bearer <redacted>] [idempotency-key: spin-a-69250-1] body={}
+  < 201 {"spin_id":"1475316d-4e21-8945-af90-747a5992c4e4","segment_index":0,"segment_label":"200 coins","reward_coins":200}
+    PASS  HTTP 201
+    PASS  same Idempotency-Key replays the same spin = 1475316d-4e21-8945-af90-747a5992c4e4
+
+=== Step 25. Player A's coin balance shows the reward (ledger credit arrives over the bus)
+  > GET 4003/v1/me/balance [authorization: Bearer <redacted>]
+  < 200 {"wallet_id":"01a20458-ff64-7392-af6e-2e3ecb244c55","available":200,"held":0,"currency":"COIN"}
+    PASS  HTTP 200
+    PASS  .available==200
+
+=== Step 26. Realtime: the pushed spin and balance events arrive on player A's socket
+  < 42/rt,["notification",{"id":"01a20458-fe0c-732b-aa28-d6d118093da4","type":"spin.result","payload":{"spin_id":"1475316d-4e21-8945-af90-747a5992c4e4","reward_coins":200,"table_version":2},"ts":1795369270796}]
+  < 42/rt,["notification",{"id":"01a20458-ff6a-785b-8945-b63bc6177261","type":"balance.changed","payload":{"reason":"credited","amount":200},"ts":1795369271146}]
+    PASS  spin.result pushed over the socket
+    PASS  balance.changed pushed over the socket
+
+=== Step 27. Casino B player spins and sees the coins (same logic, other casino)
+  > POST 4002/v1/spins [content-type: application/json] [authorization: Bearer <redacted>] [idempotency-key: spin-b-69250-1] body={}
+  < 201 {"spin_id":"b137605f-d22d-815e-9986-6bacced81a41","segment_index":2,"segment_label":"500 coins","reward_coins":500}
+    PASS  HTTP 201
+  > GET 4003/v1/me/balance [authorization: Bearer <redacted>]
+  < 200 {"wallet_id":"01a20459-0550-770c-9668-386b355f2e52","available":500,"held":0,"currency":"COIN"}
+    PASS  HTTP 200
+    PASS  .available==500
+
+=== Step 28. Bonus Store: player A lists items and redeems (50 coins)
+  > GET 4002/v1/store/items [authorization: Bearer <redacted>]
+  < 200 [{"id":"01a20458-c56f-7830-ae42-b1a521c585d5","name":"5 EUR bonus","description":"Bonus credited to the casino wallet","image_url":null,"price":50,"reward":{"type":"bonus","params":{"currency":"EUR","amount_minor":500}},"stock":null,"per_player_limit":null,"active":true,"version":1}]
+    PASS  HTTP 200
+    PASS  map(.id)|index("01a20458-c56f-7830-ae42-b1a521c585d5")!=null
+  > POST 4002/v1/redemptions [content-type: application/json] [authorization: Bearer <redacted>] [idempotency-key: redeem-a-69250-1] body={"item_id":"01a20458-c56f-7830-ae42-b1a521c585d5"}
+  < 202 {"id":"01a20459-08e1-7090-9871-c435604816e8","item_id":"01a20458-c56f-7830-ae42-b1a521c585d5","price":50,"status":"pending","state":"RESERVED","attempts":0,"casino_reference":null,"failure_reason":null,"history":[],"created_at":"2026-11-22T17:41:13.569Z","updated_at":"2026-11-22T17:41:13.600Z"}
+    PASS  HTTP 202
+
+=== Step 29. MIO asks casino A to issue the bonus through its adapter; the issuance reaches casino-sim
+  > GET 4002/v1/redemptions/01a20459-08e1-7090-9871-c435604816e8 [authorization: Bearer <redacted>]
+  < 200 {"id":"01a20459-08e1-7090-9871-c435604816e8","item_id":"01a20458-c56f-7830-ae42-b1a521c585d5","price":50,"status":"issued","state":"ISSUED","attempts":1,"casino_reference":"bonus-5fe9eb5b-94f4-4d90-a60d-45c63684d4e9","failure_reason":null,"history":[],"created_at":"2026-11-22T17:41:13.569Z","updated_at":"2026-11-22T17:41:18.020Z"}
+    PASS  HTTP 200
+    PASS  .status=="issued" and (.state=="ISSUED" or .state=="COMPLETED")
+  > GET 4004/__issued?casino=a
+  < 200 [{"key":"redeem:01a20458-b08f-7bae-ac69-b6e390fddc88:prd:01a20459-08e1-7090-9871-c435604816e8","player_id":"A-PLAYER-77","reference":"bonus-5fe9eb5b-94f4-4d90-a60d-45c63684d4e9","reward":{"type":"bonus","amount":500,"currency":"EUR"}}]
+    PASS  HTTP 200
+    PASS  [.[]|select(.player_id=="A-PLAYER-77")]|length==1
+
+=== Step 30. Casino B: the reward API is asynchronous (ticket), so the casino settles it and MIO tracks the final status
+  > POST 4002/v1/redemptions [content-type: application/json] [authorization: Bearer <redacted>] [idempotency-key: redeem-b-69250-1] body={"item_id":"01a20458-c5f9-7f2b-888b-d9897e8e4185"}
+  < 202 {"id":"01a20459-1e48-7e11-9c48-b8e947017dc0","item_id":"01a20458-c5f9-7f2b-888b-d9897e8e4185","price":50,"status":"pending","state":"RESERVED","attempts":0,"casino_reference":null,"failure_reason":null,"history":[],"created_at":"2026-11-22T17:41:19.048Z","updated_at":"2026-11-22T17:41:19.068Z"}
+    PASS  HTTP 202
+  > GET 4004/__issued?casino=b
+  < 200 [{"key":"redeem:01a20458-b3cf-70f8-8d6c-b2bb2eb6120d:prd:01a20459-1e48-7e11-9c48-b8e947017dc0","player_id":"B-PLAYER-12","reference":"tkt-264d514e-6431-4761-b9df-2769f696a515","reward":{"type":"bonus","amount_cents":500,"ccy":"EUR"}}]
+    PASS  HTTP 200
+  > POST 4004/casino-b/__settle
+  < 200 {"settled":1}
+    PASS  HTTP 200
+  > GET 4002/v1/redemptions/01a20459-1e48-7e11-9c48-b8e947017dc0 [authorization: Bearer <redacted>]
+  < 200 {"id":"01a20459-1e48-7e11-9c48-b8e947017dc0","item_id":"01a20458-c5f9-7f2b-888b-d9897e8e4185","price":50,"status":"issued","state":"ISSUED","attempts":1,"casino_reference":"ref-56cd1196-0974-4b8f-9984-5fd9123d6b11","failure_reason":null,"history":[],"created_at":"2026-11-22T17:41:19.048Z","updated_at":"2026-11-22T17:42:23.014Z"}
+    PASS  HTTP 200
+    PASS  .status=="issued"
+  > GET 4003/v1/me/balance [authorization: Bearer <redacted>]
+  < 200 {"wallet_id":"01a20458-ff64-7392-af6e-2e3ecb244c55","available":150,"held":0,"currency":"COIN"}
+    PASS  .available==150
+
+=== Step 31. Operator console reads: tenant usage, redemptions, subscription
+  > GET 4003/v1/billing/usage?period=2026-11 [authorization: Bearer <redacted>]
+  < 200 {"period":"2026-11","spins":1,"monthly_active_players":1}
+    PASS  HTTP 200
+    PASS  .spins>=1 and .monthly_active_players>=1
+  > GET 4002/v1/operator/redemptions [authorization: Bearer <redacted>]
+  < 200 [{"id":"01a20459-08e1-7090-9871-c435604816e8","item_id":"01a20458-c56f-7830-ae42-b1a521c585d5","price":50,"status":"issued","state":"COMPLETED","attempts":1,"casino_reference":"bonus-5fe9eb5b-94f4-4d90-a60d-45c63684d4e9","failure_reason":null,"history":[{"from":null,"to":"REQUESTED","cause":"order_placed","at":"2026-11-22T17:41:13.569Z"},{"from":"REQUESTED","to":"RESERVED","cause":"reserved","at":"2026-11-22T17:41:13 ...(776 chars)
+    PASS  HTTP 200
+    PASS  map(.id)|index("01a20459-08e1-7090-9871-c435604816e8")!=null
+  > GET 4003/v1/players/01a20458-c6ed-7158-be6c-336b88962d22/balance [authorization: Bearer <redacted>]
+  < 200 {"wallet_id":"01a20458-ff64-7392-af6e-2e3ecb244c55","available":150,"held":0,"currency":"COIN"}
+    PASS  HTTP 200
+
+=== Step 32. Part C-1. Duplicate deposit: the casino delivers the same webhook 3 times, the player gets ONE spin
+  > POST 4004/__faults [content-type: application/json] body={"casino":"a","kind":"duplicateDelivery","times":1,"copies":3}
+  < 200 {"ok":true}
+    PASS  HTTP 200
+  > POST 4004/casino-a/__deposit [content-type: application/json] body={"target_url":"http://engagement:4002/v1/integrations/demo-a-69250/events","secret":"<redacted>","player_id":"A-PLAYER-77","amount_minor":5000,"currency":"EUR","event_id":"evt-a-69250-dup"}
+  < 200 {"delivered":[200,200,200]}
+    PASS  HTTP 200
+    PASS  .delivered==[200,200,200]
+  > GET 4002/v1/me/spins [authorization: Bearer <redacted>]
+  < 200 {"available":1}
+    PASS  spins after 3 identical deliveries = 1
+
+=== Step 33. Part C-2. Concurrent spins: 10 parallel requests, distinct keys, one credit: exactly one wins
+    note: available credits before the race: 1
+  > 10 x POST /v1/spins (distinct Idempotency-Key, in parallel)
+  <  1 201; 9 409;
+    PASS  winners (HTTP 201) among 10 parallel spins on 1 credit(s) = 1
+  > GET 4002/v1/me/spins [authorization: Bearer <redacted>]
+  < 200 {"available":0}
+    PASS  .available==0
+
+=== Step 34. Part C-3. Duplicate redemption: the same Idempotency-Key 5 times in parallel debits the coins once
+  > 5 x POST /v1/redemptions (same Idempotency-Key, in parallel)
+  < statuses:  1 202; 4 409;
+    PASS  distinct redemption ids across the 5 requests = 1
+  > POST 4002/v1/redemptions [content-type: application/json] [authorization: Bearer <redacted>] [idempotency-key: redeem-a-69250-dup] body={"item_id":"01a20458-c56f-7830-ae42-b1a521c585d5"}
+  < 202 {"id":"01a2045a-33e0-7ab8-ab70-56b7b1f81cba","item_id":"01a20458-c56f-7830-ae42-b1a521c585d5","price":50,"status":"pending","state":"RESERVED","attempts":0,"casino_reference":null,"failure_reason":null,"history":[],"created_at":"2026-11-22T17:42:30.112Z","updated_at":"2026-11-22T17:42:30.134Z"}
+    PASS  HTTP 202
+    PASS  replayed id = 01a2045a-33e0-7ab8-ab70-56b7b1f81cba
+    PASS  Idempotent-Replayed: true header
+    PASS  coins debited once = 400
+  > GET 4004/__issued?casino=a
+  < 200 [{"key":"redeem:01a20458-b08f-7bae-ac69-b6e390fddc88:prd:01a20459-08e1-7090-9871-c435604816e8","player_id":"A-PLAYER-77","reference":"bonus-5fe9eb5b-94f4-4d90-a60d-45c63684d4e9","reward":{"type":"bonus","amount":500,"currency":"EUR"}},{"key":"redeem:01a20458-b08f-7bae-ac69-b6e390fddc88:prd:01a2045a-33e0-7ab8-ab70-56b7b1f81cba","player_id":"A-PLAYER-77","reference":"bonus-5bcd1d76-575e-4e5a-b2e5-01f30842950e","reward" ...(469 chars)
+    PASS  [.[]|select(.player_id=="A-PLAYER-77")]|length==2
+
+=== Step 35. Part C-4. Casino timeout: the casino accepts the bonus but never answers in time -> UNKNOWN -> recovery by lookup
+  > POST 4004/__faults [content-type: application/json] body={"casino":"a","kind":"timeout","times":1,"player_id":"A-PLAYER-77"}
+  < 200 {"ok":true}
+    PASS  HTTP 200
+  > POST 4002/v1/redemptions [content-type: application/json] [authorization: Bearer <redacted>] [idempotency-key: redeem-a-69250-timeout] body={"item_id":"01a20458-c56f-7830-ae42-b1a521c585d5"}
+  < 202 {"id":"01a2045a-418a-771b-94ba-fee42a325cbb","item_id":"01a20458-c56f-7830-ae42-b1a521c585d5","price":50,"status":"pending","state":"RESERVED","attempts":0,"casino_reference":null,"failure_reason":null,"history":[],"created_at":"2026-11-22T17:42:33.610Z","updated_at":"2026-11-22T17:42:33.626Z"}
+    PASS  HTTP 202
+    state: RESERVED
+    state: ISSUING
+    state: UNKNOWN
+    state: ISSUED
+  > GET 4002/v1/redemptions/01a2045a-418a-771b-94ba-fee42a325cbb [authorization: Bearer <redacted>]
+  < 200 {"id":"01a2045a-418a-771b-94ba-fee42a325cbb","item_id":"01a20458-c56f-7830-ae42-b1a521c585d5","price":50,"status":"issued","state":"ISSUED","attempts":1,"casino_reference":"bonus-7e3bffcc-24cd-4b3b-8d1a-f1d12416c2e3","failure_reason":null,"history":[],"created_at":"2026-11-22T17:42:33.610Z","updated_at":"2026-11-22T17:42:48.008Z"}
+    PASS  HTTP 200
+    PASS  .status=="issued"
+    PASS  .history==[]
+    note: players get no history (its causes carry operator detail); the operator route shows the path
+  > GET 4002/v1/operator/redemptions/01a2045a-418a-771b-94ba-fee42a325cbb [authorization: Bearer <redacted>]
+  < 200 {"id":"01a2045a-418a-771b-94ba-fee42a325cbb","item_id":"01a20458-c56f-7830-ae42-b1a521c585d5","price":50,"status":"issued","state":"ISSUED","attempts":1,"casino_reference":"bonus-7e3bffcc-24cd-4b3b-8d1a-f1d12416c2e3","failure_reason":null,"history":[{"from":null,"to":"REQUESTED","cause":"order_placed","at":"2026-11-22T17:42:33.610Z"},{"from":"REQUESTED","to":"RESERVED","cause":"reserved","at":"2026-11-22T17:42:33.626 ...(776 chars)
+    PASS  HTTP 200
+    PASS  [.history[].to]|index("UNKNOWN")!=null
+    PASS  [.history[]|"\(.from)->\(.to)"] as $p | ($p|index("UNKNOWN->ISSUED"))!=null and ([$p[]|select(endswith("->ISSUED"))]|length)==1 and ([$p[]|select(endswith("->COMPLETED"))]|length)<=1 and ([$p[]|select(test("->(REJECTED|RELEASED|NEEDS_REVIEW)$"))]|length)==0
+  > GET 4004/__issued?casino=a
+  < 200 [{"key":"redeem:01a20458-b08f-7bae-ac69-b6e390fddc88:prd:01a20459-08e1-7090-9871-c435604816e8","player_id":"A-PLAYER-77","reference":"bonus-5fe9eb5b-94f4-4d90-a60d-45c63684d4e9","reward":{"type":"bonus","amount":500,"currency":"EUR"}},{"key":"redeem:01a20458-b08f-7bae-ac69-b6e390fddc88:prd:01a2045a-33e0-7ab8-ab70-56b7b1f81cba","player_id":"A-PLAYER-77","reference":"bonus-5bcd1d76-575e-4e5a-b2e5-01f30842950e","reward" ...(703 chars)
+    PASS  [.[]|select(.player_id=="A-PLAYER-77")]|length==3
+    note: three redemptions, three issued rewards on the casino: the timeout produced no second reward
+
+=== Step 36. Part C-5. Invalid or unauthorized events are rejected and change nothing
+  > POST 4002/v1/integrations/demo-a-69250/events [content-type: application/json] body={"eventId":"evt-forged-1","playerId":"A-PLAYER-77","amount":{"value":5000,"currency":"EUR"},"status":"SUCCESS","ts":1795369368}
+  < 401 {"message":"signature check failed","code":"signature_missing"}
+    PASS  HTTP 401
+  > POST 4002/v1/integrations/demo-a-69250/events [content-type: application/json] [x-a-timestamp: 1795369368] [x-a-signature: 0000000000000000000000000000000000000000000000000000000000000000] body={"eventId":"evt-forged-1","playerId":"A-PLAYER-77","amount":{"value":5000,"currency":"EUR"},"status":"SUCC ...(321 chars)
+  < 401 {"message":"signature check failed","code":"signature_invalid"}
+    PASS  HTTP 401
+  > POST 4002/v1/integrations/demo-a-69250/events [content-type: application/json] [x-a-timestamp: 1795369368] [x-a-signature: 73bffdb6fd6804ac81a8dd673f2c0867447c510b51e6423977723d5920227ed8] body={"eventId":"evt-forged-1","playerId":"A-PLAYER-77","amount":{"value":5000,"currency":"EUR"},"status":"SUCC ...(321 chars)
+  < 401 {"message":"signature check failed","code":"signature_invalid"}
+    PASS  HTTP 401
+    note: the last one is signed with casino B's secret: a valid signature of another tenant is still refused
+  > GET 4002/v1/me/spins [authorization: Bearer <redacted>]
+  < 200 {"available":0}
+    PASS  .available==0
+  > POST 4002/v1/spins [content-type: application/json] [idempotency-key: no-token-1] body={}
+  < 401 {"code":"TENANT_REQUIRED","message":"authentication required"}
+    PASS  HTTP 401
+    note: a spin without a player token is refused; a player cannot name another user, the tenant or the odds in any request
+
+=== Step 37. Part C-6. Player isolation inside one casino: another player of casino A cannot read player A's data
+  > POST 4001/v1/auth/launch [content-type: application/json] body={"token":"<redacted>","audience":"engagement"}
+  < 200 {"access_token":"<redacted>","token_type":"Bearer","expires_in":900,"user_id":"01a2045a-7d9d-7200-abb9-01c0bae83717","tenant_id":"01a20458-b08f-7bae-ac69-b6e390fddc88"}
+    PASS  HTTP 200
+    PASS  launched tenant = 01a20458-b08f-7bae-ac69-b6e390fddc88
+  > POST 4001/v1/auth/launch [content-type: application/json] body={"token":"<redacted>","audience":"payments"}
+  < 200 {"access_token":"<redacted>","token_type":"Bearer","expires_in":900,"user_id":"01a2045a-7d9d-7200-abb9-01c0bae83717","tenant_id":"01a20458-b08f-7bae-ac69-b6e390fddc88"}
+    PASS  HTTP 200
+  > GET 4002/v1/redemptions/01a20459-08e1-7090-9871-c435604816e8 [authorization: Bearer <redacted>]
+  < 404 {"message":"redemption not found","code":"redemption_not_found"}
+    PASS  HTTP 404
+  > GET 4003/v1/players/01a20458-c6ed-7158-be6c-336b88962d22/balance [authorization: Bearer <redacted>]
+  < 403 {"code":"forbidden","message":"role not allowed"}
+    PASS  another player's balance refused (403)
+  > GET 4002/v1/me/redemptions [authorization: Bearer <redacted>]
+  < 200 []
+    PASS  HTTP 200
+    PASS  length==0
+
+=== Step 38. Part C-6b. No negative balance: the same player with 0 coins tries to redeem
+  > POST 4002/v1/redemptions [content-type: application/json] [authorization: Bearer <redacted>] [idempotency-key: redeem-a2-69250-1] body={"item_id":"01a20458-c56f-7830-ae42-b1a521c585d5"}
+  < 409 {"message":"not enough coins","code":"insufficient_funds"}
+    PASS  HTTP 409
+    PASS  .code=="insufficient_funds"
+  > GET 4003/v1/me/balance [authorization: Bearer <redacted>]
+  < 404 {"code":"wallet_not_found","message":"wallet not found"}
+    note: a player who never earned coins has no wallet yet (404 wallet_not_found); either answer means a balance of zero, never negative
+    PASS  .code=="wallet_not_found"
+
+=== Step 39. Part C-7. Tenant isolation: casino B cannot see casino A's redemption, balance or webhook
+  > GET 4002/v1/operator/redemptions/01a20459-08e1-7090-9871-c435604816e8 [authorization: Bearer <redacted>]
+  < 404 {"message":"redemption not found","code":"redemption_not_found"}
+    PASS  HTTP 404
+  > GET 4002/v1/redemptions/01a20459-08e1-7090-9871-c435604816e8 [authorization: Bearer <redacted>]
+  < 404 {"message":"redemption not found","code":"redemption_not_found"}
+    PASS  HTTP 404
+  > GET 4002/v1/operator/redemptions [authorization: Bearer <redacted>]
+  < 200 [{"id":"01a20459-1e48-7e11-9c48-b8e947017dc0","item_id":"01a20458-c5f9-7f2b-888b-d9897e8e4185","price":50,"status":"issued","state":"COMPLETED","attempts":1,"casino_reference":"ref-56cd1196-0974-4b8f-9984-5fd9123d6b11","failure_reason":null,"history":[{"from":null,"to":"REQUESTED","cause":"order_placed","at":"2026-11-22T17:41:19.048Z"},{"from":"REQUESTED","to":"RESERVED","cause":"reserved","at":"2026-11-22T17:41:19.0 ...(865 chars)
+    PASS  map(.id)|index("01a20459-08e1-7090-9871-c435604816e8")==null
+  > GET 4003/v1/players/01a20458-c6ed-7158-be6c-336b88962d22/balance [authorization: Bearer <redacted>]
+  < 404 {"code":"wallet_not_found","message":"wallet not found"}
+    PASS  another tenant's player balance refused (404)
+  > POST 4002/v1/integrations/demo-b-69250/events [content-type: application/json] [x-a-timestamp: 1795369368] [x-a-signature: b1ecbd43d19a8ab76c595eb0e3401d61fd3cdc507be417e6594b67042edb1008] body={"eventId":"evt-forged-1","playerId":"A-PLAYER-77","amount":{"value":5000,"currency":"EUR"},"status":"SUCC ...(321 chars)
+  < 401 {"message":"signature check failed","code":"signature_missing"}
+    PASS  HTTP 401
+  > GET 4002/v1/tenant-projection [authorization: Bearer <redacted>]
+  < 200 {"tenant_id":"01a20458-b3cf-70f8-8d6c-b2bb2eb6120d","name":"Casino demo-b-69250","slug":"demo-b-69250","applied_count":1}
+    PASS  .slug=="demo-b-69250"
+
+=== Step 40. Part C-8. Failed reward issuance: the casino rejects the bonus -> REJECTED/RELEASED, coins come back exactly once, stock is released
+  > POST 4002/v1/store/items [content-type: application/json] [authorization: Bearer <redacted>] body={"name":"Limited 5 EUR bonus","description":"One unit, one per player","price":50,"stock":1,"per_player_limit":1,"reward":{"type":"bonus","params":{"amount_minor":500,"currency":"EUR"}}}
+  < 201 {"id":"01a2045a-8268-7803-80d4-7f069c0e348e","name":"Limited 5 EUR bonus","description":"One unit, one per player","image_url":null,"price":50,"reward":{"type":"bonus","params":{"currency":"EUR","amount_minor":500}},"stock":1,"per_player_limit":1,"active":true,"version":1}
+    PASS  HTTP 201
+    PASS  .stock==1 and .per_player_limit==1 and .price==50
+  > POST 4004/__faults [content-type: application/json] body={"casino":"b","kind":"reject","times":1,"player_id":"B-PLAYER-12"}
+  < 200 {"ok":true}
+    PASS  HTTP 200
+    PASS  .ok==true
+    note: player B's stable balance before the redemption: 450
+  > POST 4002/v1/redemptions [content-type: application/json] [authorization: Bearer <redacted>] [idempotency-key: redeem-b-69250-reject] body={"item_id":"01a2045a-8268-7803-80d4-7f069c0e348e"}
+  < 202 {"id":"01a2045a-8787-7b08-9e3c-5f4886ecbcd5","item_id":"01a2045a-8268-7803-80d4-7f069c0e348e","price":50,"status":"pending","state":"RESERVED","attempts":0,"casino_reference":null,"failure_reason":null,"history":[],"created_at":"2026-11-22T17:42:51.527Z","updated_at":"2026-11-22T17:42:51.547Z"}
+    PASS  HTTP 202
+    PASS  .state=="RESERVED" and .price==50
+    note: casino B takes the request and answers with a ticket (pending): the order waits in UNKNOWN with the coins held
+    PASS  coins debited (held) while the casino has not answered = 400
+    PASS  stock unit reserved by the order = 0
+  > GET 4002/v1/redemptions/01a2045a-8787-7b08-9e3c-5f4886ecbcd5 [authorization: Bearer <redacted>]
+  < 200 {"id":"01a2045a-8787-7b08-9e3c-5f4886ecbcd5","item_id":"01a2045a-8268-7803-80d4-7f069c0e348e","price":50,"status":"pending","state":"UNKNOWN","attempts":1,"casino_reference":"tkt-b70160bf-b622-4c7b-a339-c894ea9b4e83","failure_reason":null,"history":[],"created_at":"2026-11-22T17:42:51.527Z","updated_at":"2026-11-22T17:42:53.046Z"}
+    PASS  HTTP 200
+    PASS  .state=="UNKNOWN" and .status=="pending"
+  > GET 4003/v1/me/balance [authorization: Bearer <redacted>]
+  < 200 {"wallet_id":"01a20459-0550-770c-9668-386b355f2e52","available":400,"held":50,"currency":"COIN"}
+    PASS  HTTP 200
+    PASS  .available==400 and .held==50
+  > POST 4004/casino-b/__settle
+  < 200 {"settled":1}
+    PASS  HTTP 200
+    PASS  .settled==1
+    note: the ticket is now FAILED (code rejected); MIO reads it on its next poll (at most 60 s) and releases the coins
+  > GET 4002/v1/redemptions/01a2045a-8787-7b08-9e3c-5f4886ecbcd5 [authorization: Bearer <redacted>]
+  < 200 {"id":"01a2045a-8787-7b08-9e3c-5f4886ecbcd5","item_id":"01a2045a-8268-7803-80d4-7f069c0e348e","price":50,"status":"failed_refunded","state":"RELEASED","attempts":1,"casino_reference":"tkt-b70160bf-b622-4c7b-a339-c894ea9b4e83","failure_reason":"casino_rejected:rejected","history":[],"created_at":"2026-11-22T17:42:51.527Z","updated_at":"2026-11-22T17:43:58.016Z"}
+    PASS  HTTP 200
+    PASS  .status=="failed_refunded" and .state=="RELEASED" and (.failure_reason|startswith("casino_rejected:")) and .history==[]
+  > GET 4002/v1/operator/redemptions/01a2045a-8787-7b08-9e3c-5f4886ecbcd5 [authorization: Bearer <redacted>]
+  < 200 {"id":"01a2045a-8787-7b08-9e3c-5f4886ecbcd5","item_id":"01a2045a-8268-7803-80d4-7f069c0e348e","price":50,"status":"failed_refunded","state":"RELEASED","attempts":1,"casino_reference":"tkt-b70160bf-b622-4c7b-a339-c894ea9b4e83","failure_reason":"casino_rejected:rejected","history":[{"from":null,"to":"REQUESTED","cause":"order_placed","at":"2026-11-22T17:42:51.527Z"},{"from":"REQUESTED","to":"RESERVED","cause":"reserved ...(898 chars)
+    PASS  HTTP 200
+    PASS  [.history[]|"\(.from)->\(.to)"] as $p | ($p|index("UNKNOWN->REJECTED"))!=null and ($p|index("REJECTED->RELEASED"))!=null and ([$p[]|select(endswith("->RELEASED"))]|length)==1 and ([$p[]|select(endswith("->ISSUED"))]|length)==0
+    PASS  .attempts==1
+    PASS  balance after the release (exactly the baseline, not baseline + price) = 450
+    PASS  balance on a second stable read = 450
+  > GET 4003/v1/me/balance [authorization: Bearer <redacted>]
+  < 200 {"wallet_id":"01a20459-0550-770c-9668-386b355f2e52","available":450,"held":0,"currency":"COIN"}
+    PASS  .available==450 and .held==0
+  > GET 4004/__issued?casino=b
+  < 200 [{"key":"redeem:01a20458-b3cf-70f8-8d6c-b2bb2eb6120d:prd:01a20459-1e48-7e11-9c48-b8e947017dc0","player_id":"B-PLAYER-12","reference":"tkt-264d514e-6431-4761-b9df-2769f696a515","reward":{"type":"bonus","amount_cents":500,"ccy":"EUR"}}]
+    PASS  HTTP 200
+    PASS  [.[]|select(.player_id=="B-PLAYER-12")]|length==1
+    note: casino B issued only the earlier bonus of step 'Casino B ... settles'; the rejected one was never issued
+  > GET 4002/v1/store/items [authorization: Bearer <redacted>]
+  < 200 [{"id":"01a20458-c5f9-7f2b-888b-d9897e8e4185","name":"5 EUR bonus","description":"Bonus credited to the casino wallet","image_url":null,"price":50,"reward":{"type":"bonus","params":{"currency":"EUR","amount_minor":500}},"stock":null,"per_player_limit":null,"active":true,"version":1},{"id":"01a2045a-8268-7803-80d4-7f069c0e348e","name":"Limited 5 EUR bonus","description":"One unit, one per player","image_url":null,"pri ...(558 chars)
+    PASS  HTTP 200
+    PASS  [.[]|select(.id=="01a2045a-8268-7803-80d4-7f069c0e348e")][0].stock==1
+    note: the per-player limit (1) has no read route: a second redemption of the same item proves its slot is back
+  > POST 4002/v1/redemptions [content-type: application/json] [authorization: Bearer <redacted>] [idempotency-key: redeem-b-69250-after-reject] body={"item_id":"01a2045a-8268-7803-80d4-7f069c0e348e"}
+  < 202 {"id":"01a2045b-b2e7-7f9a-aa54-d7431e8e8646","item_id":"01a2045a-8268-7803-80d4-7f069c0e348e","price":50,"status":"pending","state":"RESERVED","attempts":0,"casino_reference":null,"failure_reason":null,"history":[],"created_at":"2026-11-22T17:44:08.167Z","updated_at":"2026-11-22T17:44:08.192Z"}
+    PASS  HTTP 202
+    PASS  .state=="RESERVED"
+    PASS  stock unit taken again = 0
+    note: the reject fault was armed for one use, so this issuance goes through: settle it and wait for the final status
+  > POST 4004/casino-b/__settle
+  < 200 {"settled":1}
+    PASS  HTTP 200
+  > GET 4002/v1/redemptions/01a2045b-b2e7-7f9a-aa54-d7431e8e8646 [authorization: Bearer <redacted>]
+  < 200 {"id":"01a2045b-b2e7-7f9a-aa54-d7431e8e8646","item_id":"01a2045a-8268-7803-80d4-7f069c0e348e","price":50,"status":"issued","state":"ISSUED","attempts":1,"casino_reference":"ref-b6fbdb68-3157-4493-a289-8077ab6b49f3","failure_reason":null,"history":[],"created_at":"2026-11-22T17:44:08.167Z","updated_at":"2026-11-22T17:45:13.016Z"}
+    PASS  HTTP 200
+    PASS  .status=="issued"
+    PASS  balance after the second (issued) redemption = 400
+    note: clear every casino-sim fault (global reset) so a later step or a re-run starts without an armed fault
+  > POST 4004/__reset
+  < 200 {"ok":true}
+    PASS  HTTP 200
+    PASS  .ok==true
+
+=== DONE: 40 steps, 194 assertions passed, 0 recorded failure(s)
