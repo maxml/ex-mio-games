@@ -10,7 +10,7 @@
 # 30 minutes (another agent may be about to start it).
 set -euo pipefail
 . "$(dirname "${BASH_SOURCE[0]}")/stack-lib.sh"
-KEEP_NEWEST=2
+KEEP_NEWEST="${MIO_KEEP_TAGS:-2}" # how many of the newest ex-mio tags survive (0 removes all unused)
 yes=0; [ "${1:-}" = "--yes" ] && yes=1
 
 # IDs of images any container uses, and tags pinned by slots in the ledger.

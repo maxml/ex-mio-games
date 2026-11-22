@@ -91,7 +91,7 @@ Images are shared: every built service is `ex-mio/<service>:<tag>`, where the ta
 (a dirty worktree adds the diff). Two slots at the same code run the same images, and `stack-up.sh` builds only
 the images that are missing, one at a time. Set `MIO_HEAVY` to a wrapper command to prefix those builds.
 `stack-down.sh` never removes images. `stack-prune.sh` removes `ex-mio/*` tags no live slot uses (keeping the
-newest 2), old per-project images (`demo-*`, `mio-sN-*`) and build cache older than 30 minutes. It skips any
+newest 2; `MIO_KEEP_TAGS=N` changes that), old per-project images (`demo-*`, `mio-sN-*`) and build cache older than 30 minutes. It skips any
 image a container uses, and any created in the last 30 minutes. `stack-down.sh` offers it when the last slot goes.
 
 ### Try the 8-step workflow
