@@ -8,7 +8,7 @@ import { pgAs } from './env';
  * in the migration that adds a column to a table with rows ONLY if a later migration drops it.
  * The allow-list below is empty by that decision: the final schema has no exception.
  *
- * RED until the drop-default migrations land (today: 8 columns, see 7a). Compose-only.
+ * Was red until the drop-default migrations landed (they have; it was 8 columns, see 7a). Compose-only.
  * Mutation: a new migration that re-adds `DEFAULT false` to any environment column -> red.
  */
 

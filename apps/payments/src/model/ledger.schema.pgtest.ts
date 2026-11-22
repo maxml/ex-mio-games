@@ -511,7 +511,7 @@ describe('INV-L6 ledger tables are tenant-isolated by RLS', () => {
     // RLS like any work queue. Only an owner decision may move it here, with its reason.
   ];
   // D-24 behaviour at the choke point, raw SQL as the runtime role: a tenant transaction never reads
-  // another tenant's audit intent. RED today: `audit_intents` has no tenant_id and no policy
+  // another tenant's audit intent. Was red when written: `audit_intents` has no tenant_id and no policy
   // (packages/service-kit/src/audit-intents.ts:30-34), so B's transaction reads A's intent.
   // Fix direction (coder): tenant_id + enableTenantRls, the sweeper reading through the platform path.
   // Mutation once green: disable or drop the policy on audit_intents -> red.

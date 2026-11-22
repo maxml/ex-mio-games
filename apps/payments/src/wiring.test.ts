@@ -3,8 +3,8 @@ import type { DynamicModule } from '@nestjs/common';
 import { SERVICE_AUTH_OPTIONS, ServiceAuthModule } from '@ex-mio/service-kit';
 import * as tenancy from '@ex-mio/tenancy';
 import { createAppModule } from './app.module';
-import { paymentsControllers } from './controllers'; // RED: module does not exist yet
-import { ActingCoinGuard } from './controllers/coin-action'; // RED: module does not exist yet
+import { paymentsControllers } from './controllers';
+import { ActingCoinGuard } from './controllers/coin-action';
 import type { Config } from './config';
 import { coinRuleViolations, collectControllers } from './testing/controller-walk';
 

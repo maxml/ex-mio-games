@@ -273,7 +273,7 @@ describe('M1 reader: the final audit record is consumed and described correctly 
     );
   });
 
-  // Mutation: none needed today (RED). After the fix: drop the identity refusal marker -> red.
+  // Mutation: none needed today. After the fix: drop the identity refusal marker -> red.
   it('a refused acting request on identity (ACTING_FORBIDDEN) shows in GET /v1/audit as `refused` (D-24)', async () => {
     const w = await actingOnIdentity();
     const refused = await call('POST', '/v1/auth/acting', {

@@ -7,7 +7,7 @@
 // not verified never names the tenant of a product event; only a verified identity does (a player
 // session, or a launch token identity has verified).
 //
-// RED today: INV-WEB-AN-1. Mutation for the green pin (INV-WEB-AN-2): in the player-session branch
+// Was red when written: INV-WEB-AN-1. Mutation for the green pin (INV-WEB-AN-2): in the player-session branch
 // of the handler, use `tenantHintOfLaunchToken(ctx.body.token) ?? s.tenantId` -> red.
 import { describe, expect, it } from 'vitest';
 import { readBffConfig } from './config';

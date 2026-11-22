@@ -14,7 +14,7 @@ import { accessClaims, generateRsaKey, serviceClaims, signJwt } from '@ex-mio/se
 import { Public } from '@ex-mio/tenancy';
 import { createAppModule } from './app.module';
 import type { Config } from './config';
-import { paymentsControllers } from './controllers'; // RED: module does not exist yet
+import { paymentsControllers } from './controllers';
 import { coinRuleViolations, collectControllers } from './testing/controller-walk';
 import {
   ActingCoinGuard,
@@ -22,7 +22,7 @@ import {
   CoinAction,
   NO_COIN_EFFECT_KEY,
   NoCoinEffect,
-} from './controllers/coin-action'; // RED
+} from './controllers/coin-action';
 
 /*
  * Choke point (coordinator decision D-5, review finding F3): payments refuses any coin

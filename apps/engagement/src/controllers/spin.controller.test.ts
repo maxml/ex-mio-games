@@ -3,9 +3,9 @@ import { Test } from '@nestjs/testing';
 import { FastifyAdapter, type NestFastifyApplication } from '@nestjs/platform-fastify';
 import { MySpinsResponse, PublicWheel, SpinResponse } from '@ex-mio/contracts';
 import { tryTenantContext } from '@ex-mio/tenancy';
-import { SpinController } from './spin.controller'; // RED: module missing
-import { SpinService } from '../services/spin.service'; // RED: module missing
-import { asPlayer, authModule, bearer, playerToken } from '../testing/auth.fixture'; // RED until L1 merges
+import { SpinController } from './spin.controller';
+import { SpinService } from '../services/spin.service';
+import { asPlayer, authModule, bearer, playerToken } from '../testing/auth.fixture';
 
 /**
  * POST /v1/spins and GET /v1/wheel (MIO-063, MIO-062, MIO-151). The controller validates every

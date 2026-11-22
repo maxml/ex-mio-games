@@ -14,7 +14,7 @@ import {
   type NewCredit,
   type StoredRule,
 } from '../model/repositories';
-import { SpinCreditsService } from './spin-credits.service'; // RED: module missing
+import { SpinCreditsService } from './spin-credits.service';
 
 /**
  * Spin credits granted from engagement.deposit.confirmed (MIO-061). Consumer entry point:

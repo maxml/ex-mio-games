@@ -454,7 +454,7 @@ describe('INV-AUD service calls: refusals refused, everything else allowed (D-26
     ]);
   });
 
-  // RED today: the entry point writes its own 400 (tenant check) as `refused`. A malformed tenant is
+  // Was red when written: the entry point writes its own 400 (tenant check) as `refused`. A malformed tenant is
   // a validation answer, not an authorization refusal: D-26 says `allowed` with the real status.
   // Non-vacuous twin: SERVICE_CALL_FORBIDDEN (not allow-listed) stays refused/403.
   it('INV-AUD-S2 the entry point 400 for a malformed internal tenant is allowed/400; a route off the allow-list is refused/403', async () => {

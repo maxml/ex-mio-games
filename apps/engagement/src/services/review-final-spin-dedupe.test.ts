@@ -30,7 +30,7 @@ import { SpinService } from './spin.service';
  *                                                       -> SPIN-DEDUPE-3 red (two spins, two credits)
  *  - the `spin` operation key built with `sandbox: false` -> SPIN-DEDUPE-1 red (the sandbox
  *    request replays the production spin)
- *  - (SPIN-KEY-BOUND is RED at a4d97bb: scopedKey throws a plain Error for a key the controller
+ *  - (SPIN-KEY-BOUND was red at a4d97bb: scopedKey throws a plain Error for a key the controller
  *    accepted, which is a 500.)
  */
 

@@ -15,7 +15,7 @@ import { createTestApp } from './testing/app';
  *
  * D-24: "the audit decision records the authorization outcome, not the HTTP outcome".
  *
- * RED today: INV-ID-AUD-2, INV-ID-AUD-3 (`allowed` with 403).
+ * Was red when written: INV-ID-AUD-2, INV-ID-AUD-3 (`allowed` with 403).
  * Green pins: INV-ID-AUD-1 (a 404 from the handler is `allowed` with status 404, D-24 example).
  * Mutation for INV-ID-AUD-1: `auditDecision` returns `status < 400 ? 'allowed' : 'refused'` -> red.
  */

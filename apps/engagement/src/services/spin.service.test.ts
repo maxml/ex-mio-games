@@ -21,9 +21,9 @@ import {
   type SpinCredit,
   type SpinRecord,
 } from '../model/repositories';
-import { createSeedProvider } from '../model/seeds'; // RED: module missing
-import { SpinService } from './spin.service'; // RED: module missing
-import { selectSegment } from './wheel'; // RED: module missing
+import { createSeedProvider } from '../model/seeds';
+import { SpinService } from './spin.service';
+import { selectSegment } from './wheel';
 
 // rc fix (INV-SPIN-ENV-NOAUTH): `availableSpins` fails closed without an auth context, as `spin` does in
 // its controller. Over HTTP the service-kit interceptor sets the context; here a production player has it.

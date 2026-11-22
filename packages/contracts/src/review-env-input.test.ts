@@ -5,11 +5,11 @@ import { scopedKey } from './scoped-key';
 /*
  * D-29 INV-ENV-INPUT (docs/specs/env-input.md section 4), the contract choke points.
  *
- * INV-ENV-INPUT-1 (RED): the environment of a per-environment operator resource is required.
+ * INV-ENV-INPUT-1: the environment of a per-environment operator resource is required.
  *   Spec #1 (F12) IssueCredentialRequest, #2 (F7) PutRewardApiRequest. Mutation: add
  *   `.default('production')` back to either -> red. (The internal balance query, #3 / F9, lives in
  *   payments: its `.default('false')` is caught by INV-ENV-INPUT-2a, the static scan.)
- * INV-ENV-INPUT-5 (RED): the envelope's `sandbox` is a required boolean (spec #11, N-4). Mutation:
+ * INV-ENV-INPUT-5: the envelope's `sandbox` is a required boolean (spec #11, N-4). Mutation:
  *   restore `sandbox: z.boolean().optional()` or the "write only when true" spread -> red.
  * INV-ENV-INPUT-8 (green, a pin): scopedKey keeps its required flag. Mutation (re-applied in the
  *   review): `sandbox: boolean` read as `sandbox ?? false` with the type check removed -> red.

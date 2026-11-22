@@ -5,7 +5,7 @@ import { seedCoins, seedCoinsMany } from './seed-coins';
 
 /*
  * Store and redemption API against the live stack (real Postgres, RLS, the real HTTP layer).
- * RED today: the engagement service has no /v1/store or /v1/redemptions routes (404).
+ * Was red when written: the engagement service has no /v1/store or /v1/redemptions routes (404).
  * Spec: docs/specs/engagement-store.md §7. Run: `pnpm test:compose` with the stack up.
  *
  * Authentication is real everywhere (D-4, D-12, X-9): operators and players are created through

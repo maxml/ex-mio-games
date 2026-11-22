@@ -1,7 +1,7 @@
 import { createHmac, randomUUID } from 'node:crypto';
 import { PublicWheel, type RewardSegment } from '@ex-mio/contracts';
 import type { RewardTableVersion } from '../model/repositories';
-import { probabilities, selectSegment, toPublicWheel } from './wheel'; // RED: module missing
+import { probabilities, selectSegment, toPublicWheel } from './wheel';
 
 /**
  * Wheel (MIO-062, MIO-063, MIO-069). Pure functions, docs/specs section 8:

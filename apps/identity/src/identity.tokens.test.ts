@@ -4,7 +4,7 @@ import {
   ACCESS_TTL_MAX_SECONDS,
 } from '@ex-mio/contracts';
 import { decodeHeader, decodePayload } from '@ex-mio/service-kit/testing';
-import { buildKernel } from './testing/kernel'; // RED: module does not exist yet
+import { buildKernel } from './testing/kernel';
 
 /*
  * Choke point: SessionsService (issue, JWKS, rotation, acting sessions) and the

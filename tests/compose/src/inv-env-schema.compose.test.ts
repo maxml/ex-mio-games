@@ -14,7 +14,7 @@ import { pgAs, type Service } from './env';
  * Every table of every service DB is in exactly one class below, with a reason:
  *   ENV        it has the column (found in the catalog, not listed): every unique key must include
  *              it, unless the key is in SURROGATE_KEYS.
- *   REQUIRES   environment-scoped data WITHOUT the column today: RED until a migration adds it.
+ *   REQUIRES   environment-scoped data WITHOUT the column: red until a migration adds it (it has landed).
  *   INHERITS   environment-scoped rows whose environment is a parent row's (named); no column needed,
  *              but then EVERY unique key must be in SURROGATE_KEYS (no client or external value
  *              may decide uniqueness across environments).

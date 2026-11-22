@@ -13,13 +13,13 @@ import { newTenant } from './player-session';
  *    webhook is a production deposit and a sandbox-signed one a sandbox deposit, end to end
  *    (identity -> engagement -> outbox envelope). Mutation: engagement's sandbox set gets
  *    `sandbox: false` (unit F5-2a pins the same at the choke point).
- *  - F5-DEDUPE-ENV (RED): before F5 only one environment was live at a time; now both are, and the
+ *  - F5-DEDUPE-ENV: before F5 only one environment was live at a time; now both are, and the
  *    inbound dedupe key is still (tenant, source, external_event_id). A sandbox webhook whose event
  *    id the production casino later reuses swallows the PRODUCTION deposit (no spins credited).
  *    D-18 already put the sandbox flag into the order idempotency key for the same reason.
  *
  * D-24 work-queue RLS (`app.platform_scan` read flag for the sweeper):
- *  - WQ-SCAN-1 (RED): the flag is a plain custom GUC, so any transaction of the app role can set it,
+ *  - WQ-SCAN-1: the flag is a plain custom GUC, so any transaction of the app role can set it,
  *    including a tenant-scoped one; the policy `USING (tenant OR scan)` then shows every tenant's
  *    queue rows to a tenant transaction. Close it at the policy: the scan branch only when no tenant
  *    is set.

@@ -1,7 +1,7 @@
 import type { Action, Role } from '@ex-mio/contracts';
 import { ACTIONS, PLATFORM_TENANT_ID } from '@ex-mio/contracts';
-import { buildKernel } from './testing/kernel'; // RED: module does not exist yet
-import type { Subject } from './services/access.service'; // RED: module does not exist yet
+import { buildKernel } from './testing/kernel';
+import type { Subject } from './services/access.service';
 
 /*
  * Choke point: AccessService.can / authorize (services/access.service.ts).

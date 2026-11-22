@@ -17,7 +17,7 @@ import { createTestApp } from './testing/app';
  * The consumer already exists: the web BFF (`GET /api/realtime/ticket`) posts `{}` with the
  * player's engagement session, or the operator's identity token, and reads `{ ticket, expires_in }`.
  *
- * RED today: the route and the redeem seam do not exist.
+ * Was red when written: the route and the redeem seam do not exist.
  */
 
 const PW = 'correct horse battery';
@@ -153,7 +153,7 @@ describe('RT-TICKET: one-time realtime ticket (D-10, D-22)', () => {
  *   `{ ticket }` (strict), answer `RealtimeTicketRedeemResponse`; SERVICE_CALL_POLICY.engagement.identity
  *   lists `POST /internal/v1/realtime-tickets/redeem`, no other client does.
  *
- * RED today: the route does not exist (404).
+ * Was red when written: the route does not exist (404).
  */
 const REDEEM = '/internal/v1/realtime-tickets/redeem';
 const SVC_SECRETS = {

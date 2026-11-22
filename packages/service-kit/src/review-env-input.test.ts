@@ -11,7 +11,7 @@ import { accessClaims, generateRsaKey, signJwt } from './testing/jwt-fixtures';
 /*
  * D-29 INV-ENV-INPUT (docs/specs/env-input.md section 4), repo-wide choke points.
  *
- * INV-ENV-INPUT-2 static scan (RED). Rule 2 of the spec: no `.default(` and no fallback for
+ * INV-ENV-INPUT-2 static scan. Rule 2 of the spec: no `.default(` and no fallback for
  *   `environment`, `sandbox` or `sbx`. Three parts:
  *   2a `.default(` on such a field in packages/contracts/src and every apps/<svc>/src/controllers;
  *   2b a fallback (`?? false`, `?? 'production'`, `|| false`, `= { sandbox: false }`, a parameter

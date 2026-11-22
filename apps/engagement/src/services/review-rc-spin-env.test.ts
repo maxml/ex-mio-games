@@ -13,7 +13,7 @@ import { SpinService } from './spin.service';
  * is the unsafe one, and it is the only env-scoped read that has it. Fail closed instead: no auth
  * context, no environment, no answer.
  *
- * RED today: INV-SPIN-ENV-NOAUTH.
+ * Was red when written: INV-SPIN-ENV-NOAUTH.
  */
 
 const TENANT = '0190a1b2-c3d4-4e5f-8a6b-000000000001';

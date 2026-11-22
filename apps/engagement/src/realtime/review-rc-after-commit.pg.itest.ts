@@ -21,7 +21,7 @@ import { RealtimeGateway } from './realtime.gateway';
  * Mutations (re-applied by the reviewer):
  *  - `afterCommit` runs the effect at once (no subscriber)               -> AC-1 red (status `in progress`), AC-2 red.
  *  - the commit subscriber drops the `isTransactionActive` check        -> AC-3 red (fires at RELEASE SAVEPOINT).
- * RED today: AC-4 (an effect queued inside a savepoint that was ROLLED BACK still leaves when the
+ * Was red when written: AC-4 (an effect queued inside a savepoint that was ROLLED BACK still leaves when the
  * outer transaction commits: the rollback subscriber returns early while the outer transaction is
  * active, and the effect stays in the runner's list).
  */
