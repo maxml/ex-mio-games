@@ -8,6 +8,8 @@ risk_class: ownership
 status: todo
 depends_on: [MIO-082]
 size: S
+estimate_hours_base: 8
+estimate_hours: 10
 ---
 
 ## Goal

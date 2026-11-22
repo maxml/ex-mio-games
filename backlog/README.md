@@ -64,7 +64,9 @@ Each task file `tasks/MIO-NNN-<slug>.md` starts with YAML frontmatter:
 | `status` | see below | Current state |
 | `depends_on` | list of task ids | Tasks in this backlog that must be done first |
 | `blocked_by` | list of strings (optional) | Prerequisites outside this backlog. `starter: <capability>` means a capability that the monorepo starter must gain first; other entries name a missing decision or material |
-| `size` | `S`, `M`, `L` | Rough size: S up to a day, M a few days, L a week or more |
+| `size` | `S`, `M`, `L` | Rough size band of the base estimate: S up to 8 hours, M 12 to 24 hours, L 32 to 48 hours |
+| `estimate_hours_base` | integer | Focused engineering hours for one experienced engineer to finish the task to its acceptance criteria: code, tests, review fixes and documentation. Meetings are not included. For a task with a `risk_class` other than `none` it includes the specification, the failing tests and the hostile review (the process in `docs/ai`). It is a judgement from the task's Scope and Acceptance criteria, not a function of `size`; the size band is a sanity check, and a task outside its band gets a one-line "Estimate:" note under Notes, or a different `size` |
+| `estimate_hours` | integer | `ceil(estimate_hours_base * 1.2)`: the base plus the 20% buffer. This is the number people plan with |
 
 The body has: **Goal**, **Scope**, **Acceptance criteria** (testable), and **Notes** (sources, caveats).
 
@@ -83,6 +85,58 @@ but code waits for the starter capability. A task whose blocker is a decision or
 | `concurrency` | Races, lost updates, crash-in-the-middle, redelivery |
 | `ownership` | Acting on an object that belongs to someone else |
 | `isolation` | Data crossing tenant boundaries |
+
+## Estimates and totals
+
+**Buffer rule (owner decision):** every task carries a 20% buffer. `estimate_hours` is always
+`ceil(estimate_hours_base * 1.2)`; the size bands apply to the base value. The buffer is per task, so the
+totals below are sums of the per-task values, not 1.2 times the base total.
+
+Planning conversion used in `docs/scaling/README.md` (Part E): 6 productive hours per engineer per day and
+21 working days per month. Hours are one experienced engineer's focused time, with no AI speed-up assumed.
+
+| Scope | Tasks | Base hours | Hours with 20% buffer |
+|---|---|---|---|
+| EPIC-01 Foundations and local development | 9 | 96 | 121 |
+| EPIC-02 Architecture and decisions | 8 | 89 | 110 |
+| EPIC-03 Diagrams as code with archify | 8 | 64 | 81 |
+| EPIC-04 Tenancy | 5 | 88 | 107 |
+| EPIC-05 Identity | 7 | 152 | 185 |
+| EPIC-06 Casino integrations | 8 | 128 | 156 |
+| EPIC-07 Engagement | 11 | 176 | 215 |
+| EPIC-08 Coin ledger | 7 | 118 | 144 |
+| EPIC-09 Monetization | 10 | 180 | 219 |
+| EPIC-10 Product analytics | 9 | 90 | 112 |
+| EPIC-11 Realtime websocket | 4 | 70 | 85 |
+| EPIC-12 Design and design system | 6 | 126 | 154 |
+| EPIC-13 Web | 6 | 168 | 203 |
+| EPIC-14 Reliability and security tests | 15 | 238 | 290 |
+| EPIC-15 Observability, audit, deploy | 6 | 70 | 86 |
+| EPIC-16 AI-native development | 10 | 104 | 131 |
+| EPIC-17 Submission documents | 13 | 91 | 116 |
+| EPIC-18 Performance, capacity and load testing | 5 | 80 | 99 |
+| P0 (the first sellable slice) | 49 | 988 | 1,200 |
+| P1 | 73 | 913 | 1,128 |
+| P2 | 19 | 157 | 199 |
+| P3 | 6 | 70 | 87 |
+| **Grand total** | **147** | **2,128** | **2,614** |
+
+The P0 row is the first sellable slice: MIO-005, MIO-121 and everything they depend on. With the buffer it
+is 1,200 hours, 200 person-days, 9.5 person-months. P0 and P1 together are 2,328 hours.
+
+Reproduce every figure above with this read-only command, run from the repository root (the epic and
+priority rows come from the same pass; P0 is the `P0` row):
+
+```sh
+awk 'FNR==1{fm=0} /^---$/{fm++; if(fm==2){N[e]++;B[e]+=b;H[e]+=h;PN[p]++;PB[p]+=b;PH[p]+=h;T++;TB+=b;TH+=h} next} fm==1{if($1=="epic:")e=$2;if($1=="priority:")p=$2;if($1=="estimate_hours_base:")b=$2;if($1=="estimate_hours:")h=$2} END{for(k in N)printf "epic %s %d %d %d\n",k,N[k],B[k],H[k];for(k in PN)printf "prio %s %d %d %d\n",k,PN[k],PB[k],PH[k];printf "total %d %d %d\n",T,TB,TH}' backlog/tasks/*.md | sort
+```
+
+Each output row is `kind name tasks base_hours buffered_hours`. A second read-only check confirms the buffer
+rule on every task (it prints nothing when all 147 tasks agree):
+
+```sh
+awk '/^estimate_hours_base:/{b=$2} /^estimate_hours:/{if($2!=int((b*12+9)/10))print FILENAME}' backlog/tasks/*.md
+```
 
 ## Status values
 
@@ -184,7 +238,8 @@ is accepted. P3 prompt work stays deferred.
 | [EPIC-15](epics/EPIC-15-observability-audit-deploy.md) | Observability, audit, security baseline, deploy | P1 | 6 | 0 | 3 | 3 | 0 |
 | [EPIC-16](epics/EPIC-16-ai-native-development.md) | AI-native development and AI-readiness (Part D) | P1 | 10 | 0 | 4 | 1 | 5 |
 | [EPIC-17](epics/EPIC-17-submission-docs.md) | Submission documents, scaling plan, publication gate (Deliverables, Part E) | P1 | 13 | 0 | 11 | 2 | 0 |
-| **Total** | | | **142** | **49** | **69** | **18** | **6** |
+| [EPIC-18](epics/EPIC-18-performance-capacity.md) | Performance, capacity and load testing | P1 | 5 | 0 | 4 | 1 | 0 |
+| **Total** | | | **147** | **49** | **73** | **19** | **6** |
 
 ## Waiting on someone
 
@@ -272,7 +327,7 @@ Every item of the assignment maps to at least one task.
 
 | Assignment item | Tasks |
 |---|---|
-| 1. Evolve the prototype into a production-ready multi-tenant SaaS | MIO-187 (with the production roadmap), assembled in MIO-182 |
+| 1. Evolve the prototype into a production-ready multi-tenant SaaS | MIO-187 (with the production roadmap), assembled in MIO-182; scale-out numbers from MIO-193, MIO-194 and MIO-196 |
 | 2. Support 10 casino operators without 10 codebases | MIO-188 (evidence MIO-057, MIO-052, MIO-092) |
 | 3. PvP, Missions, Kingdom Builder without coupling to the integration layer | MIO-189 (with MIO-070) |
 | 4. First 90 days | MIO-183 |
@@ -308,3 +363,4 @@ Every item of the assignment maps to at least one task.
 | Publication privacy gate (the repository is public) | EPIC-17 (MIO-192) |
 | Production roadmap: onboarding and suspension, credential rotation, retention, restore, failure ownership | EPIC-17 (MIO-187) |
 | Diagrams as code with archify | EPIC-03 |
+| Performance: SLOs, load tests, CI gate, capacity model, soak | EPIC-18 |

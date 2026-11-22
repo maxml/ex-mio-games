@@ -8,6 +8,8 @@ risk_class: none
 status: todo
 depends_on: [MIO-101, MIO-093]
 size: S
+estimate_hours_base: 6
+estimate_hours: 8
 ---
 
 ## Goal
@@ -21,8 +23,9 @@ Revenue charts in the analytics panel without reading the payments database.
 
 ## Acceptance criteria
 
-- The daily job, run twice on the same day, results in one counted snapshot per tenant (deterministic
-  `event_id`, business-event delivery and read-side dedupe as defined in MIO-101).
+- The daily job, run twice on the same day, results in one counted snapshot per tenant (a deterministic
+  `dedupe_key` of tenant and day on the intent row, with the `event_id` a random UUIDv7;
+  business-event delivery and read-side dedupe as defined in MIO-101).
 - `billing.subscription_changed` is written in the same transaction as the subscription change; a
   rolled-back change emits nothing.
 - Sum of snapshot `mrr_minor` equals MIO-099's MRR for the same day in a seeded test.

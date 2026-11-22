@@ -8,6 +8,8 @@ risk_class: guard
 status: todo
 depends_on: [MIO-050, MIO-057, MIO-005]
 size: M
+estimate_hours_base: 20
+estimate_hours: 24
 ---
 
 ## Goal

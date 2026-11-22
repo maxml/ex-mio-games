@@ -8,6 +8,8 @@ risk_class: none
 status: todo
 depends_on: [MIO-010, MIO-016, MIO-186]
 size: M
+estimate_hours_base: 16
+estimate_hours: 20
 ---
 
 ## Goal
@@ -44,3 +46,9 @@ Section 1 of `docs/scaling.md`:
 - Every roadmap row has all five columns filled; "owner" is a role, "how measured" is a number or a
   pass/fail drill.
 - Every claim about the current system links to code, a test or an ADR.
+
+## Notes
+
+The scale-out milestone takes its entry and exit numbers from the capacity model (MIO-196) and the SLOs
+(MIO-193). Forward pointer only: this task does not depend on them, and the section says "to be confirmed
+by the measured baseline" until they exist.

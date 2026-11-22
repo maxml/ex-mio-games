@@ -8,6 +8,8 @@ risk_class: admission
 status: todo
 depends_on: [MIO-055, MIO-061]
 size: S
+estimate_hours_base: 8
+estimate_hours: 10
 ---
 
 ## Goal

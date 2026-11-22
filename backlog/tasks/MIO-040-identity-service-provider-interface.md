@@ -9,6 +9,8 @@ status: todo
 depends_on: [MIO-001]
 blocked_by: ["starter: identity service"]
 size: L
+estimate_hours_base: 36
+estimate_hours: 44
 ---
 
 ## Goal

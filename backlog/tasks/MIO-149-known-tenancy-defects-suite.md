@@ -8,6 +8,8 @@ risk_class: isolation
 status: todo
 depends_on: [MIO-015, MIO-030, MIO-031, MIO-032, MIO-033, MIO-034, MIO-043, MIO-146, MIO-160]
 size: L
+estimate_hours_base: 40
+estimate_hours: 48
 ---
 
 ## Goal

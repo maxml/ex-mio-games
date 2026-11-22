@@ -8,6 +8,8 @@ risk_class: none
 status: needs-owner-review
 depends_on: []
 size: S
+estimate_hours_base: 3
+estimate_hours: 4
 ---
 
 ## Goal

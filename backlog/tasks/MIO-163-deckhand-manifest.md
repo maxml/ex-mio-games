@@ -9,6 +9,8 @@ status: todo
 depends_on: [MIO-002]
 blocked_by: ["starter: Deckhand manifest for many services"]
 size: S
+estimate_hours_base: 6
+estimate_hours: 8
 ---
 
 ## Goal

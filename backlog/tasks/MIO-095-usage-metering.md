@@ -8,6 +8,8 @@ risk_class: budget
 status: todo
 depends_on: [MIO-056, MIO-091, MIO-092]
 size: M
+estimate_hours_base: 20
+estimate_hours: 24
 ---
 
 ## Goal

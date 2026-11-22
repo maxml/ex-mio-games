@@ -8,6 +8,8 @@ risk_class: none
 status: todo
 depends_on: [MIO-172, MIO-173]
 size: S
+estimate_hours_base: 6
+estimate_hours: 8
 ---
 
 ## Goal

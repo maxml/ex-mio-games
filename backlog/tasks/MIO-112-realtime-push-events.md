@@ -9,6 +9,8 @@ status: todo
 depends_on: [MIO-110, MIO-061, MIO-083, MIO-067, MIO-134]
 blocked_by: ["starter: resilient websocket"]
 size: M
+estimate_hours_base: 24
+estimate_hours: 29
 ---
 
 ## Goal

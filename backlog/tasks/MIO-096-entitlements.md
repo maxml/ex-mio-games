@@ -9,6 +9,8 @@ status: todo
 depends_on: [MIO-091, MIO-093]
 blocked_by: ["starter: entitlement evaluator (atomic consume, fail-closed)"]
 size: M
+estimate_hours_base: 20
+estimate_hours: 24
 ---
 
 ## Goal

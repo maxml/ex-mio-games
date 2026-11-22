@@ -9,6 +9,8 @@ status: todo
 depends_on: []
 blocked_by: ["starter: idempotency package"]
 size: M
+estimate_hours_base: 24
+estimate_hours: 29
 ---
 
 ## Goal

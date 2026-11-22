@@ -9,6 +9,8 @@ status: todo
 depends_on: [MIO-102, MIO-103, MIO-104]
 blocked_by: ["Varta: product events stream with long retention and a generated analytics dashboard"]
 size: M
+estimate_hours_base: 16
+estimate_hours: 20
 ---
 
 ## Goal

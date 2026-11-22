@@ -8,6 +8,8 @@ risk_class: guard
 status: needs-owner-review
 depends_on: [MIO-021, MIO-022, MIO-023]
 size: M
+estimate_hours_base: 16
+estimate_hours: 20
 ---
 
 ## Goal

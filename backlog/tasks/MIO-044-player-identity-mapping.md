@@ -7,7 +7,9 @@ money_impact: direct
 risk_class: identity
 status: todo
 depends_on: [MIO-042, MIO-050, MIO-135]
-size: M
+size: L
+estimate_hours_base: 32
+estimate_hours: 39
 ---
 
 ## Goal

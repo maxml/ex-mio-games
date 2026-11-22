@@ -9,6 +9,8 @@ status: todo
 depends_on: [MIO-030]
 blocked_by: ["starter: tenancy package (context, RLS, isolation test kit)"]
 size: L
+estimate_hours_base: 44
+estimate_hours: 53
 ---
 
 ## Goal

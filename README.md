@@ -393,7 +393,7 @@ Checked against the code. The full table with the reasons is section 14 of
 | D: AI-native development                  | [`docs/ai/`](docs/ai/README.md): process, decisions, defects found, verification                                                           |
 | E: scaling, first 90 days, team           | [`docs/scaling/`](docs/scaling/README.md) and [`90-days.md`](docs/scaling/90-days.md)                                                      |
 | What is missing                           | [`docs/submission/known-gaps.md`](docs/submission/known-gaps.md)                                                                           |
-| The backlog (17 epics, tasks, acceptance) | [`backlog/`](backlog/README.md)                                                                                                            |
+| The backlog (18 epics, tasks, acceptance) | [`backlog/`](backlog/README.md)                                                                                                            |
 
 ## Known limitations
 

@@ -9,6 +9,8 @@ status: todo
 depends_on: [MIO-013, MIO-065, MIO-082, MIO-051, MIO-086]
 blocked_by: ["starter: idempotency package"]
 size: L
+estimate_hours_base: 48
+estimate_hours: 58
 ---
 
 ## Goal
