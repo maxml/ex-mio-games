@@ -206,6 +206,25 @@ describe('operator credentials, rules and wheel reach the services', () => {
     );
   });
 
+  it('store item: a bonus reward in minor units, the price in coins', async () => {
+    const w = await signedIn({ 'POST /v1/store/items': { status: 201, body: {} } });
+    const r = await w.req('POST', '/api/operator/catalog', {
+      name: '5 EUR bonus',
+      priceCoins: 50,
+      bonusEur: 5,
+    });
+    expect(r.status).toBe(201);
+    expect(w.calls[0]!.body).toMatchObject({
+      name: '5 EUR bonus',
+      price: 50,
+      reward: { type: 'bonus', params: { amount_minor: 500, currency: 'EUR' } },
+    });
+    expect(
+      (await w.req('POST', '/api/operator/catalog', { name: 'x', priceCoins: 0, bonusEur: 5 }))
+        .status,
+    ).toBe(422);
+  });
+
   it('rules: EUR becomes minor units, cap becomes max_grants_per_player, per is dropped', async () => {
     const w = await signedIn({ 'PUT /v1/operator/rules': { body: { id: 'r', version: 2 } } });
     const r = await w.req('POST', '/api/operator/rules', {

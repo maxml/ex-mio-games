@@ -529,6 +529,33 @@ export function createBff(deps: BffDeps) {
         };
       },
     ],
+    // Bonus Store item: `POST /v1/store/items` (engagement). The item pays a casino bonus in whole EUR.
+    [
+      'POST',
+      /^\/api\/operator\/catalog$/,
+      async (ctx) => {
+        const s = need(ctx.session);
+        const name = str(ctx.body.name, 'name', 120);
+        const whole = (v: unknown, field: string): number => {
+          if (typeof v !== 'number' || !Number.isInteger(v) || v <= 0)
+            throw new BffError(422, 'validation_error', `${field} must be a positive integer`);
+          return v;
+        };
+        await up('engagement', 'POST', '/v1/store/items', {
+          token: token(s, 'engagement'),
+          body: {
+            name,
+            description: 'Bonus credited to the casino wallet',
+            price: whole(ctx.body.priceCoins, 'priceCoins'),
+            reward: {
+              type: 'bonus',
+              params: { amount_minor: whole(ctx.body.bonusEur, 'bonusEur') * 100, currency: 'EUR' },
+            },
+          },
+        });
+        return { status: 201 };
+      },
+    ],
     // Rules: `PUT /v1/operator/rules` (engagement). `min` is EUR, the service takes minor units. `cap` is the
     // per-player grant limit. `per` ("per each N EUR") has no service field and is dropped (known-gaps G-4).
     [

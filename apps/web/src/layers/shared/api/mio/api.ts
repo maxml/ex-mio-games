@@ -64,6 +64,13 @@ export interface SignupInput {
   password: string;
 }
 
+export interface NewStoreItem {
+  name: string;
+  priceCoins: number;
+  /** Whole EUR the casino credits as a bonus when the item is redeemed. */
+  bonusEur: number;
+}
+
 export interface OperatorApi {
   getState(): Promise<OperatorState>;
   /** W-11: what L1's signup needs. The mock ignores it. */
@@ -79,6 +86,8 @@ export interface OperatorApi {
   confirmFirstLiveDeposit(): Promise<void>;
   saveRules(rules: RulesView): Promise<void>;
   publishWheel(weights: number[]): Promise<void>;
+  /** Adds a Bonus Store item that pays a bonus (`bonusEur`) in the casino wallet. */
+  createItem(input: NewStoreItem): Promise<void>;
   setPrice(itemId: string, priceCoins: number): Promise<void>;
   setVisible(itemId: string, visible: boolean): Promise<void>;
   completeStep(step: OperatorStepId): Promise<void>;

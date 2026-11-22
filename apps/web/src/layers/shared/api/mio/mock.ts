@@ -188,6 +188,13 @@ export function createMockApi({ store = appStore }: MockApiOptions = {}): MioApi
       },
       setPrice: async (id, price) => store.dispatch({ type: 'catalog/price', id, price }),
       setVisible: async (id, on) => store.dispatch({ type: 'catalog/visible', id, on }),
+      createItem: async (input) =>
+        store.dispatch({
+          type: 'catalog/add',
+          id: `item-${globalThis.crypto.randomUUID().slice(0, 8)}`,
+          name: input.name,
+          price: input.priceCoins,
+        }),
       completeStep: async (id) => store.dispatch({ type: 'step/complete', id }),
     },
     admin: {
