@@ -1,5 +1,5 @@
 import { INTEGRATION_ENVIRONMENTS, TenantIntegration } from '@ex-mio/contracts';
-import { buildKernel } from './testing/kernel';
+import { buildKernel } from './testing/kernel'; // RED: module does not exist yet
 
 /*
  * Choke point: CredentialsService (services/credentials.service.ts): per-tenant API key + webhook
@@ -25,8 +25,12 @@ async function world() {
     email: 'boss@b.test',
     password: PW,
   });
-  const keyA = await k.credentials.issue(a.tenant.id, 'sim-casino');
-  const keyB = await k.credentials.issue(b.tenant.id, 'sim-casino');
+  const keyA = await k.credentials.issue(a.tenant.id, 'sim-casino', {
+    environment: 'production',
+  });
+  const keyB = await k.credentials.issue(b.tenant.id, 'sim-casino', {
+    environment: 'production',
+  });
   const asAdmin = async (tenantId: string, email: string) =>
     k.subjectOf(
       await k.verify(
@@ -66,7 +70,9 @@ describe('INV-CRED: integration credentials are per tenant, secret at rest, rota
     expect(await k.credentials.environmentOfKey(sbx.key_id)).toBe('sandbox');
     const player = await k.sessions.launchWithKey(sbx, { externalPlayerId: 'ext-1' });
     expect((await k.verify(player.access_token, 'engagement')).sbx).toBe(true);
-    const prod = await k.credentials.issue(a.tenant.id, 'sim-casino-prod');
+    const prod = await k.credentials.issue(a.tenant.id, 'sim-casino-prod', {
+      environment: 'production',
+    });
     const playerP = await k.sessions.launchWithKey(prod, { externalPlayerId: 'ext-2' });
     expect((await k.verify(playerP.access_token, 'engagement')).sbx).toBeUndefined();
   });

@@ -16,6 +16,7 @@ const TENANT = '0190a1b2-c3d4-4e5f-8a6b-7c8d9e0f1a2b';
 const event = createEvent({
   type: 'identity.tenant.created',
   tenantId: TENANT,
+  sandbox: false,
   payload: { name: 'Acme', slug: 'acme' },
 });
 

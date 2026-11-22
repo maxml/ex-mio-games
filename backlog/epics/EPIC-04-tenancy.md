@@ -19,13 +19,13 @@ Every paying operator is a tenant. One cross-tenant leak ends the business.
 
 ## Tasks
 
-| ID | Title | Priority |
-|---|---|---|
-| MIO-030 | Tenant model: platform tenant, operator tenants, tenants module inside identity | P0 |
-| MIO-031 | Tenant resolution from domain or casino launch token only | P0 |
-| MIO-032 | Isolation enforcement: tenant context, Postgres RLS, composite keys | P0 |
-| MIO-033 | Tenant in cache keys, broker envelopes and websocket channels | P1 |
-| MIO-034 | Platform admin acts in an operator tenant only through explicit, audited `acting_tenant` | P1 |
+| ID      | Title                                                                                    | Priority |
+| ------- | ---------------------------------------------------------------------------------------- | -------- |
+| MIO-030 | Tenant model: platform tenant, operator tenants, tenants module inside identity          | P0       |
+| MIO-031 | Tenant resolution from domain or casino launch token only                                | P0       |
+| MIO-032 | Isolation enforcement: tenant context, Postgres RLS, composite keys                      | P0       |
+| MIO-033 | Tenant in cache keys, broker envelopes and websocket channels                            | P1       |
+| MIO-034 | Platform admin acts in an operator tenant only through explicit, audited `acting_tenant` | P1       |
 
 Isolation tests are in EPIC-14 (MIO-146, MIO-149).
 

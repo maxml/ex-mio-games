@@ -38,7 +38,7 @@ export class SpinCreditsService {
     const tenantId = event.tenant_id;
 
     const userId = deposit.player_id;
-    const sandbox = event.sandbox === true;
+    const sandbox = event.sandbox;
     const canonical: Omit<CanonicalDepositEvent, 'external_player_id'> = {
       tenant_id: tenantId,
       source: deposit.source,
@@ -64,7 +64,7 @@ export class SpinCreditsService {
         ruleId: g.rule_id,
         ruleVersion: g.rule_version,
         seq,
-        ...(sandbox ? { sandbox: true } : {}),
+        sandbox,
       })),
     );
     if (rows.length === 0) return;
@@ -77,7 +77,7 @@ export class SpinCreditsService {
         createEvent({
           type: 'engagement.spin.granted',
           tenantId,
-          ...(sandbox ? { sandbox: true } : {}),
+          sandbox,
           correlationId: event.correlation_id,
           causationId: event.event_id,
           payload: {

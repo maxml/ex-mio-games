@@ -33,7 +33,9 @@ export function StoreItemCard({ item, balance, busy, onRedeem }: StoreItemCardPr
   const reasonId = `reason-${item.id}`;
   return (
     <article className="flex flex-col rounded-lg border border-border bg-surface p-4 shadow-card">
-      <p className="text-xs font-semibold uppercase tracking-wide text-fg-muted">{KIND_LABEL[item.kind]}</p>
+      <p className="text-xs font-semibold uppercase tracking-wide text-fg-muted">
+        {KIND_LABEL[item.kind]}
+      </p>
       <h3 className="mt-1 font-display text-base font-semibold">{item.name}</h3>
       <p className="mt-1 flex-1 text-sm text-fg-muted">{item.description}</p>
       <p className="mt-3 flex items-center gap-1.5 font-display text-lg font-bold tabular-nums">
@@ -49,8 +51,15 @@ export function StoreItemCard({ item, balance, busy, onRedeem }: StoreItemCardPr
       >
         {soldOut ? 'Sold out' : 'Redeem'}
       </Button>
-      <p id={reasonId} className={cn('mt-1.5 min-h-4 text-xs text-fg-muted', !blocked && 'invisible')}>
-        {soldOut ? 'Out of stock' : missing > 0 ? `${missing.toLocaleString('en-US')} more coins needed` : ''}
+      <p
+        id={reasonId}
+        className={cn('mt-1.5 min-h-4 text-xs text-fg-muted', !blocked && 'invisible')}
+      >
+        {soldOut
+          ? 'Out of stock'
+          : missing > 0
+            ? `${missing.toLocaleString('en-US')} more coins needed`
+            : ''}
       </p>
     </article>
   );

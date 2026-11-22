@@ -11,6 +11,7 @@ import {
   type LaunchResponse,
 } from '@ex-mio/contracts';
 import { emitProductEvent } from '@ex-mio/logger';
+import { AuthorizationRefused } from '@ex-mio/service-kit';
 import { IdentityError, UniqueViolationError } from '../errors';
 import type { Clock, Repos, UnitOfWork } from '../model/ports';
 import { safeEqual } from './crypto';
@@ -87,11 +88,17 @@ export class LaunchService {
       throw invalid();
     });
     if (tenant.status !== 'active')
-      throw new IdentityError('TENANT_SUSPENDED', 'tenant is suspended');
+      throw new AuthorizationRefused({ code: 'TENANT_SUSPENDED', message: 'tenant is suspended' });
 
     try {
       await this.uow.run(tenantId, (tx) =>
-        this.repos.jti.insert(tx, tenantId, claims.jti, claims.exp),
+        this.repos.jti.insert(
+          tx,
+          tenantId,
+          claims.jti,
+          claims.exp,
+          key.row.environment === 'sandbox',
+        ),
       );
     } catch (err) {
       if (err instanceof UniqueViolationError) {
@@ -113,7 +120,7 @@ export class LaunchService {
       roles: ['player'],
       aud: PLAYER_SESSION_AUDIENCES,
       // X-3: the environment is the credential's, so a client can never ask for (or avoid) sandbox
-      ...(key.row.environment === 'sandbox' ? { sbx: true as const } : {}),
+      sbx: key.row.environment === 'sandbox',
     });
     // The launch token is the only proof of the player, so there is no AuthContext yet: the actor
     // is the player's internal id. The casino-side player id is never an event field.

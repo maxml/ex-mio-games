@@ -30,7 +30,7 @@ import { PaymentsExceptionFilter } from './payments-exception.filter';
 const ReservePath = z.object({ tenantId: Uuid, reserveId: Uuid });
 const PlayerPath = z.object({ tenantId: Uuid, playerId: Uuid });
 /** The environment of an internal read: a service-only route, set by engagement from its credential. */
-const EnvironmentQuery = z.object({ sandbox: z.enum(['true', 'false']).default('false') }).strict();
+const EnvironmentQuery = z.object({ sandbox: z.enum(['true', 'false']) }).strict();
 
 /**
  * The internal coin commands and the balance read (`PAYMENTS_INTERNAL_ROUTES`). The service-kit entry

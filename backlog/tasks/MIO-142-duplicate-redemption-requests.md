@@ -1,6 +1,6 @@
 ---
 id: MIO-142
-title: "Part C: duplicate redemption requests"
+title: 'Part C: duplicate redemption requests'
 epic: EPIC-14
 priority: P1
 money_impact: direct

@@ -14,6 +14,7 @@ import { z } from 'zod';
 import { MySpinsResponse, PublicWheel, SpinRequest, SpinResponse, Uuid } from '@ex-mio/contracts';
 import { SpinService } from '../services/spin.service';
 import { currentAuth } from '@ex-mio/service-kit';
+import { readPrincipal, requireRole } from './principal';
 
 /** The engagement error contract answers a schema failure with 422, not the 400 of `parseInput`. */
 function parse422<T>(schema: ZodType<T, ZodTypeDef, unknown>, value: unknown): T {
@@ -44,6 +45,8 @@ export class SpinController {
     @Body() body: unknown,
     @Headers('idempotency-key') key: string | undefined,
   ): Promise<SpinResponse> {
+    // D-28: only a player spins. An acting admin or an operator is refused (audited `refused`).
+    requireRole(readPrincipal(), 'player');
     const request = parse422(SpinRequest, body ?? {});
     const idempotencyKey = IdempotencyKey.safeParse(key);
     if (!idempotencyKey.success) throw new BadRequestException('Idempotency-Key header required');
@@ -51,7 +54,7 @@ export class SpinController {
       idempotencyKey: idempotencyKey.data,
       ...(request.credit_id !== undefined ? { creditId: request.credit_id } : {}),
       // X-3 / D-13: the environment is the verified token's `sbx` claim (AuthContext.sandbox); never a body or a header.
-      ...(currentAuth().sandbox === true ? { sandbox: true } : {}),
+      sandbox: currentAuth().sandbox,
     });
     return SpinResponse.parse(result);
   }

@@ -9,7 +9,7 @@ import {
   type EventEnvelope,
 } from '@ex-mio/contracts';
 import { Db } from '@ex-mio/service-kit';
-import { runWithTenant } from '@ex-mio/tenancy';
+import { currentTenant, runWithTenant } from '@ex-mio/tenancy';
 import {
   SEEDS,
   SpinCreditsRepository,
@@ -21,9 +21,16 @@ import {
   type SpinCredit,
   type SpinRecord,
 } from '../model/repositories';
-import { createSeedProvider } from '../model/seeds';
-import { SpinService } from './spin.service';
-import { selectSegment } from './wheel';
+import { createSeedProvider } from '../model/seeds'; // RED: module missing
+import { SpinService } from './spin.service'; // RED: module missing
+import { selectSegment } from './wheel'; // RED: module missing
+
+// rc fix (INV-SPIN-ENV-NOAUTH): `availableSpins` fails closed without an auth context, as `spin` does in
+// its controller. Over HTTP the service-kit interceptor sets the context; here a production player has it.
+jest.mock('@ex-mio/service-kit', () => ({
+  ...jest.requireActual('@ex-mio/service-kit'),
+  currentAuth: () => ({ mode: 'user', principalId: 'p', roles: [] }),
+}));
 
 /** The versioned seed store the REAL provider reads (R2-3). A rotation is `add(tenant, v + 1, ...)`. */
 class MemorySeedStore implements SeedStore {
@@ -88,6 +95,12 @@ const T = '0190a1b2-c3d4-4e5f-8a6b-000000000001';
 const A = '0190a1b2-c3d4-4e5f-8a6b-0000000000a1'; // the player making the request
 const B = '0190a1b2-c3d4-4e5f-8a6b-0000000000b2'; // another player of the same tenant
 const WHEEL = '0190a1b2-c3d4-4e5f-8a6b-7c8d9e0f1a2c';
+/**
+ * The stored operation id of player A's production request with this Idempotency-Key (D-26), written
+ * out LITERALLY as `spin:<tenant>:prd:<user>:<key>` (the keys used here need no escaping). Never
+ * derived from `scopedKey`, the code under test (final review F2).
+ */
+const op = (key: string): string => `spin:${T}:prd:${A}:${key}`;
 const credit = (n: number) => `0190a1b2-c3d4-4e5f-8a6b-00000000c${String(n).padStart(3, '0')}`;
 
 const TABLE: RewardTableVersion = {
@@ -156,17 +169,22 @@ describe('SpinService', () => {
       },
     };
     const spinsRepo = {
+      // operation_id is a plain, NON-unique index since EnvScopedKeys: a lookup, first match wins
       async findByOperation(_tx: unknown, i: { userId: string; operationId: string }) {
-        return spins.get(`${i.userId}|${i.operationId}`);
+        return [...spins.values()].find(
+          (s) => s.userId === i.userId && s.operationId === i.operationId,
+        );
       },
       async insert(tx: unknown, s: SpinRecord) {
-        // models UNIQUE (tenant_id, user_id, operation_id): a second insert is a unique violation
-        if (spins.has(`${s.userId}|${s.operationId}`))
+        // models the ONLY unique key spins has now, PRIMARY KEY (tenant_id, id); the spin id is
+        // derived from the environment-scoped key, so a same-key duplicate collides here
+        const pk = `${currentTenant().tenantId}|${s.id}`;
+        if (spins.has(pk))
           throw Object.assign(new Error('duplicate key value violates unique constraint'), {
             code: '23505',
           });
-        spins.set(`${s.userId}|${s.operationId}`, s);
-        (tx as Tx).undo.push(() => void spins.delete(`${s.userId}|${s.operationId}`));
+        spins.set(pk, s);
+        (tx as Tx).undo.push(() => void spins.delete(pk));
       },
     };
     const mod = await Test.createTestingModule({
@@ -205,14 +223,17 @@ describe('SpinService', () => {
 
   const asPlayer = <R>(user: string, fn: () => Promise<R>) =>
     runWithTenant({ tenantId: T, principalId: user }, fn);
+  /** Player A's stored production spin for this Idempotency-Key, found by its literal operation id. */
+  const byOp = (key: string): SpinRecord | undefined =>
+    [...spins.values()].find((s) => s.userId === A && s.operationId === op(key));
   const addCredit = (id: string, userId: string) =>
-    credits.set(id, { id, userId, wheelId: WHEEL, status: 'available' });
+    credits.set(id, { id, userId, wheelId: WHEEL, status: 'available', sandbox: false });
 
   it('INV-SPIN-ONE-WINNER: 50 concurrent spins on one credit give exactly one result, 49 conflicts, one spin row', async () => {
     addCredit(credit(1), A);
     const results = await Promise.allSettled(
       Array.from({ length: 50 }, (_, i) =>
-        asPlayer(A, () => service.spin({ idempotencyKey: `k${i}` })),
+        asPlayer(A, () => service.spin({ idempotencyKey: `k${i}`, sandbox: false })),
       ),
     );
     const ok = results.filter((r) => r.status === 'fulfilled');
@@ -229,7 +250,7 @@ describe('SpinService', () => {
     [1, 2, 3].forEach((n) => addCredit(credit(n), A));
     const results = await Promise.allSettled(
       Array.from({ length: 50 }, (_, i) =>
-        asPlayer(A, () => service.spin({ idempotencyKey: `k${i}` })),
+        asPlayer(A, () => service.spin({ idempotencyKey: `k${i}`, sandbox: false })),
       ),
     );
     expect(results.filter((r) => r.status === 'fulfilled')).toHaveLength(3);
@@ -241,7 +262,9 @@ describe('SpinService', () => {
   it("INV-SPIN-OWNERSHIP: another player's credit id is 404 and stays available; the user comes from the principal", async () => {
     addCredit(credit(9), B);
     await expect(
-      asPlayer(A, () => service.spin({ idempotencyKey: 'k1', creditId: credit(9) })),
+      asPlayer(A, () =>
+        service.spin({ idempotencyKey: 'k1', creditId: credit(9), sandbox: false }),
+      ),
     ).rejects.toBeInstanceOf(NotFoundException);
     expect(credits.get(credit(9))?.status).toBe('available');
     expect(spins.size).toBe(0);
@@ -251,7 +274,9 @@ describe('SpinService', () => {
 
   it("INV-SPIN-OWNERSHIP: without a credit id the player consumes only their own credit, never another player's", async () => {
     addCredit(credit(9), B);
-    const err = await asPlayer(A, () => service.spin({ idempotencyKey: 'k1' })).catch((e) => e);
+    const err = await asPlayer(A, () =>
+      service.spin({ idempotencyKey: 'k1', sandbox: false }),
+    ).catch((e) => e);
     expect(conflictCode(err)).toBe('no_credit');
     expect(credits.get(credit(9))?.status).toBe('available');
     expect(consumeInputs.length).toBeGreaterThan(0);
@@ -259,18 +284,20 @@ describe('SpinService', () => {
   });
 
   it('INV-SPIN-NO-CREDIT: no available credit is 409 `no_credit`; an own but used credit is 409 `no_credit`', async () => {
-    const first = await asPlayer(A, () => service.spin({ idempotencyKey: 'k1' })).catch((e) => e);
+    const first = await asPlayer(A, () =>
+      service.spin({ idempotencyKey: 'k1', sandbox: false }),
+    ).catch((e) => e);
     expect(conflictCode(first)).toBe('no_credit');
     credits.set(credit(2), { id: credit(2), userId: A, wheelId: WHEEL, status: 'used' });
     const used = await asPlayer(A, () =>
-      service.spin({ idempotencyKey: 'k2', creditId: credit(2) }),
+      service.spin({ idempotencyKey: 'k2', creditId: credit(2), sandbox: false }),
     ).catch((e) => e);
     expect(conflictCode(used)).toBe('no_credit');
   });
 
   it('INV-SPIN-SERVER-AUTHORITY: the stored outcome is the recomputable HMAC outcome of seed v2 and table v6', async () => {
     addCredit(credit(1), A);
-    const res = await asPlayer(A, () => service.spin({ idempotencyKey: 'k1' }));
+    const res = await asPlayer(A, () => service.spin({ idempotencyKey: 'k1', sandbox: false }));
     const row = [...spins.values()][0]!;
     expect(row.id).toBe(res.spin_id);
     expect(row).toMatchObject({ seedVersion: 2, tableVersion: 6, userId: A, creditId: credit(1) });
@@ -282,7 +309,7 @@ describe('SpinService', () => {
     expect(res.segment_index).toBe(row.segmentIndex);
     expect(SpinResponse.safeParse(res).success).toBe(true);
     // a replay returns the same index
-    const replay = await asPlayer(A, () => service.spin({ idempotencyKey: 'k1' }));
+    const replay = await asPlayer(A, () => service.spin({ idempotencyKey: 'k1', sandbox: false }));
     expect(replay.segment_index).toBe(row.segmentIndex);
   });
 
@@ -293,7 +320,7 @@ describe('SpinService', () => {
     credits.set(credit(9), { id: credit(9), userId: A, wheelId: WHEEL, status: 'used' });
     expect(await asPlayer(A, () => service.availableSpins())).toEqual({ available: 3 });
     expect(await asPlayer(B, () => service.availableSpins())).toEqual({ available: 1 });
-    await asPlayer(A, () => service.spin({ idempotencyKey: 'k1' }));
+    await asPlayer(A, () => service.spin({ idempotencyKey: 'k1', sandbox: false }));
     expect(await asPlayer(A, () => service.availableSpins())).toEqual({ available: 2 });
     expect(countInputs).toHaveLength(4);
     expect(countInputs.map((c) => c.userId)).toEqual([A, A, B, A]);
@@ -301,14 +328,14 @@ describe('SpinService', () => {
 
   it('INV-SPIN-ATOMIC: spin row and spin.completed share one transaction', async () => {
     addCredit(credit(1), A);
-    await asPlayer(A, () => service.spin({ idempotencyKey: 'k1' }));
+    await asPlayer(A, () => service.spin({ idempotencyKey: 'k1', sandbox: false }));
     expect(txs).toHaveLength(1);
     expect(published.every((p) => p.tx === txs[0])).toBe(true);
   });
 
   it('INV-SPIN-EVENT: spin.completed carries spin_id, the player, the reward coins and the table version (payments keys on spin_id)', async () => {
     addCredit(credit(1), A);
-    const res = await asPlayer(A, () => service.spin({ idempotencyKey: 'k1' }));
+    const res = await asPlayer(A, () => service.spin({ idempotencyKey: 'k1', sandbox: false }));
     const ev = parseEvent(published[0]!.event);
     expect(ev.type).toBe('engagement.spin.completed');
     expect(ev.tenant_id).toBe(T);
@@ -318,7 +345,7 @@ describe('SpinService', () => {
       reward_coins: res.reward_coins,
       table_version: 6,
     });
-    expect('sandbox' in published[0]!.event).toBe(false); // production: no flag on the envelope
+    expect(published[0]!.event.sandbox).toBe(false); // production: stated on the envelope, never absent
   });
 
   // X-3/D-13, the producer side. The spin is the producer of spin.completed: a spin that runs for a
@@ -329,11 +356,11 @@ describe('SpinService', () => {
     addCredit(credit(1), A);
     addCredit(credit(2), A);
     await asPlayer(A, () => service.spin({ idempotencyKey: 'k-sbx', sandbox: true }));
-    await asPlayer(A, () => service.spin({ idempotencyKey: 'k-prod' }));
+    await asPlayer(A, () => service.spin({ idempotencyKey: 'k-prod', sandbox: false }));
     const [sbx, prod] = published.map((p) => parseEvent(p.event));
     expect(sbx!.sandbox).toBe(true);
     expect('sandbox' in (sbx!.payload as object)).toBe(false);
-    expect(prod!.sandbox).toBeUndefined();
+    expect(prod!.sandbox).toBe(false);
   });
 
   it('INV-SPIN-SANDBOX: spin.completed is a sandbox event exactly when the credit came from a sandbox credential (F3, D-13)', async () => {
@@ -342,8 +369,12 @@ describe('SpinService', () => {
     addCredit(credit(2), A);
     (credits.get(credit(1)) as { sandbox?: boolean }).sandbox = true;
     (credits.get(credit(2)) as { sandbox?: boolean }).sandbox = false;
-    await asPlayer(A, () => service.spin({ idempotencyKey: 'k1', creditId: credit(1) }));
-    await asPlayer(A, () => service.spin({ idempotencyKey: 'k2', creditId: credit(2) }));
+    await asPlayer(A, () =>
+      service.spin({ idempotencyKey: 'k1', creditId: credit(1), sandbox: false }),
+    );
+    await asPlayer(A, () =>
+      service.spin({ idempotencyKey: 'k2', creditId: credit(2), sandbox: false }),
+    );
     expect(published).toHaveLength(2);
     expect(sandboxOf(published[0]!.event)).toBe(true);
     expect(sandboxOf(published[1]!.event)).not.toBe(true);
@@ -355,7 +386,7 @@ describe('SpinService', () => {
     });
     try {
       addCredit(credit(1), A);
-      await asPlayer(A, () => service.spin({ idempotencyKey: 'k1' }));
+      await asPlayer(A, () => service.spin({ idempotencyKey: 'k1', sandbox: false }));
       expect(fetchSpy).not.toHaveBeenCalled();
       expect(published.map((p) => p.event.type)).toEqual(['engagement.spin.completed']);
     } finally {
@@ -366,7 +397,7 @@ describe('SpinService', () => {
   it('INV-SPIN-NOTHING: a `nothing` segment still completes the spin with 0 coins', async () => {
     table = { ...TABLE, segments: [{ label: 'Nothing', weight: 1, reward: { type: 'nothing' } }] };
     addCredit(credit(1), A);
-    const res = await asPlayer(A, () => service.spin({ idempotencyKey: 'k1' }));
+    const res = await asPlayer(A, () => service.spin({ idempotencyKey: 'k1', sandbox: false }));
     expect(res.reward_coins).toBe(0);
     expect((published[0]!.event.payload as { reward_coins: number }).reward_coins).toBe(0);
   });
@@ -374,8 +405,10 @@ describe('SpinService', () => {
   it('INV-SPIN-REPLAY: the same Idempotency-Key returns the recorded spin and consumes no second credit', async () => {
     addCredit(credit(1), A);
     addCredit(credit(2), A);
-    const first = await asPlayer(A, () => service.spin({ idempotencyKey: 'same' }));
-    const second = await asPlayer(A, () => service.spin({ idempotencyKey: 'same' }));
+    const first = await asPlayer(A, () => service.spin({ idempotencyKey: 'same', sandbox: false }));
+    const second = await asPlayer(A, () =>
+      service.spin({ idempotencyKey: 'same', sandbox: false }),
+    );
     expect(second).toEqual(first);
     expect([...credits.values()].filter((c) => c.status === 'available')).toHaveLength(1);
     expect(spins.size).toBe(1);
@@ -385,8 +418,8 @@ describe('SpinService', () => {
   it("INV-SPIN-REPLAY-SCOPED: B's key is not A's: the same key by another player is a new operation", async () => {
     addCredit(credit(1), A);
     addCredit(credit(2), B);
-    const a = await asPlayer(A, () => service.spin({ idempotencyKey: 'same' }));
-    const b = await asPlayer(B, () => service.spin({ idempotencyKey: 'same' }));
+    const a = await asPlayer(A, () => service.spin({ idempotencyKey: 'same', sandbox: false }));
+    const b = await asPlayer(B, () => service.spin({ idempotencyKey: 'same', sandbox: false }));
     expect(b.spin_id).not.toBe(a.spin_id);
     expect(spins.size).toBe(2);
   });
@@ -395,7 +428,9 @@ describe('SpinService', () => {
     addCredit(credit(1), A);
     addCredit(credit(2), A);
     const results = await Promise.allSettled(
-      Array.from({ length: 20 }, () => asPlayer(A, () => service.spin({ idempotencyKey: 'same' }))),
+      Array.from({ length: 20 }, () =>
+        asPlayer(A, () => service.spin({ idempotencyKey: 'same', sandbox: false })),
+      ),
     );
     const ok = results.filter(
       (r): r is PromiseFulfilledResult<Awaited<ReturnType<SpinService['spin']>>> =>
@@ -413,7 +448,7 @@ describe('SpinService', () => {
     expect([...credits.values()].filter((c) => c.status === 'used')).toHaveLength(1);
     expect(published.filter((p) => p.event.type === 'engagement.spin.completed')).toHaveLength(1);
     // a later replay returns the stored result
-    const later = await asPlayer(A, () => service.spin({ idempotencyKey: 'same' }));
+    const later = await asPlayer(A, () => service.spin({ idempotencyKey: 'same', sandbox: false }));
     expect(later.spin_id).toBe(ok[0]!.value.spin_id);
     expect(spins.size).toBe(1);
   });
@@ -422,15 +457,17 @@ describe('SpinService', () => {
     addCredit(credit(1), A);
     addCredit(credit(2), A);
     const first = await asPlayer(A, () =>
-      service.spin({ idempotencyKey: 'same', creditId: credit(1) }),
+      service.spin({ idempotencyKey: 'same', creditId: credit(1), sandbox: false }),
     );
     await expect(
-      asPlayer(A, () => service.spin({ idempotencyKey: 'same', creditId: credit(2) })),
+      asPlayer(A, () =>
+        service.spin({ idempotencyKey: 'same', creditId: credit(2), sandbox: false }),
+      ),
     ).rejects.toBeInstanceOf(UnprocessableEntityException);
     expect(credits.get(credit(2))?.status).toBe('available');
     expect(spins.size).toBe(1);
     const again = await asPlayer(A, () =>
-      service.spin({ idempotencyKey: 'same', creditId: credit(1) }),
+      service.spin({ idempotencyKey: 'same', creditId: credit(1), sandbox: false }),
     );
     expect(again).toEqual(first);
   });
@@ -448,14 +485,14 @@ describe('SpinService', () => {
   it('INV-SPIN-RECOMPUTE-AFTER-ROTATION: a spin stored under seed v1 is recomputed from seed v1 after the current seed moved to v2', async () => {
     seedStore.drop(T, 2); // the store holds v1 only: current = 1
     addCredit(credit(1), A);
-    const old = await asPlayer(A, () => service.spin({ idempotencyKey: 'old' }));
-    const stored = spins.get(`${A}|old`)!;
+    const old = await asPlayer(A, () => service.spin({ idempotencyKey: 'old', sandbox: false }));
+    const stored = byOp('old')!;
     expect(stored.seedVersion).toBe(1);
     seedStore.add(T, 2, SEED_BY_VERSION[2]!); // rotation: a new version in the store
     addCredit(credit(2), A);
-    const fresh = await asPlayer(A, () => service.spin({ idempotencyKey: 'new' }));
-    expect(spins.get(`${A}|new`)!.seedVersion).toBe(2);
-    expect(spins.get(`${A}|old`)).toEqual(stored); // the old record is untouched by the rotation
+    const fresh = await asPlayer(A, () => service.spin({ idempotencyKey: 'new', sandbox: false }));
+    expect(byOp('new')!.seedVersion).toBe(2);
+    expect(byOp('old')).toEqual(stored); // the old record is untouched by the rotation
 
     // R2-3: `seeds` is the REAL provider (model/seeds.ts) over the versioned store, not test-owned
     // arithmetic. A provider whose seed(tenant, v) returns the current seed fails the next line.
@@ -476,7 +513,7 @@ describe('SpinService', () => {
       table: TABLE,
     });
     expect(withCurrent.hmac).not.toBe(stored.hmac); // the current seed would NOT reproduce it
-    expect(spins.get(`${A}|new`)!.hmac).toBe(
+    expect(byOp('new')!.hmac).toBe(
       selectSegment({
         seed: SEED_BY_VERSION[2]!,
         seedVersion: 2,

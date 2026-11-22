@@ -1,4 +1,11 @@
-import { createContext, useContext, useEffect, useState, type CSSProperties, type ReactNode } from 'react';
+import {
+  createContext,
+  useContext,
+  useEffect,
+  useState,
+  type CSSProperties,
+  type ReactNode,
+} from 'react';
 import luckyStar from './tenants/lucky-star.json';
 import northbet from './tenants/northbet.json';
 
@@ -49,7 +56,8 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     const el = document.documentElement;
     el.dataset.tenant = theme.id;
-    for (const t of THEMES) for (const k of Object.keys(t.tokens)) el.style.removeProperty(`--${k}`);
+    for (const t of THEMES)
+      for (const k of Object.keys(t.tokens)) el.style.removeProperty(`--${k}`);
     for (const [k, v] of Object.entries(theme.tokens)) el.style.setProperty(`--${k}`, v);
     try {
       localStorage.setItem('mio-proto-theme', theme.id);

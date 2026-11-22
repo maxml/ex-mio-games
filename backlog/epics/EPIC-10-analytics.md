@@ -15,17 +15,17 @@ structured log lines under Varta's telemetry contract; it has no runtime depende
 
 ## Tasks
 
-| ID | Title | Priority |
-|---|---|---|
-| MIO-100 | Event taxonomy v1 (one-way door) | P0 |
-| MIO-101 | Analytics emitter under the Varta contract, with an honest delivery guarantee | P0 |
-| MIO-102 | Operator funnel instrumentation | P0 |
-| MIO-103 | Player funnel instrumentation | P0 |
-| MIO-104 | Billing events: subscription changes and daily MRR snapshot | P1 |
-| MIO-105 | Frontend event relay `POST /v1/events` | P1 |
-| MIO-106 | One analytics panel in Varta, with a reader test | P1 |
-| MIO-107 | Privacy: PII rules, consent, delete-by-actor runbook | P1 |
-| MIO-108 | Experiment exposure event | P3 |
+| ID      | Title                                                                         | Priority |
+| ------- | ----------------------------------------------------------------------------- | -------- |
+| MIO-100 | Event taxonomy v1 (one-way door)                                              | P0       |
+| MIO-101 | Analytics emitter under the Varta contract, with an honest delivery guarantee | P0       |
+| MIO-102 | Operator funnel instrumentation                                               | P0       |
+| MIO-103 | Player funnel instrumentation                                                 | P0       |
+| MIO-104 | Billing events: subscription changes and daily MRR snapshot                   | P1       |
+| MIO-105 | Frontend event relay `POST /v1/events`                                        | P1       |
+| MIO-106 | One analytics panel in Varta, with a reader test                              | P1       |
+| MIO-107 | Privacy: PII rules, consent, delete-by-actor runbook                          | P1       |
+| MIO-108 | Experiment exposure event                                                     | P3       |
 
 ## One-way doors
 

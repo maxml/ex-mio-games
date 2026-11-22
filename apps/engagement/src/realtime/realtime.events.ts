@@ -8,6 +8,8 @@ import {
 /** One push: which player's room, and the `notification` frame for it. */
 export interface Push {
   tenantId: string;
+  /** The envelope's environment: realtime is per environment (D-30). */
+  sandbox: boolean;
   playerId: string;
   frame: NotificationEnvelope;
 }
@@ -66,6 +68,7 @@ export function toPush(event: EventEnvelope): Push | undefined {
   }
   return {
     tenantId: event.tenant_id,
+    sandbox: event.sandbox,
     playerId,
     frame: {
       id: event.event_id,

@@ -1,4 +1,4 @@
-# Decision log (D-1 to D-28)
+# Decision log (D-1 to D-31)
 
 Tests, comments and docs in this repository cite decisions as `D-<n>`. This page resolves them.
 Each entry has the decision, the reason, and where it is enforced. A decision came either from the
@@ -230,9 +230,11 @@ built in code go through one helper that requires the environment. INV-AUD: the 
 (one typed error, `AuthorizationRefused`); every other outcome is `allowed` with its real status. This
 supersedes the literal wording of D-24.
 Reason: three rounds on the same class showed that call-site fixes move the defect.
-Enforced in: only the envelope part today, `packages/contracts/src/events.contracts.test.ts`
-(`INV-ENV-SANDBOX`). The schema scan over `pg_constraint` and the role-matrix audit test are written
-by the review owner (commits `81f37cd`, `3de97be`), are not merged into this tree, and are listed in `submission/known-gaps.md` (S-11).
+Enforced in: `packages/contracts/src/events.contracts.test.ts` (`INV-ENV-SANDBOX`), the schema scan
+over `pg_constraint` in `tests/compose/src/inv-env-schema.compose.test.ts` (`INV-ENV-SCHEMA`) and the
+role-matrix audit test in `tests/compose/src/inv-aud-matrix.compose.test.ts` (`INV-AUD-MATRIX`). Both
+compose tests are in this tree; their re-run on the final tree is tracked in `submission/known-gaps.md`
+(S-11).
 
 **D-27. Gaps found by the end-to-end demo.** The operator registers each casino's reward API (base URL
 and a per-environment signing secret) in identity, which serves it to engagement as `reward_api`;
@@ -257,7 +259,52 @@ carries `sandbox=true`; `store_items` stays global and `item_player_usage` inclu
 override these defaults.
 Reason: the invariant tests of D-26 needed a stated answer for each of these cases.
 Enforced in: the sandbox order rule by the saga (`apps/engagement/src/services/redemption-saga.service.ts`);
-the role and audit-scope rows are pinned only by the review owner's matrix test, not yet in this tree.
+the role and audit-scope rows are pinned by the role-matrix test `tests/compose/src/inv-aud-matrix.compose.test.ts`.
+
+**D-29. The environment is a required input everywhere (INV-ENV-INPUT).** A fourth defect of the
+environment class (a default on the reward-API `environment`, a realtime ticket that always said
+production, a test fake that ignored `sandbox`) led the owner to choose a short spec over a narrow fix.
+The rule: every environment input is required and typed; no `.default()` and no fallback exists for
+`environment`, `sandbox` or `sbx`; the environment comes only from the verified credential or launch
+token (D-28); every durable record scoped by environment stores the real value; and an in-memory fake
+must agree with Postgres on environment behaviour, so one conformance suite runs against both. Requests
+that now answer 400 `VALIDATION_FAILED` without an environment are listed in the root README.
+Reason: three rounds of call-site fixes had moved the defect (D-17, D-26).
+Enforced in: `docs/specs/env-input.md`, `apps/identity/src/review-env-input.test.ts`,
+`apps/engagement/src/redemptions/testing/review-final-sandbox-conformance.ts`, and the migrations
+`1732900000000-DropEnvironmentDefaults.ts` in identity and engagement.
+
+**D-30. Reward API, tickets and credentials after the early review (owner answers).**
+`TENANT_SUSPENDED` is an authorization refusal and audits as `refused`. The wire-key format change is
+accepted because no order is in flight before launch; it ships with a release note (root README), and
+the tests pin the literal wire keys. Realtime tickets and pushes are per environment, taken from the
+launch token. A reward API must be https in production; http is allowed only for hosts listed in
+`REWARD_API_ALLOW_HOSTS` (compose lists `casino-sim`). The PUT also refuses credentials in the URL and
+internal addresses, the transport never follows a redirect, and the casino's failure reason is
+truncated and sanitised. Credentials take a required `environment` with no production default, which
+supersedes the earlier default under D-29.
+Reason: an operator-supplied URL is a server-side request, and a default environment is how sandbox
+and production got mixed.
+Enforced in: `apps/engagement/src/integrations/reward-api-https.test.ts`,
+`apps/engagement/src/integrations/review-final-ssrf.test.ts`,
+`apps/engagement/src/integrations/review-env-input-reason.test.ts`,
+`apps/engagement/src/realtime/rooms.test.ts`, `apps/identity/src/review-env-input.test.ts`.
+
+**D-31. Re-review of the fix round.** (1) The change to the ingest dedupe primary key ships as a new
+forward migration; an applied migration is never edited, and a test pins a checksum of every migration
+that has shipped. (2) "https only in production" means the deployment (`NODE_ENV=production`), for
+every reward API, sandbox and production integrations alike; http is allowed only for hosts in
+`REWARD_API_ALLOW_HOSTS` or outside production, with the same rule in identity (the PUT rejects) and in
+engagement (the call refuses), through one shared helper. (3) `audit_intents` in the three service
+databases gets `tenant_id` with row-level security enabled and forced like every tenant table (D-24),
+and the roles and RLS scan covers it. (4) Default, which the owner may override: support staff acting as
+an operator are refused on every integration or configuration write (`PUT reward-api`, `PUT wheel`,
+`PUT rules`), audited as `refused`, in identity and in engagement.
+Reason: the first fix round moved defects instead of closing them (D-17, D-26).
+Enforced in: the fix-round commits that implement points 1 to 4. This documentation tree was merged
+from `dd9d464`, which does not contain them yet; the acting-staff refusal on the engagement writes is
+already pinned by `apps/engagement/src/controllers/operator-config.controller.test.ts`.
+TODO-RUN: the coordinator replaces this line with the enforcing tests once the final tree is fixed.
 
 ## Process and analytics
 

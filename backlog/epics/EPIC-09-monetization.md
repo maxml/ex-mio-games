@@ -1,6 +1,6 @@
 ---
 id: EPIC-09
-title: "Monetization: operator billing, plans, metering, entitlements"
+title: 'Monetization: operator billing, plans, metering, entitlements'
 priority: P0
 status: todo
 ---
@@ -18,18 +18,18 @@ Players never pay through Stripe. Player coins are an internal ledger (EPIC-08).
 
 ## Tasks
 
-| ID | Title | Priority |
-|---|---|---|
-| MIO-090 | `PaymentProvider` interface: `fake` default, `stripe` behind a key | P0 |
-| MIO-091 | Plans and pricing: one table, trial, base fee plus usage | P0 |
-| MIO-092 | Operator self-serve onboarding | P0 |
-| MIO-093 | Checkout and subscription lifecycle, safe against out-of-order webhooks | P0 |
-| MIO-094 | Billing webhooks: fail-closed and idempotent | P0 |
-| MIO-095 | Usage metering from bus events | P1 |
-| MIO-096 | Entitlements: plan limits checked and counted atomically | P1 |
-| MIO-097 | Integration test console: send a test event and see it arrive | P1 |
-| MIO-098 | Invoices and billing history in the operator console | P1 |
-| MIO-099 | Revenue view for the platform admin: MRR and usage per operator | P1 |
+| ID      | Title                                                                   | Priority |
+| ------- | ----------------------------------------------------------------------- | -------- |
+| MIO-090 | `PaymentProvider` interface: `fake` default, `stripe` behind a key      | P0       |
+| MIO-091 | Plans and pricing: one table, trial, base fee plus usage                | P0       |
+| MIO-092 | Operator self-serve onboarding                                          | P0       |
+| MIO-093 | Checkout and subscription lifecycle, safe against out-of-order webhooks | P0       |
+| MIO-094 | Billing webhooks: fail-closed and idempotent                            | P0       |
+| MIO-095 | Usage metering from bus events                                          | P1       |
+| MIO-096 | Entitlements: plan limits checked and counted atomically                | P1       |
+| MIO-097 | Integration test console: send a test event and see it arrive           | P1       |
+| MIO-098 | Invoices and billing history in the operator console                    | P1       |
+| MIO-099 | Revenue view for the platform admin: MRR and usage per operator         | P1       |
 
 ## Exit criteria
 

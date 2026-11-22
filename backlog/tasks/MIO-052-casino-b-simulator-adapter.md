@@ -1,6 +1,6 @@
 ---
 id: MIO-052
-title: "Casino B: simulator and adapter with a different schema and reward API"
+title: 'Casino B: simulator and adapter with a different schema and reward API'
 epic: EPIC-06
 priority: P1
 money_impact: direct
@@ -20,7 +20,7 @@ This is a required assignment deliverable; it is not on the first sellable slice
 ## Scope
 
 - `casino-b-sim`: different event schema (for example snake_case, `{type: "payment.completed", data:
-  {txn_id, customer_ref, amount_cents, ccy}, sent_at}` with a signature in the body envelope) and a
+{txn_id, customer_ref, amount_cents, ccy}, sent_at}` with a signature in the body envelope) and a
   different reward API (asynchronous: `POST /v2/rewards` returns `202` with a ticket; status by polling
   `GET /v2/rewards/{ticket}` or a callback). Recovery mode: idempotent replay (re-sending
   `POST /v2/rewards` with the same key returns the original ticket without issuing again), because

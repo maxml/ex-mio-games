@@ -23,6 +23,7 @@ import {
   nonEmptyString,
   requestHeaders,
   sandboxMismatch,
+  sanitizeReason,
   usableSecret,
 } from './casino-http';
 
@@ -62,7 +63,7 @@ const signedMessage = (sentAt: string, type: string, d: Record<string, unknown>)
 
 export function createCasinoB(config: AdapterConfig): CasinoAdapter {
   const reasonOf = (body: unknown, fallback: string): string =>
-    isRecord(body) && nonEmptyString(body.error) ? body.error : fallback;
+    isRecord(body) && nonEmptyString(body.error) ? sanitizeReason(body.error, fallback) : fallback;
 
   /** POST the reward request; casino B answers 202 with a ticket, and the same key returns the same ticket. */
   async function sendIssue(
@@ -108,7 +109,10 @@ export function createCasinoB(config: AdapterConfig): CasinoAdapter {
       return { kind: 'issued', external_ref: body.reward_ref };
     }
     if (body.state === 'FAILED') {
-      return { kind: 'rejected', reason: nonEmptyString(body.code) ? body.code : 'failed' };
+      return {
+        kind: 'rejected',
+        reason: nonEmptyString(body.code) ? sanitizeReason(body.code, 'failed') : 'failed',
+      };
     }
     return { kind: 'unknown' };
   }

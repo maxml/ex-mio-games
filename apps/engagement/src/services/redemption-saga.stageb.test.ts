@@ -1,5 +1,5 @@
 import { RedemptionSagaService } from './redemption-saga.service';
-import { World } from '../redemptions/testing/world';
+import { okey, World } from '../redemptions/testing/world';
 import type { RedemptionRecord, Scope } from '../redemptions/ports';
 
 /*
@@ -123,7 +123,7 @@ describe('D-18: an operator `issued` moves coins only after a lookup says `issue
 
     const p = await reviewAfterLostReply();
     p.w.casino.statusTimeout = false;
-    p.w.casino.tickets.set(`redeem:${p.r.id}`, {
+    p.w.casino.tickets.set(okey('redeem', p.r), {
       ref: 'ticket-p',
       status: 'pending',
       request: p.w.casino.issueCalls[0]!.request,

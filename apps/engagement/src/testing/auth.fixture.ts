@@ -22,7 +22,9 @@ export const auditEvents: EventEnvelope[] = [];
  * `ServiceAuthModule.forService` with a fixture JWKS, tenant status `active`, the fixed clock and an
  * in-memory audit port (`auditEvents`); the entry point requires one, and production wiring passes none.
  */
-export function authModule(opts: { tenantStatus?: () => 'active' | 'suspended' } = {}): DynamicModule {
+export function authModule(
+  opts: { tenantStatus?: () => 'active' | 'suspended' } = {},
+): DynamicModule {
   return ServiceAuthModule.forService({
     audience: 'engagement',
     jwks: async () => ({ keys: [key.publicJwk] }),

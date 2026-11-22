@@ -14,7 +14,7 @@ import {
   type NewCredit,
   type StoredRule,
 } from '../model/repositories';
-import { SpinCreditsService } from './spin-credits.service';
+import { SpinCreditsService } from './spin-credits.service'; // RED: module missing
 
 /**
  * Spin credits granted from engagement.deposit.confirmed (MIO-061). Consumer entry point:
@@ -55,7 +55,7 @@ const depositEvent = (amount = 5000, sandbox = false) =>
   createEvent({
     type: 'engagement.deposit.confirmed',
     tenantId: T,
-    ...(sandbox ? { sandbox: true } : {}),
+    sandbox,
     payload: {
       inbound_event_id: INBOUND,
       source: 'casino-a',

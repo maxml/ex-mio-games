@@ -1,6 +1,6 @@
 ---
 id: MIO-188
-title: "Part E2: ten casino operators without ten codebases"
+title: 'Part E2: ten casino operators without ten codebases'
 epic: EPIC-17
 priority: P1
 money_impact: enabler

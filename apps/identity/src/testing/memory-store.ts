@@ -46,7 +46,12 @@ export class MemoryStore {
     provider_uid: string;
   }> = [];
   readonly playerLinks: Array<PlayerLinkRow & { tenant_id: string }> = [];
-  readonly jti: Array<{ tenant_id: string; jti: string; expires_at: number }> = [];
+  readonly jti: Array<{
+    tenant_id: string;
+    jti: string;
+    expires_at: number;
+    sandbox: boolean;
+  }> = [];
   readonly credentials: CredentialRow[] = [];
   readonly rewardApis: RewardApiRow[] = [];
   readonly audit: AuditRow[] = [];
@@ -272,11 +277,11 @@ export class MemoryStore {
         },
       },
       jti: {
-        async insert(tx, tenantId, jti, expiresAt) {
+        async insert(tx, tenantId, jti, expiresAt, sandbox) {
           await tick();
-          if (s.jti.some((j) => j.tenant_id === tenantId && j.jti === jti))
+          if (s.jti.some((j) => j.tenant_id === tenantId && j.jti === jti && j.sandbox === sandbox))
             throw new UniqueViolationError('jti');
-          s.push(tx, s.jti, { tenant_id: tenantId, jti, expires_at: expiresAt });
+          s.push(tx, s.jti, { tenant_id: tenantId, jti, expires_at: expiresAt, sandbox });
         },
       },
       credentials: {

@@ -70,7 +70,13 @@ describe('http redeem: idempotency key and error mapping', () => {
     expect(new Set(keys).size).toBe(1);
   });
 
-  it.each(['insufficient_funds', 'out_of_stock', 'limit_reached', 'item_inactive', 'illegal_transition'])(
+  it.each([
+    'insufficient_funds',
+    'out_of_stock',
+    'limit_reached',
+    'item_inactive',
+    'illegal_transition',
+  ])(
     'the business answer %s is "redeem_refused", it ends the action (new key next) and is not retried',
     async (serverCode) => {
       const { api, keys } = setup([

@@ -1,6 +1,6 @@
 ---
 id: MIO-094
-title: "Billing webhooks: fail-closed and idempotent"
+title: 'Billing webhooks: fail-closed and idempotent'
 epic: EPIC-09
 priority: P0
 money_impact: direct

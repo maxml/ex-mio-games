@@ -1,5 +1,5 @@
 import { RedemptionSagaService } from './redemption-saga.service';
-import { Crash, World } from '../redemptions/testing/world';
+import { Crash, okey, World } from '../redemptions/testing/world';
 import type { RedemptionRecord, SagaDeps, Scope } from '../redemptions/ports';
 
 /*
@@ -7,6 +7,8 @@ import type { RedemptionRecord, SagaDeps, Scope } from '../redemptions/ports';
  * casinos behind the shared port (D-2) and a world that kills the process at named points.
  * Spec: docs/specs/engagement-store.md. Every test is named after its invariant (I-*) and its header
  * comment names the mutation that must turn it red.
+ * The saga does not exist yet: every test here fails to import `./redemption-saga.service`
+ * (RED for the right reason).
  *
  * Two safety nets run after EVERY test (afterEach): (1) the casino audit: the adapter may only be
  * called while the row is ISSUING with its attempt already recorded; (2) nothing else.
@@ -78,7 +80,7 @@ describe('I-ORDER: one order per operation key; reserve stock first, coins secon
     const b = await w.saga.redeem(scope(w), 'k1', item.id);
     expect(b.created).toBe(false);
     expect(b.redemption.id).toBe(a.redemption.id);
-    expect(keys(w, 'reserve')).toEqual([`hold:${a.redemption.id}`]);
+    expect(keys(w, 'reserve')).toEqual([okey('hold', a.redemption)]);
     expect(w.payments.effects.reserve).toBe(1);
     expect(w.store.stockOf(item.id)).toBe(4);
   });
@@ -151,11 +153,11 @@ describe('I-OUTCOME: success, funds failure, final rejection', () => {
     expect(state(w, r.id)).toBe('COMPLETED');
     expect(rec(w, r.id).reservation).toBe('committed');
     expect(w.effects).toBe(1);
-    expect(w.casino.issueCalls[0]?.key).toBe(`redeem:${r.id}`);
+    expect(w.casino.issueCalls[0]?.key).toBe(okey('redeem', r));
     expect(w.payments.holdState(r.id)).toBe('captured');
     expect(w.payments.bal(P1)).toEqual({ available: 90, held: 0, captured: 10 });
-    expect(keys(w, 'reserve')).toEqual([`hold:${r.id}`]);
-    expect(keys(w, 'capture')).toEqual([`capture:${r.id}`]);
+    expect(keys(w, 'reserve')).toEqual([okey('hold', r)]);
+    expect(keys(w, 'capture')).toEqual([okey('capture', r)]);
   });
 
   // D-8 / F9. Mutation: answer 202 and park the failure on GET, or do not release the stock.
@@ -188,7 +190,7 @@ describe('I-OUTCOME: success, funds failure, final rejection', () => {
     expect(w.effects).toBe(0);
     expect(w.payments.bal(P1)).toEqual({ available: 100, held: 0, captured: 0 });
     expect(w.payments.callsOf('refund')).toHaveLength(0);
-    expect(keys(w, 'release')).toEqual([`release:${r.id}`]);
+    expect(keys(w, 'release')).toEqual([okey('release', r)]);
     expect(w.store.stockOf(item.id)).toBe(5);
     expect(toStates(w, r.id)).toEqual(['REQUESTED', 'RESERVED', 'ISSUING', 'REJECTED', 'RELEASED']);
   });
@@ -208,7 +210,7 @@ describe('I-OUTCOME: success, funds failure, final rejection', () => {
     await w.settle();
     expect(state(w, r.id)).toBe('RELEASED');
     expect(w.payments.effects.release).toBe(1);
-    expect(new Set(keys(w, 'release'))).toEqual(new Set([`release:${r.id}`]));
+    expect(new Set(keys(w, 'release'))).toEqual(new Set([okey('release', r)]));
     expect(w.payments.bal(P1).available).toBe(100);
   });
 });
@@ -228,7 +230,7 @@ describe('I-RESERVE: the coin reserve is a synchronous call with a durable retry
     await w.settle();
     expect(state(w, r.id)).toBe('COMPLETED');
     expect(w.payments.effects.reserve).toBe(1);
-    expect(new Set(keys(w, 'reserve'))).toEqual(new Set([`hold:${r.id}`]));
+    expect(new Set(keys(w, 'reserve'))).toEqual(new Set([okey('hold', r)]));
   });
 
   // Mutation: map every refusal to insufficient_funds, or release the reservation on an unclear refusal.
@@ -261,7 +263,7 @@ describe('I-AMBIGUOUS: a timeout is not a failure; recovery asks the casino by O
     expect(state(w, r.id)).toBe('COMPLETED');
     expect(w.effects).toBe(1);
     expect(w.casino.issueCalls).toHaveLength(1); // recovered by lookup, not re-issued
-    expect(w.casino.statusCalls[0]?.key).toBe(`redeem:${r.id}`);
+    expect(w.casino.statusCalls[0]?.key).toBe(okey('redeem', r));
     expect(w.payments.effects.capture).toBe(1);
   });
 
@@ -273,7 +275,7 @@ describe('I-AMBIGUOUS: a timeout is not a failure; recovery asks the casino by O
     await w.settle();
     expect(state(w, r.id)).toBe('COMPLETED');
     expect(w.casino.issueCalls).toHaveLength(2);
-    expect(new Set(w.casino.issueCalls.map((c) => c.key))).toEqual(new Set([`redeem:${r.id}`]));
+    expect(new Set(w.casino.issueCalls.map((c) => c.key))).toEqual(new Set([okey('redeem', r)]));
     expect(w.effects).toBe(1);
     expect(w.payments.callsOf('release')).toHaveLength(0);
   });
@@ -357,7 +359,7 @@ describe('I-PENDING: a casino that answers "pending" (a ticket) is waiting, not 
     expect(w.payments.callsOf('capture')).toHaveLength(0);
     expect(w.payments.callsOf('release')).toHaveLength(0);
     expect(w.payments.bal(P1)).toEqual({ available: 90, held: 10, captured: 0 });
-    w.casino.settle(`redeem:${r.id}`, 'issued');
+    w.casino.settle(okey('redeem', r), 'issued');
     await w.settle();
     expect(state(w, r.id)).toBe('COMPLETED');
     expect(w.effects).toBe(1);
@@ -390,7 +392,7 @@ describe('I-PENDING: a casino that answers "pending" (a ticket) is waiting, not 
     const r = await order(w, item.id);
     await w.settle(2);
     expect(state(w, r.id)).toBe('UNKNOWN');
-    w.casino.settle(`redeem:${r.id}`, 'rejected');
+    w.casino.settle(okey('redeem', r), 'rejected');
     await w.settle();
     expect(state(w, r.id)).toBe('RELEASED');
     expect(toStates(w, r.id)).toContain('REJECTED');
@@ -409,7 +411,7 @@ describe('I-PENDING: a casino that answers "pending" (a ticket) is waiting, not 
     w.store.editItem(item.id, { reward: { type: 'cash_bonus', params: {} } }); // the live catalog moves on
     await w.settle(2);
     expect(state(w, r.id)).toBe('UNKNOWN');
-    w.casino.settle(`redeem:${r.id}`, 'issued');
+    w.casino.settle(okey('redeem', r), 'issued');
     await w.settle();
     expect(state(w, r.id)).toBe('COMPLETED');
     expect(w.casino.issueCalls).toHaveLength(1);
@@ -445,7 +447,7 @@ describe('I-RELEASE-GATE: coins go back only after `rejected` (D-2); never after
     const r = await order(w, item.id);
     await w.settle(3);
     expect(w.casino.issueCalls.length).toBeGreaterThanOrEqual(2);
-    expect(new Set(w.casino.issueCalls.map((c) => c.key))).toEqual(new Set([`redeem:${r.id}`]));
+    expect(new Set(w.casino.issueCalls.map((c) => c.key))).toEqual(new Set([okey('redeem', r)]));
     expect(w.payments.callsOf('release')).toHaveLength(0);
     await w.settle();
     expect(state(w, r.id)).toBe('COMPLETED');
@@ -484,7 +486,7 @@ describe('I-RELEASE-GATE: coins go back only after `rejected` (D-2); never after
     });
     // (c) past the deadline and the casino says it DID issue
     w.casino.statusTimeout = false;
-    w.casino.tickets.set(`redeem:${r.id}`, {
+    w.casino.tickets.set(okey('redeem', r), {
       ref: 'late',
       status: 'issued',
       request: w.casino.issueCalls[0]!.request,
@@ -497,7 +499,7 @@ describe('I-RELEASE-GATE: coins go back only after `rejected` (D-2); never after
     expect(w.payments.callsOf('release')).toHaveLength(0);
 
     // the only non-`rejected` way out: not_found from a lookup made AFTER the deadline
-    w.casino.tickets.delete(`redeem:${r.id}`);
+    w.casino.tickets.delete(okey('redeem', r));
     await w.saga.resolveReview(w.tenant, r.id, input);
     await w.settle();
     expect(state(w, r.id)).toBe('RELEASED');
@@ -635,7 +637,12 @@ describe('I-DEDUPE and I-LATE: duplicate and late news', () => {
 
   // X-5. Mutation: treat `operation_conflict`, a validation or a forbidden answer as a retryable
   // failure (it would loop forever) or as a transition refusal. They go to NEEDS_REVIEW with an alert.
-  it.each(['operation_conflict', 'validation_failed', 'idempotency_key_reused', 'forbidden'] as const)(
+  it.each([
+    'operation_conflict',
+    'validation_failed',
+    'idempotency_key_reused',
+    'forbidden',
+  ] as const)(
     'I-LATE-3b a capture answered %s -> NEEDS_REVIEW capture_refused with an alert, never retried',
     async (code) => {
       const { w, item } = setup();
@@ -660,7 +667,7 @@ describe('I-DEDUPE and I-LATE: duplicate and late news', () => {
     expect(state(w, r.id)).toBe('COMPLETED');
     const reserveKeys = keys(w, 'reserve');
     expect(reserveKeys.length).toBeGreaterThanOrEqual(3);
-    expect(new Set(reserveKeys)).toEqual(new Set([`hold:${r.id}`]));
+    expect(new Set(reserveKeys)).toEqual(new Set([okey('hold', r)]));
     expect(w.events('engagement.redemption.needs_review')).toHaveLength(0);
     expect(w.payments.effects.reserve).toBe(1);
   });
@@ -764,7 +771,7 @@ describe('I-REFUND and I-REVIEW: compensation of a captured spend, operator reso
     await w.settle();
     expect(state(w, r.id)).toBe('REFUNDED');
     // parallel reports may both reach payments; its by-state idempotency makes that one effect
-    expect(new Set(keys(w, 'refund'))).toEqual(new Set([`refund:${r.id}`]));
+    expect(new Set(keys(w, 'refund'))).toEqual(new Set([okey('refund', r)]));
     expect(w.payments.effects.refund).toBe(1);
     expect(w.payments.bal(P1)).toEqual({ available: 100, held: 0, captured: 0 });
   });
@@ -850,7 +857,7 @@ describe('I-REFUND and I-REVIEW: compensation of a captured spend, operator reso
     // payments really holds the coins in this scenario: let the fake hold them for the release
     await w.payments.reserve(
       { tenantId: w.tenant, playerId: P1, sandbox: false, reserveId: r.id, amount: 10 },
-      `hold:${r.id}`,
+      okey('hold', r),
     );
     await w.saga.resolveReview(w.tenant, r.id, {
       outcome: 'not_issued',
@@ -923,7 +930,7 @@ describe('I-SANDBOX: sandbox redemptions stay in the sandbox and out of metering
   // Mutation: choose the adapter from anything but the server-side sandbox flag of the order.
   it('I-SANDBOX-1 a sandbox order is issued only to the sandbox adapter; a production order never to it', async () => {
     const { w, item } = setup();
-    w.payments.credit(S1, 100, true);
+    w.payments.creditIn(S1, 100, true);
     const s = await order(w, item.id, S1, 'ks', true);
     const p = await order(w, item.id, P1, 'kp', false);
     await w.settle();
@@ -939,7 +946,7 @@ describe('I-SANDBOX: sandbox redemptions stay in the sandbox and out of metering
   // redemption, or put the flag back into a payload (two places for one flag is how they drift).
   it('I-SANDBOX-2 every event of a redemption carries its sandbox flag on the ENVELOPE, true only for sandbox, never in the payload', async () => {
     const { w, item } = setup();
-    w.payments.credit(S1, 100, true);
+    w.payments.creditIn(S1, 100, true);
     const s = await order(w, item.id, S1, 'ks', true);
     const p = await order(w, item.id, P1, 'kp', false);
     await w.settle();
@@ -960,11 +967,11 @@ describe('I-SANDBOX: sandbox redemptions stay in the sandbox and out of metering
     });
     expect(w.payments.bal(P1)).toEqual({ available: 100, held: 0, captured: 0 });
     expect(w.payments.callsOf('reserve').map((c) => c.sandbox)).toEqual([true]);
-    w.payments.credit(S1, 100, true); // sandbox coins only
+    w.payments.creditIn(S1, 100, true); // sandbox coins only
     await expect(order(w, item.id, S1, 'kp', false)).rejects.toMatchObject({
       code: 'insufficient_funds',
     });
-    expect(w.payments.bal(S1, true)).toEqual({ available: 100, held: 0, captured: 0 });
+    expect(w.payments.balIn(S1, true)).toEqual({ available: 100, held: 0, captured: 0 });
   });
 });
 
@@ -998,7 +1005,7 @@ describe('I-PORT: the saga uses the registry and the request builder of the casi
     'I-PORT-2 no adapter for the order environment (sandbox=%s) -> NEEDS_REVIEW no_adapter, coins held, the casino never called',
     async (sandbox) => {
       const { w, item } = setup();
-      w.payments.credit(S1, 100, true);
+      w.payments.creditIn(S1, 100, true);
       w.noAdapter.add(sandbox);
       const r = await order(w, item.id, sandbox ? S1 : P1, 'k1', sandbox);
       await w.settle();
@@ -1008,7 +1015,7 @@ describe('I-PORT: the saga uses the registry and the request builder of the casi
       expect(w.casino.issueCalls).toHaveLength(0);
       expect(w.sandboxCasino.issueCalls).toHaveLength(0);
       expect(w.payments.callsOf('release')).toHaveLength(0);
-      expect(w.payments.bal(sandbox ? S1 : P1, sandbox).held).toBe(10);
+      expect(w.payments.balIn(sandbox ? S1 : P1, sandbox).held).toBe(10);
     },
   );
 
@@ -1075,7 +1082,12 @@ describe('I-PORT: the saga uses the registry and the request builder of the casi
     const r = await order(w, item.id);
     await w.settle();
     expect(state(w, r.id)).toBe('RELEASED');
-    await w.saga.onCasinoReport(w.tenant, r.id, { outcome: 'issued', external_ref: 'ghost' }, eid(7));
+    await w.saga.onCasinoReport(
+      w.tenant,
+      r.id,
+      { outcome: 'issued', external_ref: 'ghost' },
+      eid(7),
+    );
     expect(state(w, r.id)).toBe('NEEDS_REVIEW');
     const lookups = w.casino.statusCalls.length;
     const issues = w.casino.issueCalls.length;

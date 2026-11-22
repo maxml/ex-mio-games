@@ -8,7 +8,7 @@ import {
   type Action,
   type Role,
 } from '@ex-mio/contracts';
-import { IdentityError } from '../errors';
+import { AuthorizationRefused } from '@ex-mio/service-kit';
 import { AuditService } from './audit.service';
 
 export interface Subject {
@@ -125,30 +125,35 @@ export class AccessService {
       (subject.roles ?? []).includes('platform_admin') && subject.tenantId === PLATFORM_TENANT_ID;
     const acting = isPlatformAdmin ? subject.acting : undefined;
 
-    if (acting && ACTING_DENIED.has(action)) throw new IdentityError('ACTING_FORBIDDEN');
-    if (acting && action === 'acting.start') throw new IdentityError('ACTING_FORBIDDEN');
+    // D-26 INV-AUD: every refusal below is an AuthorizationRefused, so the entry point audits it `refused`.
+    if (acting && ACTING_DENIED.has(action))
+      throw new AuthorizationRefused({ code: 'ACTING_FORBIDDEN' });
+    if (acting && action === 'acting.start')
+      throw new AuthorizationRefused({ code: 'ACTING_FORBIDDEN' });
 
     if (isPlatformAdmin && !acting) {
       const operatorObject = object?.tenant_id !== PLATFORM_TENANT_ID;
       if (operatorObject && action !== 'tenant.suspend' && action !== 'acting.start') {
-        if (!COIN_VALUE.has(action)) throw new IdentityError('ACTING_REQUIRED');
+        if (!COIN_VALUE.has(action)) throw new AuthorizationRefused({ code: 'ACTING_REQUIRED' });
       }
     }
     if (acting && object?.tenant_id !== acting.tenantId) {
-      throw new IdentityError('ACTING_TENANT_MISMATCH');
+      throw new AuthorizationRefused({ code: 'ACTING_TENANT_MISMATCH' });
     }
     if (!isPlatformAdmin) {
       if (!object?.tenant_id || object.tenant_id !== subject.tenantId) {
-        throw new IdentityError('NOT_FOUND');
+        throw new AuthorizationRefused({ code: 'NOT_FOUND', status: 404 });
       }
       if (action === 'player.self.read' && (subject.roles ?? []).includes('player')) {
-        if (object.user_id !== subject.userId) throw new IdentityError('NOT_FOUND');
+        if (object.user_id !== subject.userId) {
+          throw new AuthorizationRefused({ code: 'NOT_FOUND', status: 404 });
+        }
       }
     }
     if (
       !this.can({ ...subject, ...(acting ? { acting } : { acting: undefined }) }, action, object)
     ) {
-      throw new IdentityError('FORBIDDEN');
+      throw new AuthorizationRefused({ code: 'FORBIDDEN' });
     }
     if (acting) {
       await this.audit.record({

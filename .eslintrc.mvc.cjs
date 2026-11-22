@@ -27,7 +27,11 @@ const DB_ACCESS = [
     message: 'Controllers call services; transactions belong to services and the model.',
   },
   { name: '@ex-mio/bus', message: 'Controllers call services, not the bus.' },
-  { name: '@ex-mio/idempotency', importNames: ['runIdempotent'], message: 'Use Db.idempotent in a service.' },
+  {
+    name: '@ex-mio/idempotency',
+    importNames: ['runIdempotent'],
+    message: 'Use Db.idempotent in a service.',
+  },
 ];
 
 const DRIVER_PATTERNS = [

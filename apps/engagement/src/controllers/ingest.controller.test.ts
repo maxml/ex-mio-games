@@ -4,8 +4,8 @@ import { Test } from '@nestjs/testing';
 import { FastifyAdapter, type NestFastifyApplication } from '@nestjs/platform-fastify';
 import { IngestAck, IngestErrorBody, parseEvent, type EventEnvelope } from '@ex-mio/contracts';
 import { Db } from '@ex-mio/service-kit';
-import { authModule } from '../testing/auth.fixture';
-import { createDefaultRegistry } from '../integrations/registry';
+import { authModule } from '../testing/auth.fixture'; // RED: depends on ServiceAuthModule (identity epic)
+import { createDefaultRegistry } from '../integrations/registry'; // RED: module missing
 import {
   ADAPTER_REGISTRY,
   CLOCK,
@@ -15,8 +15,8 @@ import {
   type InboundEventRow,
   type TenantIntegration,
 } from '../integrations/ports';
-import { IngestController, registerRawJsonParser } from './ingest.controller';
-import { IngestionService } from '../services/ingestion.service';
+import { IngestController, registerRawJsonParser } from './ingest.controller'; // RED: missing
+import { IngestionService } from '../services/ingestion.service'; // RED: missing
 
 /**
  * Ingestion endpoint POST /v1/integrations/:slug/events (MIO-054, MIO-055, MIO-056, MIO-147).
@@ -426,7 +426,7 @@ describe('ingestion endpoint', () => {
     await post('acme', signedA('sec-acme'));
     const byTenant = (t: string) => published.find((p) => p.event.tenant_id === t)!.event;
     expect(byTenant(T5).sandbox).toBe(true);
-    expect('sandbox' in byTenant(T1)).toBe(false);
+    expect(byTenant(T1).sandbox).toBe(false); // production is stated, never absent
     // a client cannot ask for it: the body and a header are ignored
     const forged = signedA('sec-acme', { id: 'evt-forged' });
     const res = await post('acme', {

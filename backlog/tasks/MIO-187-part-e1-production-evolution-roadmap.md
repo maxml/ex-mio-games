@@ -1,6 +1,6 @@
 ---
 id: MIO-187
-title: "Part E1: from prototype to production-ready multi-tenant SaaS, with the production roadmap"
+title: 'Part E1: from prototype to production-ready multi-tenant SaaS, with the production roadmap'
 epic: EPIC-17
 priority: P1
 money_impact: enabler

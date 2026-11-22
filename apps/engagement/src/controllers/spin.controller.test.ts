@@ -3,9 +3,9 @@ import { Test } from '@nestjs/testing';
 import { FastifyAdapter, type NestFastifyApplication } from '@nestjs/platform-fastify';
 import { MySpinsResponse, PublicWheel, SpinResponse } from '@ex-mio/contracts';
 import { tryTenantContext } from '@ex-mio/tenancy';
-import { SpinController } from './spin.controller';
-import { SpinService } from '../services/spin.service';
-import { asPlayer, authModule, bearer, playerToken } from '../testing/auth.fixture';
+import { SpinController } from './spin.controller'; // RED: module missing
+import { SpinService } from '../services/spin.service'; // RED: module missing
+import { asPlayer, authModule, bearer, playerToken } from '../testing/auth.fixture'; // RED until L1 merges
 
 /**
  * POST /v1/spins and GET /v1/wheel (MIO-063, MIO-062, MIO-151). The controller validates every
@@ -83,14 +83,18 @@ describe('spin controller', () => {
       payload: {},
     });
     expect(q.statusCode).toBe(201);
-    expect(spin).toHaveBeenLastCalledWith({ idempotencyKey: 'k-1' }); // query param ignored
+    expect(spin).toHaveBeenLastCalledWith({ idempotencyKey: 'k-1', sandbox: false }); // query param ignored
   });
 
   it('a valid spin request is 201 with the SpinResponse shape; credit_id is passed through', async () => {
     const res = await post({ credit_id: CREDIT });
     expect(res.statusCode).toBe(201);
     expect(SpinResponse.safeParse(res.json()).success).toBe(true);
-    expect(spin).toHaveBeenLastCalledWith({ idempotencyKey: 'k-1', creditId: CREDIT });
+    expect(spin).toHaveBeenLastCalledWith({
+      idempotencyKey: 'k-1',
+      creditId: CREDIT,
+      sandbox: false,
+    });
   });
 
   it('requires a valid token (401) and an Idempotency-Key (400)', async () => {
@@ -129,17 +133,22 @@ describe('spin controller', () => {
   // a production token.
   it('INV-SPIN-SANDBOX-CLAIM: a sandbox token makes the service run with sandbox: true; a production token passes none; a client flag is refused', async () => {
     spin.mockClear();
-    spin.mockResolvedValue({ spin_id: SPIN, segment_index: 0, segment_label: 'Win', reward_coins: 25 });
+    spin.mockResolvedValue({
+      spin_id: SPIN,
+      segment_index: 0,
+      segment_label: 'Win',
+      reward_coins: 25,
+    });
     const sbx = { ...bearer(playerToken(T, A, { sbx: true })), 'idempotency-key': 'k-sbx' };
     expect((await post({}, sbx)).statusCode).toBe(201);
     expect(spin).toHaveBeenLastCalledWith({ idempotencyKey: 'k-sbx', sandbox: true });
     expect((await post({}, headers)).statusCode).toBe(201);
-    expect(spin).toHaveBeenLastCalledWith({ idempotencyKey: 'k-1' }); // no sandbox key at all
+    expect(spin).toHaveBeenLastCalledWith({ idempotencyKey: 'k-1', sandbox: false }); // stated, never absent
     spin.mockClear();
     expect((await post({ sandbox: true })).statusCode).toBe(422); // the body cannot ask for it
     const viaHeader = await post({}, { ...headers, 'x-sandbox': '1' });
     expect(viaHeader.statusCode).toBe(201);
-    expect(spin).toHaveBeenLastCalledWith({ idempotencyKey: 'k-1' }); // a header is ignored
+    expect(spin).toHaveBeenLastCalledWith({ idempotencyKey: 'k-1', sandbox: false }); // a header is ignored
   });
 
   // W-2: the widget does not know the wheel id, so the tenant's active wheel has a route of its own.

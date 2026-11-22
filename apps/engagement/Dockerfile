@@ -13,6 +13,8 @@ RUN --mount=type=cache,id=pnpm-store,target=/root/.local/share/pnpm/store \
 RUN pnpm --filter "./packages/*" build
 # Then only this service.
 RUN pnpm --filter @ex-mio/engagement build
+# Fail the build, not the deploy, when the compiled migrations are missing (migrate.js refuses to run with none too).
+RUN test -n "$(ls apps/engagement/dist/model/migrations/*.js 2>/dev/null)" && test -f apps/engagement/dist/migrate.js
 # Production-only node_modules with the built workspace packages copied in.
 RUN pnpm --filter @ex-mio/engagement deploy --prod /out
 

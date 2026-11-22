@@ -238,8 +238,8 @@ describe('spin: the atomic consume', () => {
     asTenant(tenantId, async (db) => {
       for (const c of credits) {
         await db.query(
-          `INSERT INTO spin_credits (id, tenant_id, user_id, wheel_id, source_event_id, rule_id, rule_version, seq, status)
-           VALUES ($1, $2, $3, $4, $5, $6, 1, 0, 'available')`,
+          `INSERT INTO spin_credits (id, tenant_id, user_id, wheel_id, source_event_id, rule_id, rule_version, seq, status, sandbox)
+           VALUES ($1, $2, $3, $4, $5, $6, 1, 0, 'available', false)`,
           [c.id, tenantId, c.user, WHEEL, randomUUID(), randomUUID()],
         );
       }
@@ -576,8 +576,8 @@ describe('engagement schema (catalog, as the admin)', () => {
     const WHEEL_ID = '0190a1b2-c3d4-4e5f-8a6b-2000000000c9';
     await asTenant(T1.id, async (db) => {
       await db.query(
-        `INSERT INTO spin_credits (id, tenant_id, user_id, wheel_id, source_event_id, rule_id, rule_version, seq, status)
-         VALUES ($1, $2, $3, $4, $5, $6, 1, 0, 'available')`,
+        `INSERT INTO spin_credits (id, tenant_id, user_id, wheel_id, source_event_id, rule_id, rule_version, seq, status, sandbox)
+         VALUES ($1, $2, $3, $4, $5, $6, 1, 0, 'available', false)`,
         [credit, T1.id, user, WHEEL_ID, randomUUID(), randomUUID()],
       );
       await db.query(`UPDATE spin_credits SET status = 'used', used_at = now() WHERE id = $1`, [

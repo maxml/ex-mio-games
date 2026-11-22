@@ -1,10 +1,5 @@
 import type { EventEnvelope } from '@ex-mio/contracts';
-import {
-  accessClaims,
-  generateRsaKey,
-  serviceClaims,
-  signJwt,
-} from '@ex-mio/service-kit/testing';
+import { accessClaims, generateRsaKey, serviceClaims, signJwt } from '@ex-mio/service-kit/testing';
 
 /*
  * Test auth for the payments HTTP layer (D-4, D-12, X-9). There are no header placeholders: every

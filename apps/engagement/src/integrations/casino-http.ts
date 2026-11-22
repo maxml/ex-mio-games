@@ -37,6 +37,17 @@ export function requestHeaders(config: AdapterConfig): Record<string, string> {
 export const isRecord = (v: unknown): v is Record<string, unknown> =>
   typeof v === 'object' && v !== null && !Array.isArray(v);
 
+/**
+ * F1: the casino's rejection reason is stored on the order and shown to the operator, so it is a
+ * read channel for whatever a hostile URL answers with. Cut to 64 characters of `[A-Za-z0-9_.:-]`
+ * (D30-REASON); every other character, a space included, becomes `_`.
+ */
+export const REASON_MAX_LENGTH = 64;
+export const sanitizeReason = (reason: string, fallback = 'rejected'): string => {
+  const clean = reason.replace(/[^A-Za-z0-9_.:-]/g, '_').slice(0, REASON_MAX_LENGTH);
+  return clean === '' ? fallback : clean;
+};
+
 export const nonEmptyString = (v: unknown): v is string => typeof v === 'string' && v.length > 0;
 
 /**
@@ -58,4 +69,4 @@ export function macMatches(given: string, expected: string): boolean {
 }
 
 export const sandboxMismatch = (config: AdapterConfig, requestSandbox: boolean): boolean =>
-  (config.sandbox ?? false) !== requestSandbox;
+  config.sandbox !== requestSandbox;

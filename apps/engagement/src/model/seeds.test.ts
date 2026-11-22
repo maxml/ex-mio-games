@@ -1,5 +1,5 @@
 import type { SeedStore } from './repositories';
-import { createSeedProvider } from './seeds';
+import { createSeedProvider } from './seeds'; // RED: module missing
 
 /**
  * The real SeedProvider over a versioned seed store (review R2-3, F12; MIO-063, MIO-069). The store

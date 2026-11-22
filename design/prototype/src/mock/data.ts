@@ -42,17 +42,61 @@ export const WHEEL_VERSIONS: WheelVersion[] = [
     publishedAt: '2026-11-18',
     note: `Current: expected payout ${expectedPayout(WHEEL_REWARDS.map((r) => r.weight)).toFixed(1)} coins per spin`,
   },
-  { version: 2, state: 'archived' as Status, publishedAt: '2026-11-04', note: 'Jackpot weight 4 (too generous)' },
+  {
+    version: 2,
+    state: 'archived' as Status,
+    publishedAt: '2026-11-04',
+    note: 'Jackpot weight 4 (too generous)',
+  },
   { version: 1, state: 'archived' as Status, publishedAt: '2026-10-20', note: 'Initial table' },
 ];
 
 export const STORE_ITEMS: StoreItem[] = [
-  { id: 's1', name: '20 free spins', description: 'On a featured slot, wager free.', priceCoins: 300, kind: 'free_spins' },
-  { id: 's2', name: '5 EUR bonus', description: 'Credited to the casino bonus wallet.', priceCoins: 500, kind: 'cash_bonus' },
-  { id: 's3', name: '50 free spins', description: 'On a featured slot, wager free.', priceCoins: 1200, kind: 'free_spins', stock: 40 },
-  { id: 's4', name: '10% cashback', description: 'Next 24 hours of net losses.', priceCoins: 2000, kind: 'cashback' },
-  { id: 's5', name: '50 EUR bonus', description: 'Credited to the casino bonus wallet.', priceCoins: 4500, kind: 'cash_bonus', stock: 0 },
-  { id: 's6', name: 'VIP lounge day', description: 'Priority support for 24 hours.', priceCoins: 800, kind: 'merch', stock: 12 },
+  {
+    id: 's1',
+    name: '20 free spins',
+    description: 'On a featured slot, wager free.',
+    priceCoins: 300,
+    kind: 'free_spins',
+  },
+  {
+    id: 's2',
+    name: '5 EUR bonus',
+    description: 'Credited to the casino bonus wallet.',
+    priceCoins: 500,
+    kind: 'cash_bonus',
+  },
+  {
+    id: 's3',
+    name: '50 free spins',
+    description: 'On a featured slot, wager free.',
+    priceCoins: 1200,
+    kind: 'free_spins',
+    stock: 40,
+  },
+  {
+    id: 's4',
+    name: '10% cashback',
+    description: 'Next 24 hours of net losses.',
+    priceCoins: 2000,
+    kind: 'cashback',
+  },
+  {
+    id: 's5',
+    name: '50 EUR bonus',
+    description: 'Credited to the casino bonus wallet.',
+    priceCoins: 4500,
+    kind: 'cash_bonus',
+    stock: 0,
+  },
+  {
+    id: 's6',
+    name: 'VIP lounge day',
+    description: 'Priority support for 24 hours.',
+    priceCoins: 800,
+    kind: 'merch',
+    stock: 12,
+  },
 ];
 
 export interface Redemption {
@@ -66,12 +110,56 @@ export interface Redemption {
 }
 
 export const REDEMPTIONS: Redemption[] = [
-  { id: 'rd-1042', player: 'p_7f3a', item: '20 free spins', coins: 300, status: 'issued', at: '2026-11-21 14:02' },
-  { id: 'rd-1041', player: 'p_c91d', item: '5 EUR bonus', coins: 500, status: 'pending', at: '2026-11-21 13:58' },
-  { id: 'rd-1040', player: 'p_22be', item: '50 free spins', coins: 1200, status: 'failed', at: '2026-11-21 13:40', note: 'Casino returned 503; coins refunded' },
-  { id: 'rd-1039', player: 'p_22be', item: '50 free spins', coins: 1200, status: 'refunded', at: '2026-11-21 13:41', note: 'Refund of rd-1040' },
-  { id: 'rd-1038', player: 'p_a4e0', item: '10% cashback', coins: 2000, status: 'issued', at: '2026-11-21 12:15' },
-  { id: 'rd-1037', player: 'p_90cc', item: 'VIP lounge day', coins: 800, status: 'issuing', at: '2026-11-21 12:03' },
+  {
+    id: 'rd-1042',
+    player: 'p_7f3a',
+    item: '20 free spins',
+    coins: 300,
+    status: 'issued',
+    at: '2026-11-21 14:02',
+  },
+  {
+    id: 'rd-1041',
+    player: 'p_c91d',
+    item: '5 EUR bonus',
+    coins: 500,
+    status: 'pending',
+    at: '2026-11-21 13:58',
+  },
+  {
+    id: 'rd-1040',
+    player: 'p_22be',
+    item: '50 free spins',
+    coins: 1200,
+    status: 'failed',
+    at: '2026-11-21 13:40',
+    note: 'Casino returned 503; coins refunded',
+  },
+  {
+    id: 'rd-1039',
+    player: 'p_22be',
+    item: '50 free spins',
+    coins: 1200,
+    status: 'refunded',
+    at: '2026-11-21 13:41',
+    note: 'Refund of rd-1040',
+  },
+  {
+    id: 'rd-1038',
+    player: 'p_a4e0',
+    item: '10% cashback',
+    coins: 2000,
+    status: 'issued',
+    at: '2026-11-21 12:15',
+  },
+  {
+    id: 'rd-1037',
+    player: 'p_90cc',
+    item: 'VIP lounge day',
+    coins: 800,
+    status: 'issuing',
+    at: '2026-11-21 12:03',
+  },
 ];
 
 export const PLAYER_HISTORY = [
@@ -83,25 +171,100 @@ export const PLAYER_HISTORY = [
 ];
 
 export const PLANS = [
-  { id: 'starter', name: 'Starter', price: 199, spins: '20,000 spins / month', extra: '1 casino, sandbox, email support' },
-  { id: 'growth', name: 'Growth', price: 799, spins: '150,000 spins / month', extra: '3 casinos, custom theme, webhooks log' },
-  { id: 'scale', name: 'Scale', price: 2499, spins: '1,000,000 spins / month', extra: 'Unlimited casinos, SLA, single sign-on' },
+  {
+    id: 'starter',
+    name: 'Starter',
+    price: 199,
+    spins: '20,000 spins / month',
+    extra: '1 casino, sandbox, email support',
+  },
+  {
+    id: 'growth',
+    name: 'Growth',
+    price: 799,
+    spins: '150,000 spins / month',
+    extra: '3 casinos, custom theme, webhooks log',
+  },
+  {
+    id: 'scale',
+    name: 'Scale',
+    price: 2499,
+    spins: '1,000,000 spins / month',
+    extra: 'Unlimited casinos, SLA, single sign-on',
+  },
 ];
 
 export const SANDBOX_STEPS = [
   { id: 'ping', label: 'Casino reachable', detail: 'POST /webhooks/mio answered 200 in 84 ms' },
-  { id: 'sig', label: 'Signature verified', detail: 'HMAC-SHA256 header matched the webhook secret' },
-  { id: 'dep', label: 'Deposit event accepted', detail: 'deposit.confirmed, 40 EUR, 2 spins granted' },
+  {
+    id: 'sig',
+    label: 'Signature verified',
+    detail: 'HMAC-SHA256 header matched the webhook secret',
+  },
+  {
+    id: 'dep',
+    label: 'Deposit event accepted',
+    detail: 'deposit.confirmed, 40 EUR, 2 spins granted',
+  },
   { id: 'dup', label: 'Duplicate event ignored', detail: 'Same event id replayed: no extra spins' },
-  { id: 'rew', label: 'Reward issued back', detail: 'bonus.grant returned 200; redemption marked issued' },
+  {
+    id: 'rew',
+    label: 'Reward issued back',
+    detail: 'bonus.grant returned 200; redemption marked issued',
+  },
 ];
 
 export const TENANTS = [
-  { id: 't1', name: 'Lucky Star Casino', plan: 'Growth', status: 'active' as Status, mrr: 799, spins: 98200, depositors: 4120, signup: '2026-09-02' },
-  { id: 't2', name: 'Northbet', plan: 'Scale', status: 'active' as Status, mrr: 2499, spins: 612400, depositors: 21800, signup: '2026-08-11' },
-  { id: 't3', name: 'Cherry Row', plan: 'Starter', status: 'trial' as Status, mrr: 0, spins: 3100, depositors: 190, signup: '2026-11-14' },
-  { id: 't4', name: 'Golden Pier', plan: 'Starter', status: 'past_due' as Status, mrr: 199, spins: 15800, depositors: 760, signup: '2026-10-01' },
-  { id: 't5', name: 'Aurora Spins', plan: 'Growth', status: 'suspended' as Status, mrr: 0, spins: 0, depositors: 0, signup: '2026-07-19' },
+  {
+    id: 't1',
+    name: 'Lucky Star Casino',
+    plan: 'Growth',
+    status: 'active' as Status,
+    mrr: 799,
+    spins: 98200,
+    depositors: 4120,
+    signup: '2026-09-02',
+  },
+  {
+    id: 't2',
+    name: 'Northbet',
+    plan: 'Scale',
+    status: 'active' as Status,
+    mrr: 2499,
+    spins: 612400,
+    depositors: 21800,
+    signup: '2026-08-11',
+  },
+  {
+    id: 't3',
+    name: 'Cherry Row',
+    plan: 'Starter',
+    status: 'trial' as Status,
+    mrr: 0,
+    spins: 3100,
+    depositors: 190,
+    signup: '2026-11-14',
+  },
+  {
+    id: 't4',
+    name: 'Golden Pier',
+    plan: 'Starter',
+    status: 'past_due' as Status,
+    mrr: 199,
+    spins: 15800,
+    depositors: 760,
+    signup: '2026-10-01',
+  },
+  {
+    id: 't5',
+    name: 'Aurora Spins',
+    plan: 'Growth',
+    status: 'suspended' as Status,
+    mrr: 0,
+    spins: 0,
+    depositors: 0,
+    signup: '2026-07-19',
+  },
 ];
 
 export const FUNNEL = [

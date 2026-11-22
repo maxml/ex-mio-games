@@ -1,5 +1,5 @@
 import { decodePayload } from '@ex-mio/service-kit/testing';
-import { buildKernel } from './testing/kernel';
+import { buildKernel } from './testing/kernel'; // RED: module does not exist yet
 
 /*
  * Choke point: StaffService + SessionsService over the users repository and the

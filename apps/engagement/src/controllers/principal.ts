@@ -1,6 +1,5 @@
 import { Uuid } from '@ex-mio/contracts';
-import { currentAuth, parseInput } from '@ex-mio/service-kit';
-import { SagaError } from '../redemptions/saga-error';
+import { AuthorizationRefused, currentAuth, parseInput } from '@ex-mio/service-kit';
 
 /** Identity's role vocabulary (X-15). */
 export type Role = 'player' | 'operator_admin' | 'operator_staff';
@@ -23,11 +22,13 @@ export interface Principal {
  */
 export function readPrincipal(_headers?: Record<string, unknown>): Principal {
   const auth = currentAuth();
-  if (auth.mode !== 'user') throw new SagaError('forbidden', 'a user token is required');
+  if (auth.mode !== 'user') {
+    throw new AuthorizationRefused({ code: 'forbidden', message: 'a user token is required' });
+  }
   return {
     id: auth.principalId,
     roles: auth.roles,
-    sandbox: auth.sandbox === true,
+    sandbox: auth.sandbox,
     acting: auth.acting !== undefined,
   };
 }
@@ -35,7 +36,8 @@ export function readPrincipal(_headers?: Record<string, unknown>): Principal {
 /** 403 `forbidden` unless the caller holds one of the roles. Runs before any input is used. */
 export function requireRole(principal: Principal, ...roles: Role[]): void {
   if (!roles.some((r) => principal.roles.includes(r))) {
-    throw new SagaError('forbidden', 'role not allowed');
+    // D-26 INV-AUD: an authorization refusal inside a handler, audited `refused`.
+    throw new AuthorizationRefused({ code: 'forbidden', message: 'not allowed' });
   }
 }
 

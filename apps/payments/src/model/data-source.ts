@@ -41,5 +41,4 @@ const make = (options: MakeDataSourceOptions): DataSource => {
 export const makeDataSource = (options: MakeDataSourceOptions = {}): DataSource => make(options);
 
 /** The one-off migrate process: connects as `payments_owner` (MIGRATION_DATABASE_URL). */
-export const makeMigrationDataSource = (): DataSource =>
-  make({ urlEnv: 'MIGRATION_DATABASE_URL' });
+export const makeMigrationDataSource = (): DataSource => make({ urlEnv: 'MIGRATION_DATABASE_URL' });

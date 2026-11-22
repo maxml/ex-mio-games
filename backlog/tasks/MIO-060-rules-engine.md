@@ -1,6 +1,6 @@
 ---
 id: MIO-060
-title: "Rules engine: tenant-configured, versioned rules"
+title: 'Rules engine: tenant-configured, versioned rules'
 epic: EPIC-07
 priority: P0
 money_impact: direct

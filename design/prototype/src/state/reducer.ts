@@ -7,7 +7,15 @@
 //   - Operator changes (rules, published weights, catalog) are state here, so the player widget
 //     reads the same values.
 import type { Status, StoreItem } from '../components';
-import { PLAYER_HISTORY, PLANS, STORE_ITEMS, expectedPayout, WHEEL_REWARDS, WHEEL_VERSIONS, type WheelVersion } from '../mock/data';
+import {
+  PLAYER_HISTORY,
+  PLANS,
+  STORE_ITEMS,
+  expectedPayout,
+  WHEEL_REWARDS,
+  WHEEL_VERSIONS,
+  type WheelVersion,
+} from '../mock/data';
 
 /** The fake payment provider declines the test card ending in this. The decision lives in the reducer, not on a page. */
 export const DECLINED_LAST4 = '0002';
@@ -20,7 +28,17 @@ export interface Payment {
   status: 'processing' | 'declined' | 'cancelled' | 'paid';
 }
 
-export type StepId = 'signup' | 'plan' | 'keys' | 'sandbox' | 'golive' | 'rules' | 'wheel' | 'store' | 'redemptions' | 'billing';
+export type StepId =
+  | 'signup'
+  | 'plan'
+  | 'keys'
+  | 'sandbox'
+  | 'golive'
+  | 'rules'
+  | 'wheel'
+  | 'store'
+  | 'redemptions'
+  | 'billing';
 export const STEPS: { id: StepId; label: string }[] = [
   { id: 'signup', label: 'Sign up' },
   { id: 'plan', label: 'Plan' },
@@ -123,7 +141,11 @@ export function createInitialState(): State {
       live: 'off',
       rules: { ...DEFAULT_RULES },
       rulesSaved: false,
-      wheel: { version: WHEEL_VERSIONS[0].version, weights: WHEEL_REWARDS.map((r) => r.weight), versions: WHEEL_VERSIONS.map((v) => ({ ...v })) },
+      wheel: {
+        version: WHEEL_VERSIONS[0].version,
+        weights: WHEEL_REWARDS.map((r) => r.weight),
+        versions: WHEEL_VERSIONS.map((v) => ({ ...v })),
+      },
       catalog: STORE_ITEMS.map((i) => ({ ...i, visible: true })),
     },
   };
@@ -156,9 +178,12 @@ export type Action =
 export function spinsForDeposit(r: Rules, eur: number): number {
   return r.per ? Math.floor(eur / r.min) * r.spins : eur >= r.min ? r.spins : 0;
 }
-export const rulesValid = (r: Rules): boolean => [r.min, r.spins, r.cap].every((n) => Number.isInteger(n) && n >= 1);
-export const weightsValid = (w: number[]): boolean => w.length === WHEEL_REWARDS.length && w.every((x) => Number.isFinite(x) && x > 0);
-export const sameWeights = (a: number[], b: number[]): boolean => a.length === b.length && a.every((x, i) => x === b[i]);
+export const rulesValid = (r: Rules): boolean =>
+  [r.min, r.spins, r.cap].every((n) => Number.isInteger(n) && n >= 1);
+export const weightsValid = (w: number[]): boolean =>
+  w.length === WHEEL_REWARDS.length && w.every((x) => Number.isFinite(x) && x > 0);
+export const sameWeights = (a: number[], b: number[]): boolean =>
+  a.length === b.length && a.every((x, i) => x === b[i]);
 
 /** Server stand-in: picks a segment by weight using the PUBLISHED weights. `rnd` is in [0, 1). */
 export function pickReward(weights: number[], rnd: number): number {
@@ -172,16 +197,28 @@ export function pickReward(weights: number[], rnd: number): number {
 }
 
 /** Index of the largest coin reward (the "top prize"), for odds copy. */
-export const TOP_PRIZE_INDEX = WHEEL_REWARDS.reduce((best, r, i, all) => (r.coins > all[best].coins ? i : best), 0);
+export const TOP_PRIZE_INDEX = WHEEL_REWARDS.reduce(
+  (best, r, i, all) => (r.coins > all[best].coins ? i : best),
+  0,
+);
 
-const row = (id: string, what: string, delta: number, spinId?: string): HistoryRow => ({ id, at: 'Just now', what, delta, spinId });
+const row = (id: string, what: string, delta: number, spinId?: string): HistoryRow => ({
+  id,
+  at: 'Just now',
+  what,
+  delta,
+  spinId,
+});
 
 export function reducer(s: State, a: Action): State {
   const p = s.player;
   const o = s.operator;
   const patchP = (x: Partial<State['player']>): State => ({ ...s, player: { ...p, ...x } });
   const patchO = (x: Partial<State['operator']>): State => ({ ...s, operator: { ...o, ...x } });
-  const complete = (...ids: StepId[]) => ({ ...o.done, ...Object.fromEntries(ids.map((i) => [i, true])) });
+  const complete = (...ids: StepId[]) => ({
+    ...o.done,
+    ...Object.fromEntries(ids.map((i) => [i, true])),
+  });
 
   switch (a.type) {
     case 'player/spin': {
@@ -193,11 +230,17 @@ export function reducer(s: State, a: Action): State {
         coins: p.coins + reward.coins,
         creditedSpins: [...p.creditedSpins, a.id],
         lastSpin: { id: a.id, index: a.index, coins: reward.coins },
-        history: [row(`h-${a.id}`, `Spin: landed on ${reward.coins}`, reward.coins, a.id), ...p.history],
+        history: [
+          row(`h-${a.id}`, `Spin: landed on ${reward.coins}`, reward.coins, a.id),
+          ...p.history,
+        ],
       });
     }
     case 'player/deposit': {
-      const granted = Math.max(0, Math.min(spinsForDeposit(o.rules, a.eur), o.rules.cap - p.grantedToday));
+      const granted = Math.max(
+        0,
+        Math.min(spinsForDeposit(o.rules, a.eur), o.rules.cap - p.grantedToday),
+      );
       const what =
         granted > 0
           ? `Deposit ${a.eur} EUR earned ${granted} ${granted === 1 ? 'spin' : 'spins'}`
@@ -216,13 +259,20 @@ export function reducer(s: State, a: Action): State {
       if (p.coins < item.priceCoins || p.redemptions.some((r) => r.id === a.id)) return s;
       return patchP({
         coins: p.coins - item.priceCoins, // held at once; refunded if issuing fails
-        redemptions: [{ id: a.id, itemId: item.id, item: item.name, coins: item.priceCoins, status: 'pending' }, ...p.redemptions],
+        redemptions: [
+          { id: a.id, itemId: item.id, item: item.name, coins: item.priceCoins, status: 'pending' },
+          ...p.redemptions,
+        ],
         history: [row(`h-${a.id}`, `Redeemed ${item.name}`, -item.priceCoins), ...p.history],
       });
     }
     case 'redeem/status': {
       if (a.status === 'refunded') return s; // only `redeem/refund` can move coins back
-      return patchP({ redemptions: p.redemptions.map((r) => (r.id === a.id && r.status !== 'refunded' ? { ...r, status: a.status } : r)) });
+      return patchP({
+        redemptions: p.redemptions.map((r) =>
+          r.id === a.id && r.status !== 'refunded' ? { ...r, status: a.status } : r,
+        ),
+      });
     }
     case 'redeem/refund': {
       const r = p.redemptions.find((x) => x.id === a.id);
@@ -230,7 +280,10 @@ export function reducer(s: State, a: Action): State {
       return patchP({
         coins: p.coins + r.coins,
         redemptions: p.redemptions.map((x) => (x.id === a.id ? { ...x, status: 'refunded' } : x)),
-        history: [row(`h-ref-${a.id}`, `Refund: ${r.item} could not be issued`, r.coins), ...p.history],
+        history: [
+          row(`h-ref-${a.id}`, `Refund: ${r.item} could not be issued`, r.coins),
+          ...p.history,
+        ],
       });
     }
 
@@ -242,20 +295,37 @@ export function reducer(s: State, a: Action): State {
       return patchO({ accountCreated: true, done: complete('signup') });
     case 'plan/select':
       // No plan change once paid, and none while a payment attempt is in flight.
-      if (o.invoicePaid || o.payment?.status === 'processing' || !PLANS.some((x) => x.id === a.id)) return s;
+      if (o.invoicePaid || o.payment?.status === 'processing' || !PLANS.some((x) => x.id === a.id))
+        return s;
       return patchO({ plan: a.id });
     case 'invoice/pay': {
       // Synchronous settle with the current plan (what a provider webhook would report).
       if (o.invoicePaid || a.last4 === DECLINED_LAST4) return s; // paying twice, or a declined card: no-op
       const plan = PLANS.find((x) => x.id === o.plan);
       if (!plan) return s;
-      return patchO({ invoicePaid: true, planActive: true, cardLast4: a.last4, paidPlan: plan.id, paidAmount: plan.price, done: complete('plan') });
+      return patchO({
+        invoicePaid: true,
+        planActive: true,
+        cardLast4: a.last4,
+        paidPlan: plan.id,
+        paidAmount: plan.price,
+        done: complete('plan'),
+      });
     }
     case 'payment/start': {
       const plan = PLANS.find((x) => x.id === a.plan);
       if (!plan || o.invoicePaid || o.payment?.status === 'processing') return s;
       // The amount comes from the price list, never from the caller. `plan` follows the attempt.
-      return patchO({ plan: plan.id, payment: { id: a.id, plan: plan.id, amount: plan.price, last4: a.last4, status: 'processing' } });
+      return patchO({
+        plan: plan.id,
+        payment: {
+          id: a.id,
+          plan: plan.id,
+          amount: plan.price,
+          last4: a.last4,
+          status: 'processing',
+        },
+      });
     }
     case 'payment/cancel':
       if (o.payment?.id !== a.id || o.payment.status !== 'processing') return s;
@@ -278,11 +348,15 @@ export function reducer(s: State, a: Action): State {
       return patchO({ sandboxPassed: true, done: complete('sandbox') });
     case 'live/start':
       // The go-live gate. The step bar lets anyone open this step, so the rule is enforced here.
-      return o.accountCreated && o.planActive && o.sandboxPassed && o.live === 'off' ? patchO({ live: 'awaiting' }) : s;
+      return o.accountCreated && o.planActive && o.sandboxPassed && o.live === 'off'
+        ? patchO({ live: 'awaiting' })
+        : s;
     case 'live/deposit':
       return o.live === 'awaiting' ? patchO({ live: 'live', done: complete('golive') }) : s;
     case 'rules/save':
-      return rulesValid(a.rules) ? patchO({ rules: { ...a.rules }, rulesSaved: true, done: complete('rules') }) : s;
+      return rulesValid(a.rules)
+        ? patchO({ rules: { ...a.rules }, rulesSaved: true, done: complete('rules') })
+        : s;
     case 'wheel/publish': {
       if (!weightsValid(a.weights) || sameWeights(a.weights, o.wheel.weights)) return s;
       const version = o.wheel.version + 1;
@@ -292,7 +366,12 @@ export function reducer(s: State, a: Action): State {
           version,
           weights: [...a.weights],
           versions: [
-            { version, state: 'published', publishedAt: a.at ?? '2026-11-21', note: `Expected payout ${ev.toFixed(1)} coins per spin` },
+            {
+              version,
+              state: 'published',
+              publishedAt: a.at ?? '2026-11-21',
+              note: `Expected payout ${ev.toFixed(1)} coins per spin`,
+            },
             ...o.wheel.versions.map((v) => ({ ...v, state: 'archived' as Status })),
           ],
         },
@@ -301,8 +380,12 @@ export function reducer(s: State, a: Action): State {
     }
     case 'catalog/price':
       if (!Number.isInteger(a.price) || a.price < 1) return s;
-      return patchO({ catalog: o.catalog.map((i) => (i.id === a.id ? { ...i, priceCoins: a.price } : i)) });
+      return patchO({
+        catalog: o.catalog.map((i) => (i.id === a.id ? { ...i, priceCoins: a.price } : i)),
+      });
     case 'catalog/visible':
-      return patchO({ catalog: o.catalog.map((i) => (i.id === a.id ? { ...i, visible: a.on } : i)) });
+      return patchO({
+        catalog: o.catalog.map((i) => (i.id === a.id ? { ...i, visible: a.on } : i)),
+      });
   }
 }

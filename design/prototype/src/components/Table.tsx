@@ -18,7 +18,13 @@ export interface TableProps<T> {
   empty?: ReactNode;
 }
 
-export function Table<T>({ columns, rows, rowKey, caption, empty = 'Nothing here yet.' }: TableProps<T>) {
+export function Table<T>({
+  columns,
+  rows,
+  rowKey,
+  caption,
+  empty = 'Nothing here yet.',
+}: TableProps<T>) {
   return (
     <div className="overflow-x-auto">
       <table className="w-full border-collapse text-sm">

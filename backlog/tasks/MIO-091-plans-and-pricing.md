@@ -1,6 +1,6 @@
 ---
 id: MIO-091
-title: "Plans and pricing: one table, trial, base fee plus usage"
+title: 'Plans and pricing: one table, trial, base fee plus usage'
 epic: EPIC-09
 priority: P0
 money_impact: direct

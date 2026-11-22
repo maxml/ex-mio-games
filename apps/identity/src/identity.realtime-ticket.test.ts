@@ -17,6 +17,7 @@ import { createTestApp } from './testing/app';
  * The consumer already exists: the web BFF (`GET /api/realtime/ticket`) posts `{}` with the
  * player's engagement session, or the operator's identity token, and reads `{ ticket, expires_in }`.
  *
+ * RED today: the route and the redeem seam do not exist.
  */
 
 const PW = 'correct horse battery';
@@ -30,7 +31,7 @@ async function world() {
     email: 'boss@a.test',
     password: PW,
   });
-  const key = await k.credentials.issue(a.tenant.id, 'sim-casino');
+  const key = await k.credentials.issue(a.tenant.id, 'sim-casino', { environment: 'production' });
   const session = await k.sessions.launchWithKey(key, { externalPlayerId: 'ext-1' });
   const operator = (
     await k.sessions.login(a.tenant.id, {
@@ -151,6 +152,8 @@ describe('RT-TICKET: one-time realtime ticket (D-10, D-22)', () => {
  *   POST, tenant-less (`@InternalTenantless`: the tenant is the ticket's own `tid`), body
  *   `{ ticket }` (strict), answer `RealtimeTicketRedeemResponse`; SERVICE_CALL_POLICY.engagement.identity
  *   lists `POST /internal/v1/realtime-tickets/redeem`, no other client does.
+ *
+ * RED today: the route does not exist (404).
  */
 const REDEEM = '/internal/v1/realtime-tickets/redeem';
 const SVC_SECRETS = {
@@ -167,7 +170,7 @@ async function gatewayWorld() {
     email: 'boss@a.test',
     password: PW,
   });
-  const key = await k.credentials.issue(a.tenant.id, 'sim-casino');
+  const key = await k.credentials.issue(a.tenant.id, 'sim-casino', { environment: 'production' });
   const session = await k.sessions.launchWithKey(key, { externalPlayerId: 'ext-1' });
   const operator = (
     await k.sessions.login(a.tenant.id, {
@@ -212,7 +215,12 @@ describe('RT-REDEEM: the gateway redeems a ticket over the internal identity rou
     const ticket = await w.newTicket();
     const first = await w.redeem(svc, { ticket });
     expect(first.statusCode).toBe(200);
-    expect(first.json()).toEqual({ sub: w.session.user_id, tid: w.a.tenant.id, roles: ['player'] });
+    expect(first.json()).toEqual({
+      sub: w.session.user_id,
+      tid: w.a.tenant.id,
+      roles: ['player'],
+      sandbox: false,
+    });
     const second = await w.redeem(svc, { ticket });
     expect(second.statusCode).toBe(401);
     expect(second.json()).toMatchObject({ code: 'REALTIME_TICKET_REPLAYED' });
@@ -280,7 +288,9 @@ describe('RT-REDEEM: the gateway redeems a ticket over the internal identity rou
     const badLogin = await login('realtime');
     expect(badLogin.statusCode).toBe(400);
     expect(badLogin.json()).toMatchObject({ code: 'VALIDATION_FAILED' });
-    const key = await w.k.credentials.issue(w.a.tenant.id, 'sim-casino');
+    const key = await w.k.credentials.issue(w.a.tenant.id, 'sim-casino', {
+      environment: 'production',
+    });
     const launch = (audience: string) =>
       w.app.inject({
         method: 'POST',

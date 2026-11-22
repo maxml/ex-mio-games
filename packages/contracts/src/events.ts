@@ -26,9 +26,9 @@ export const EventEnvelope = z.object({
   /**
    * D-13. Set by the PRODUCER from its server-side context (the verifying key of a sandbox
    * tenant), never copied from a payload or a client header. A consumer that meters or bills
-   * reads this flag and nothing else. Absent means production.
+   * reads this flag and nothing else. Required (INV-ENV-INPUT): an envelope without it is invalid.
    */
-  sandbox: z.boolean().optional(),
+  sandbox: z.boolean(),
   payload: z.unknown(),
 });
 export type EventEnvelope = z.infer<typeof EventEnvelope>;
@@ -184,8 +184,8 @@ export interface NewEventInput<T extends EventType> {
   payload: z.input<(typeof EVENT_SCHEMAS)[T][1]>;
   correlationId?: string;
   causationId?: string | null;
-  /** D-13/FX-1: from the producer's server-side context only. Written to the envelope only when true. */
-  sandbox?: boolean;
+  /** D-13/FX-1: from the producer's server-side context only. Required, always written (INV-ENV-INPUT). */
+  sandbox: boolean;
 }
 
 /** Build a validated v1 envelope with a fresh `event_id` and `occurred_at`. */
@@ -198,7 +198,7 @@ export function createEvent<T extends EventType>(input: NewEventInput<T>): Event
     occurred_at: new Date().toISOString(),
     correlation_id: input.correlationId ?? uuidv7(),
     causation_id: input.causationId ?? null,
-    ...(input.sandbox === true ? { sandbox: true } : {}),
+    sandbox: input.sandbox,
     payload: input.payload,
   });
 }

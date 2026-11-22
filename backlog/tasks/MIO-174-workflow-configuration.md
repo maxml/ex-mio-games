@@ -1,6 +1,6 @@
 ---
 id: MIO-174
-title: "Workflow configuration: agent wrappers, PR template with AI provenance"
+title: 'Workflow configuration: agent wrappers, PR template with AI provenance'
 epic: EPIC-16
 priority: P2
 money_impact: none

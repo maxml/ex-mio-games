@@ -16,9 +16,9 @@ Authorization: Bearer {{player_token}}
 GET {{payments}}/v1/players/{{player_id}}/balance
 Authorization: Bearer {{operator_payments_token}}
 
-# Response (captured from scripts/demo.sh in its first run, which predates decision D-27; 50 coins were held by an open reserve):
+# Response (captured from scripts/demo.sh on 2026-11-22, run on dd9d464; after a 500-coin spin and one 50-coin redemption):
 # HTTP/1.1 200 OK
-# {"wallet_id":"01a2012d-4b5f-7089-bb44-30ea714130c2","available":150,"held":50,"currency":"COIN"}
+# {"wallet_id":"01a20399-e459-741c-bc03-7118046b196e","available":450,"held":0,"currency":"COIN"}
 
 ### There is no route that credits coins. This must not exist.
 POST {{payments}}/v1/credits

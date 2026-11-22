@@ -1,7 +1,8 @@
 import type { DataSource, EntityManager } from 'typeorm';
 import { uuidv7, type EventEnvelope } from '@ex-mio/contracts';
 import { Db } from '@ex-mio/service-kit';
-import { makeDataSource } from '../model/data-source';
+import { createDataSource } from '@ex-mio/service-kit';
+import { TenantProjectionEntity } from '../model/tenant-projection.entity';
 import { PgRedemptionStore } from '../model/redemption.store';
 import { TestClock } from './testing/clock';
 import { storeConformance } from './testing/store-conformance';
@@ -13,7 +14,7 @@ import { storeConformance } from './testing/store-conformance';
  *   DATABASE_URL=postgresql://engagement:engagement-dev@localhost:54329/engagement \
  *     pnpm --filter @ex-mio/engagement test:pg
  * CI runs the same script in the `compose` job, after the stack is healthy.
- * Mutations are listed in store-conformance.ts.
+ * RED today: ../model/redemption.store does not exist. Mutations are listed in store-conformance.ts.
  * The harness writes through the real tables named in the spec (§5), under the tenant's RLS context.
  * One DataSource for the whole file, destroyed in afterAll (no leaked pools, no --forceExit).
  * Every test uses fresh tenant ids, so the shared database needs no cleanup between tests.
@@ -24,9 +25,11 @@ if (!process.env.DATABASE_URL)
 let dataSource: Promise<DataSource> | undefined;
 const shared = (): Promise<DataSource> => {
   dataSource ??= (async () => {
-    const ds = await makeDataSource().initialize();
-    await ds.runMigrations();
-    return ds;
+    // rc review: the runtime role owns nothing (D-12), so it cannot run migrations (it failed with
+    // "permission denied for schema public" and leaked the pool); the stack's migrate step applies
+    // them as the owner. The app connection loads no migration files: the `migrations/*.ts` glob
+    // also matched `ingest-schema.test.ts`, which jest then refused to nest inside a running test.
+    return createDataSource({ entities: [TenantProjectionEntity], migrations: [] }).initialize();
   })();
   return dataSource;
 };

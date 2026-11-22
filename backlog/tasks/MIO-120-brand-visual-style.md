@@ -7,7 +7,7 @@ money_impact: direct
 risk_class: none
 status: blocked
 depends_on: []
-blocked_by: ["Owner has no brand or style materials yet"]
+blocked_by: ['Owner has no brand or style materials yet']
 size: M
 estimate_hours_base: 16
 estimate_hours: 20

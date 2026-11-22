@@ -7,7 +7,7 @@ money_impact: enabler
 risk_class: guard
 status: todo
 depends_on: [MIO-001]
-blocked_by: ["starter: Nx module boundaries v2"]
+blocked_by: ['starter: Nx module boundaries v2']
 size: S
 estimate_hours_base: 6
 estimate_hours: 8

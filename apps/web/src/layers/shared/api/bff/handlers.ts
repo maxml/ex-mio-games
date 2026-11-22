@@ -31,15 +31,7 @@ import {
 import { WHEEL_REWARDS } from '../mio/engine/data';
 import { createMockApi } from '../mio/mock';
 import { createStore } from '../mio/engine/store';
-import {
-  anonCookie,
-  anonIdFrom,
-  ANON_COOKIE,
-  emitWebEvent,
-  stdoutProductEvents,
-  tenantHintOfLaunchToken,
-  type ProductEventSink,
-} from './analytics';
+import { emitWebEvent, stdoutProductEvents, type ProductEventSink } from './analytics';
 import type { BffConfig } from './config';
 import {
   mapAttempt,
@@ -224,9 +216,8 @@ export function createBff(deps: BffDeps) {
         return { body: { kind: 'player' } };
       },
     ],
-    // Product analytics: the widget was opened. Before a launch the visitor is anonymous (`anon_id`, a
-    // session cookie of ours); with a player session the verified player and tenant are used. The body
-    // may carry the launch token only so the unverified tenant hint can be read from its key id.
+    // Product analytics: the widget was opened. Only a player session (verified player and tenant) is
+    // written; before a launch nothing names a verified tenant, so nothing is written (INV-WEB-AN-1).
     [
       'POST',
       /^\/api\/widget\/opened$/,
@@ -242,17 +233,8 @@ export function createBff(deps: BffDeps) {
           });
           return { status: 204 };
         }
-        const tenant = tenantHintOfLaunchToken(ctx.body.token);
-        if (!tenant) return { status: 204 }; // no tenant to attribute: nothing is written
-        const anon = anonIdFrom(readCookie(ctx.request.headers.get('cookie'), ANON_COOKIE));
-        emitWebEvent(productEvents, {
-          event: 'web.widget_opened',
-          tenant_id: tenant,
-          actor_type: 'visitor',
-          anon_id: anon.id,
-          props: { launched: false },
-        });
-        if (anon.isNew) ctx.setCookie = anonCookie(anon.id, config.secureCookie);
+        // INV-WEB-AN-1: no verified identity, no tenant. A launch token's `kid` or any body claim is
+        // unverified input and never names the tenant of a line, so nothing is written.
         return { status: 204 };
       },
     ],

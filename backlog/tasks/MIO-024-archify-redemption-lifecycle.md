@@ -1,6 +1,6 @@
 ---
 id: MIO-024
-title: "Lifecycle diagram: redemption status"
+title: 'Lifecycle diagram: redemption status'
 epic: EPIC-03
 priority: P2
 money_impact: none

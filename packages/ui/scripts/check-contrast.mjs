@@ -61,20 +61,28 @@ export function ratio(a, b) {
 function validateShape(theme) {
   const errs = [];
   for (const k of schema.required) if (!(k in theme)) errs.push(`missing required key "${k}"`);
-  for (const k of Object.keys(theme)) if (!(k in schema.properties)) errs.push(`unknown top-level key "${k}"`);
-  if (typeof theme.id === 'string' && !new RegExp(schema.properties.id.pattern).test(theme.id)) errs.push(`id "${theme.id}" does not match ${schema.properties.id.pattern}`);
-  const rules = Object.entries(schema.properties.tokens.patternProperties).map(([k, v]) => [new RegExp(k), v]);
+  for (const k of Object.keys(theme))
+    if (!(k in schema.properties)) errs.push(`unknown top-level key "${k}"`);
+  if (typeof theme.id === 'string' && !new RegExp(schema.properties.id.pattern).test(theme.id))
+    errs.push(`id "${theme.id}" does not match ${schema.properties.id.pattern}`);
+  const rules = Object.entries(schema.properties.tokens.patternProperties).map(([k, v]) => [
+    new RegExp(k),
+    v,
+  ]);
   for (const [name, value] of Object.entries(theme.tokens ?? {})) {
     const rule = rules.find(([re]) => re.test(name));
     if (!rule) errs.push(`unknown token "${name}" (not in the schema)`);
-    else if (!new RegExp(rule[1].pattern ?? '.*').test(String(value))) errs.push(`token "${name}": "${value}" does not match ${rule[1].pattern}`);
+    else if (!new RegExp(rule[1].pattern ?? '.*').test(String(value)))
+      errs.push(`token "${name}": "${value}" does not match ${rule[1].pattern}`);
   }
   return errs;
 }
 
 const tenantDir = join(root, 'src/theme/tenants');
 const themes = [{ id: 'default (tokens.css)', tokens: {} }];
-const files = readdirSync(tenantDir).filter((f) => f.endsWith('.json')).map((f) => join(tenantDir, f));
+const files = readdirSync(tenantDir)
+  .filter((f) => f.endsWith('.json'))
+  .map((f) => join(tenantDir, f));
 files.push(...process.argv.slice(2));
 for (const f of files) themes.push({ ...JSON.parse(readFileSync(f, 'utf8')), __file: f });
 
@@ -88,11 +96,14 @@ for (const theme of themes) {
   const t = { ...defaults, ...theme.tokens };
   for (const [fg, bg, min, what] of PAIRS) {
     if (!/^#[0-9a-fA-F]{6}$/.test(t[fg] ?? '') || !/^#[0-9a-fA-F]{6}$/.test(t[bg] ?? '')) {
-      bad.push(`  ${what}: token --${fg} or --${bg} is missing or not a 6-digit hex (${t[fg]}, ${t[bg]})`);
+      bad.push(
+        `  ${what}: token --${fg} or --${bg} is missing or not a 6-digit hex (${t[fg]}, ${t[bg]})`,
+      );
       continue;
     }
     const r = ratio(t[fg], t[bg]);
-    if (!(r >= min)) bad.push(`  ${what}: --${fg} ${t[fg]} on --${bg} ${t[bg]} = ${r.toFixed(2)} (need ${min})`);
+    if (!(r >= min))
+      bad.push(`  ${what}: --${fg} ${t[fg]} on --${bg} ${t[bg]} = ${r.toFixed(2)} (need ${min})`);
   }
   if (bad.length) {
     failures += bad.length;

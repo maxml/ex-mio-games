@@ -7,7 +7,7 @@ money_impact: enabler
 risk_class: ownership
 status: todo
 depends_on: [MIO-032]
-blocked_by: ["starter: audit module (append-only, same-transaction write, reader API)"]
+blocked_by: ['starter: audit module (append-only, same-transaction write, reader API)']
 size: M
 estimate_hours_base: 20
 estimate_hours: 24

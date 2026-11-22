@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { CasinoRewardApiConfig, IssueDeadlineMs } from './casino-adapter';
 import { Uuid } from './ids';
+import { rewardApiUrlProblem } from './ip-guard';
 import { COIN_VALUE_ACTIONS } from './payments';
 
 // Identity contracts (feature spec). Spec: docs/specs/identity.md. Every service
@@ -445,11 +446,11 @@ export const StartActingRequest = z
   .strict();
 export type StartActingRequest = z.infer<typeof StartActingRequest>;
 
-/** F6: the platform is required; the environment defaults to production and is never a client flag on a launch. */
+/** F6/F12/D-30: the platform and the environment are both required; there is no production default. */
 export const IssueCredentialRequest = z
   .object({
     platform: z.string().trim().min(1).max(64),
-    environment: IntegrationEnvironment.default('production'),
+    environment: IntegrationEnvironment,
   })
   .strict();
 export type IssueCredentialRequest = z.infer<typeof IssueCredentialRequest>;
@@ -466,12 +467,17 @@ export const CasinoParam = z
   .regex(/^[a-z0-9][a-z0-9-]{0,63}$/);
 export const PutRewardApiRequest = z
   .object({
-    environment: IntegrationEnvironment.default('production'),
+    environment: IntegrationEnvironment,
     base_url: z
       .string()
       .url()
       .max(2048)
-      .refine((u) => /^https?:\/\//i.test(u), { message: 'base_url must be http or https' }),
+      .refine((u) => /^https?:\/\//i.test(u), { message: 'base_url must be http or https' })
+      // F1: no credentials in the URL, and no literal internal address. Names that resolve to one
+      // are refused at call time by engagement's transport; https-only in production likewise.
+      .refine((u) => rewardApiUrlProblem(u) === undefined, {
+        message: 'base_url must not carry credentials or point at an internal address',
+      }),
     /** The secret that signs issuance requests; sealed at rest, never returned. */
     api_key: z.string().min(1).max(512).optional(),
     /** Overrides the adapter type's default deadline; production only. */
@@ -521,7 +527,13 @@ export type RealtimeTicketRedeemRequest = z.infer<typeof RealtimeTicketRedeemReq
 
 /** What `SessionsService.redeemRealtimeTicket` returns: the principal of a ticket, once (D-23). */
 export const RealtimeTicketRedeemResponse = z
-  .object({ sub: Uuid, tid: Uuid, roles: z.array(Role).min(1) })
+  .object({
+    sub: Uuid,
+    tid: Uuid,
+    roles: z.array(Role).min(1),
+    /** D-30, F8: the environment of the launch token the ticket came from; realtime is per environment. */
+    sandbox: z.boolean(),
+  })
   .strict();
 export type RealtimeTicketRedeemResponse = z.infer<typeof RealtimeTicketRedeemResponse>;
 

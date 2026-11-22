@@ -1,6 +1,6 @@
 ---
 id: MIO-131
-title: "Operator console: onboarding, keys, rules, wheel tables, store, billing"
+title: 'Operator console: onboarding, keys, rules, wheel tables, store, billing'
 epic: EPIC-13
 priority: P1
 money_impact: direct
