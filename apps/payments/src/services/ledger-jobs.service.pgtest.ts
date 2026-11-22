@@ -7,6 +7,7 @@ import {
   newTenant,
   openHarness,
   spinCompleted,
+  spinCompletedIn,
   type Harness,
 } from '../testing/harness';
 import { previousPeriod } from './ledger-jobs.service';
@@ -26,7 +27,7 @@ afterAll(async () => h.close());
 async function activity(t: string, sandbox = false): Promise<string> {
   const p = newPlayer();
   if (sandbox) {
-    await h.consume(spinCompleted(t, p, 9, { sandbox: true }));
+    await h.consume(spinCompletedIn(true, t, p, 9));
   } else {
     await h.fund(t, p, 9);
   }
@@ -154,7 +155,7 @@ describe('INV-SBX-4 sandbox settlement stays on the sandbox system accounts (rev
   it('a sandbox capture moves coins to the sandbox redeemed account and leaves the production one at 0', async () => {
     const t = newTenant();
     const p = await activity(t); // production: 9 issued, 4 held
-    await h.consume(spinCompleted(t, p, 10, { sandbox: true }));
+    await h.consume(spinCompletedIn(true, t, p, 10));
     const id = uuidv7();
     await h.as(t, () =>
       h.ledger.reserve(

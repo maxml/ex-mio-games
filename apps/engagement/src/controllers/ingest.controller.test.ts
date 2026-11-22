@@ -426,7 +426,7 @@ describe('ingestion endpoint', () => {
     await post('acme', signedA('sec-acme'));
     const byTenant = (t: string) => published.find((p) => p.event.tenant_id === t)!.event;
     expect(byTenant(T5).sandbox).toBe(true);
-    expect('sandbox' in byTenant(T1)).toBe(false);
+    expect(byTenant(T1).sandbox).toBe(false); // production is stated, never absent
     // a client cannot ask for it: the body and a header are ignored
     const forged = signedA('sec-acme', { id: 'evt-forged' });
     const res = await post('acme', {

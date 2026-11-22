@@ -138,7 +138,7 @@ describe('identity product events', () => {
       email: EMAIL,
       password: PW,
     });
-    const key = await k.credentials.issue(a.tenant.id, 'sim-casino');
+    const key = await k.credentials.issue(a.tenant.id, 'sim-casino', { environment: 'production' });
     cap.clear();
     const token = signLaunchToken({
       keyId: key.key_id,

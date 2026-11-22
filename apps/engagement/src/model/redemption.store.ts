@@ -134,7 +134,7 @@ export class PgRedemptionStore implements RedemptionStore {
       type: type as never,
       tenantId,
       payload: payload as never,
-      ...(sandbox ? { sandbox: true } : {}),
+      sandbox,
       ...(causationId ? { causationId } : {}),
     });
   }

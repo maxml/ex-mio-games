@@ -142,8 +142,12 @@ export class SessionsService {
     /** One audience, or (a player session only, D-22) the array of audiences it is valid for. */
     aud: Audience | readonly Audience[];
     act?: { tenant_id: string; reason: string };
-    /** X-3: set only by the launch flow, from the credential's environment; never from a caller. */
-    sbx?: true;
+    /**
+     * X-3, INV-ENV-INPUT: required, so a token cannot be signed without deciding its environment.
+     * From the credential (launch) or the verified session (ticket); never from a caller's body.
+     * The claim is written only when true (the JWT encoding of production).
+     */
+    sbx: boolean;
     ttl?: number;
   }): TokenResponse {
     const now = this.clock.now();
@@ -194,6 +198,7 @@ export class SessionsService {
       tid: tenantId,
       roles: user.roles,
       aud: input.audience,
+      sbx: false, // a staff login is an operator console session: production (D-28)
     });
   }
 
@@ -244,6 +249,7 @@ export class SessionsService {
       roles: ['platform_admin'],
       aud: input.audience ?? 'identity',
       act: { tenant_id: target.id, reason },
+      sbx: false, // an acting session is an operator console session: production
       ttl: ACTING_TTL_MAX_SECONDS,
     });
   }
@@ -255,7 +261,7 @@ export class SessionsService {
    * lifetime is at most 60 s and the `jti` is what `redeemRealtimeTicket` consumes. An acting
    * session has no realtime use, so it gets none.
    */
-  issueRealtimeTicket(subject: Subject): RealtimeTicketResponse {
+  issueRealtimeTicket(subject: Subject, sandbox: boolean): RealtimeTicketResponse {
     if (subject.acting) {
       throw new AuthorizationRefused({
         code: 'ACTING_FORBIDDEN',
@@ -267,6 +273,7 @@ export class SessionsService {
       tid: subject.tenantId,
       roles: subject.roles,
       aud: 'realtime',
+      sbx: sandbox, // D-30, F8: the ticket keeps the environment of the verified session
       ttl: REALTIME_TICKET_TTL_SECONDS,
     });
     return { ticket: t.access_token, expires_in: t.expires_in };
@@ -312,7 +319,7 @@ export class SessionsService {
       }
       throw err;
     }
-    return { sub: claims.sub, tid, roles: claims.roles };
+    return { sub: claims.sub, tid, roles: claims.roles, sandbox: claims.sbx === true };
   }
 
   // ---- service tokens (D-4, D-14) --------------------------------------------------------------

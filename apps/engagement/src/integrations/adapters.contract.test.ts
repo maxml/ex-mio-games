@@ -224,6 +224,7 @@ const cfg = (transport: Transport, extra: Partial<AdapterConfig> = {}): AdapterC
   baseUrl: 'http://casino.test',
   transport,
   timeoutMs: 50,
+  sandbox: false, // required (INV-ENV-INPUT); a test that needs the other environment overrides it
   ...extra,
 });
 

@@ -176,7 +176,7 @@ describe('INV-DB: identity schema enforces the invariants even if the applicatio
       await insertTenant(c, a, 'operator', `a-${a}`);
       const put = () =>
         c.query(
-          `INSERT INTO launch_jti (tenant_id, jti, expires_at) VALUES ($1, 'nonce-1', now() + interval '5 minutes')`,
+          `INSERT INTO launch_jti (tenant_id, jti, expires_at, sandbox) VALUES ($1, 'nonce-1', now() + interval '5 minutes', false)`,
           [a],
         );
       await put();
@@ -695,7 +695,7 @@ describe('INV-STACK-6 launch and player mapping hold under real concurrency (F16
     const a = await operator('identity');
     const issued = await call('POST', urls.identity, '/v1/credentials', {
       headers: bearer(a.token),
-      body: { platform: 'sim-casino' },
+      body: { platform: 'sim-casino', environment: 'production' },
     });
     expect(issued.status).toBe(201);
     return { a, key: CredentialIssued.parse(issued.json) };

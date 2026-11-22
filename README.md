@@ -209,6 +209,13 @@ from that first run.
   read by identity and engagement) exempts listed hosts from the https rule, and from the address rule in
   engagement's transport; compose sets it to `casino-sim` on both services. The casino's rejection
   reason is cut to 64 characters of `[A-Za-z0-9_.:-]` before it is stored or shown.
+- **The environment is always stated (INV-ENV-INPUT, D-29).** Nothing defaults to production. These requests
+  now answer **400 `VALIDATION_FAILED`** when `environment` (`production` or `sandbox`) is missing:
+  `POST /v1/credentials` (body `{ platform, environment }`), `PUT /v1/operator/integrations/:casino/reward-api`
+  (body `{ environment, base_url, ... }`), and the internal `GET /internal/v1/tenants/:tenantId/players/:playerId/balance`
+  (query `sandbox=true|false`, service tokens only). A player's environment is never a request field: it comes
+  from the launch token, and the realtime ticket carries it (a sandbox player gets a sandbox ticket). An event
+  without `sandbox` is invalid and goes to the dead-letter path.
 - **Wheel, rules and subscription id.** `PUT /v1/operator/wheel` and `PUT /v1/operator/rules` (engagement,
   `operator_admin`), a default wheel and rule on signup, and `GET /v1/operator/plan` (payments) replace the
   database steps; the script no longer reads or writes any database.

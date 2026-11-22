@@ -247,7 +247,7 @@ describe('INV-EDGE acting through HTTP (MIO-034 negative cases)', () => {
       method: 'POST',
       url: '/v1/credentials',
       headers: { authorization: `Bearer ${token}` },
-      payload: { platform: 'sim-casino', tenant_id: w.b.tenant.id },
+      payload: { platform: 'sim-casino', environment: 'production', tenant_id: w.b.tenant.id },
     });
     expect(body.statusCode).toBe(400);
     expect(body.json()).toMatchObject({ code: 'VALIDATION_FAILED' });
@@ -351,6 +351,7 @@ describe('INV-EDGE acting through HTTP (MIO-034 negative cases)', () => {
       occurred_at: new Date(w.k.now() * 1000).toISOString(),
       correlation_id: uuidv7(),
       causation_id: null,
+      sandbox: false,
       payload: {
         actor_user_id: uuidv7(),
         actor_tenant_id: w.platform.id,
@@ -399,6 +400,7 @@ describe('INV-EDGE acting through HTTP (MIO-034 negative cases)', () => {
       occurred_at: new Date(w.k.now() * 1000).toISOString(),
       correlation_id: uuidv7(),
       causation_id: null,
+      sandbox: false,
       payload: {
         caller_service: 'engagement',
         service: 'payments',
@@ -474,7 +476,7 @@ describe('INV-EDGE-14 every response is the contract shape (F14)', () => {
       method: 'POST',
       url: '/v1/credentials',
       headers: admin,
-      payload: { platform: 'sim-casino' },
+      payload: { platform: 'sim-casino', environment: 'production' },
     });
     expect(issued.statusCode).toBe(201);
     const key = CredentialIssued.parse(issued.json());

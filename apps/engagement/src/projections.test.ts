@@ -62,6 +62,7 @@ describe('ProjectionsService.onTenantCreated', () => {
       ...createEvent({
         type: 'identity.tenant.created',
         tenantId: TENANT,
+        sandbox: false,
         payload: { name: 'A', slug: 'a' },
       }),
       payload: {},

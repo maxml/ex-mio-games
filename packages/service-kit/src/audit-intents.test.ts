@@ -250,6 +250,7 @@ const auditEvent = () =>
   createEvent({
     type: 'audit.acting_request',
     tenantId: T_B,
+    sandbox: false,
     payload: {
       actor_user_id: USER,
       actor_tenant_id: PLATFORM_TENANT_ID,

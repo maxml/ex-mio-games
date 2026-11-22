@@ -22,7 +22,7 @@ export class BalanceController {
   me(): Promise<WalletBalance> {
     const auth = currentAuth();
     const playerId = parseInput(Uuid, auth.principalId);
-    return this.balances.readByPlayer(playerId, { sandbox: auth.sandbox === true });
+    return this.balances.readByPlayer(playerId, { sandbox: auth.sandbox });
   }
 
   /** An operator reads the PRODUCTION wallet of a player of their tenant. */

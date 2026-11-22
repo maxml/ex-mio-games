@@ -120,7 +120,7 @@ export class LaunchService {
       roles: ['player'],
       aud: PLAYER_SESSION_AUDIENCES,
       // X-3: the environment is the credential's, so a client can never ask for (or avoid) sandbox
-      ...(key.row.environment === 'sandbox' ? { sbx: true as const } : {}),
+      sbx: key.row.environment === 'sandbox',
     });
     // The launch token is the only proof of the player, so there is no AuthContext yet: the actor
     // is the player's internal id. The casino-side player id is never an event field.

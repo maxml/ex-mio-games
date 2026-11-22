@@ -5,6 +5,7 @@ import {
   newTenant,
   openHarness,
   spinCompleted,
+  spinCompletedIn,
   type Harness,
 } from '../testing/harness';
 
@@ -184,10 +185,7 @@ describe('INV-M5 the sandbox flag comes from the producer, never from the payloa
 
   it('an event the producer marked sandbox is NOT metered (no spin, no MAU, no usage row)', async () => {
     const t = newTenant();
-    await deliver(
-      t,
-      spinCompleted(t, newPlayer(), 5, { at: '2026-11-05T10:00:00.000Z', sandbox: true }),
-    );
+    await deliver(t, spinCompletedIn(true, t, newPlayer(), 5, { at: '2026-11-05T10:00:00.000Z' }));
     expect(await report(t, '2026-11')).toMatchObject({ spins: 0, monthly_active_players: 0 });
     const { rows } = await h.admin.query(
       `SELECT count(*)::int AS n FROM usage_events WHERE tenant_id = $1`,
@@ -202,11 +200,9 @@ describe('INV-M5 the sandbox flag comes from the producer, never from the payloa
   it('through the inbox a sandbox spin credits the SANDBOX wallet, leaves the production wallet alone and meters nothing', async () => {
     const t = newTenant();
     const p = newPlayer();
-    const d = await h.consume(
-      spinCompleted(t, p, 5, { at: '2026-11-05T10:00:00.000Z', sandbox: true }),
-    );
+    const d = await h.consume(spinCompletedIn(true, t, p, 5, { at: '2026-11-05T10:00:00.000Z' }));
     expect(d.outcome).toBe('applied');
-    expect((await h.dbWallet(t, p, { sandbox: true })).available).toBe(5);
+    expect((await h.dbWalletIn(t, p, true)).available).toBe(5);
     await expect(h.dbWallet(t, p)).rejects.toThrow(/no wallet/);
     expect(await report(t, '2026-11')).toMatchObject({ spins: 0, monthly_active_players: 0 });
   });

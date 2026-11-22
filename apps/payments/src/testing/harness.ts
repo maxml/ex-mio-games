@@ -114,7 +114,8 @@ export interface Harness {
   /** Credit `amount` coins to `player` the only way coins can arrive: a `spin.completed` event. */
   fund(tenantId: string, player: string, amount: number): Promise<{ spinId: string }>;
   /** A player's wallet read straight from the tables (never through BalanceService or the cache). */
-  dbWallet(tenantId: string, player: string, opts?: { sandbox?: boolean }): Promise<DbWallet>;
+  dbWallet(tenantId: string, player: string): Promise<DbWallet>; // the PRODUCTION wallet
+  dbWalletIn(tenantId: string, player: string, sandbox: boolean): Promise<DbWallet>;
   dbWalletById(tenantId: string, walletId: string): Promise<DbWallet>;
   /** Sign a webhook body the way the fake provider does. */
   sign(rawBody: string): string;
@@ -262,6 +263,21 @@ export async function openHarness(opts: OpenOptions = {}): Promise<Harness> {
      WHERE w.tenant_id = $1 AND ${where}
      GROUP BY w.id`;
 
+  const dbWalletIn = async (
+    tenantId: string,
+    player: string,
+    sandbox: boolean,
+  ): Promise<DbWallet> => {
+    const join = `JOIN wallet_owner_links l ON l.tenant_id = w.tenant_id AND l.wallet_id = w.id`;
+    const { rows } = await admin.query(walletSql(join, `l.user_id = $2 AND w.sandbox = $3`), [
+      tenantId,
+      player,
+      sandbox,
+    ]);
+    if (!rows[0]) throw new Error('dbWallet: no wallet for that player');
+    return rows[0] as DbWallet;
+  };
+
   return {
     ledger: mod.get(LedgerService),
     balances: mod.get(BalanceService),
@@ -293,17 +309,9 @@ export async function openHarness(opts: OpenOptions = {}): Promise<Harness> {
       if (d.outcome !== 'applied') throw new Error(`fund: expected applied, got ${d.outcome}`);
       return { spinId };
     },
-    // X-2/D-13: a player has one wallet per environment (`wallets.sandbox`); the default is production.
-    dbWallet: async (tenantId, player, opts = {}) => {
-      const join = `JOIN wallet_owner_links l ON l.tenant_id = w.tenant_id AND l.wallet_id = w.id`;
-      const { rows } = await admin.query(walletSql(join, `l.user_id = $2 AND w.sandbox = $3`), [
-        tenantId,
-        player,
-        opts.sandbox ?? false,
-      ]);
-      if (!rows[0]) throw new Error('dbWallet: no wallet for that player');
-      return rows[0] as DbWallet;
-    },
+    // X-2/D-13: a player has one wallet per environment (`wallets.sandbox`); `dbWallet` names the production one.
+    dbWallet: (tenantId, player) => dbWalletIn(tenantId, player, false),
+    dbWalletIn,
     dbWalletById: async (tenantId, walletId) => {
       const { rows } = await admin.query(walletSql('', `w.id = $2`), [tenantId, walletId]);
       if (!rows[0]) throw new Error('dbWalletById: no such wallet');
@@ -319,16 +327,31 @@ export async function openHarness(opts: OpenOptions = {}): Promise<Harness> {
   };
 }
 
-/** A `spin.completed` event as the engagement service writes it to its outbox (D-1). */
+/**
+ * A `spin.completed` event as the engagement service writes it to its outbox (D-1). INV-ENV-INPUT:
+ * the envelope's environment is always stated; `spinCompleted` is the PRODUCTION event and
+ * `spinCompletedIn` takes the environment as a required first argument.
+ */
 export function spinCompleted(
   tenantId: string,
   player: string,
   reward: number,
-  o: { spinId?: string; eventId?: string; at?: string; sandbox?: boolean; payload?: object } = {},
+  o: { spinId?: string; eventId?: string; at?: string; payload?: object } = {},
+): EventEnvelope {
+  return spinCompletedIn(false, tenantId, player, reward, o);
+}
+
+export function spinCompletedIn(
+  sandbox: boolean,
+  tenantId: string,
+  player: string,
+  reward: number,
+  o: { spinId?: string; eventId?: string; at?: string; payload?: object } = {},
 ): EventEnvelope {
   const e = createEvent({
     type: 'engagement.spin.completed',
     tenantId,
+    sandbox,
     payload: {
       spin_id: o.spinId ?? uuidv7(),
       player_id: player,
@@ -340,7 +363,6 @@ export function spinCompleted(
     ...e,
     event_id: o.eventId ?? e.event_id,
     occurred_at: o.at ?? e.occurred_at,
-    ...(o.sandbox === undefined ? {} : { sandbox: o.sandbox }),
     payload: { ...(e.payload as object), ...(o.payload ?? {}) },
   } as EventEnvelope;
 }

@@ -141,7 +141,10 @@ describe('tenant isolation and idempotency (payments)', () => {
       const rows = await c.query(`SELECT count(*)::int AS n FROM wallets`);
       expect(rows.rows[0].n).toBe(0);
       await expect(
-        c.query(`INSERT INTO wallets (tenant_id, id) VALUES ($1, $2)`, [a.tenantId, uuidv7()]),
+        c.query(`INSERT INTO wallets (tenant_id, id, sandbox) VALUES ($1, $2, false)`, [
+          a.tenantId,
+          uuidv7(),
+        ]),
       ).rejects.toThrow(/row-level security/);
     } finally {
       await c.end();

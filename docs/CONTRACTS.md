@@ -39,9 +39,15 @@ version, never an edit. HTTP shapes change additively; a removal waits until no 
 - **provider:** `packages/contracts` (`src/events.ts`) · **consumers:** every service that publishes or
   consumes events
 - **spec:** `{ event_id (uuidv7), type, version, tenant_id, occurred_at, correlation_id, causation_id,
-sandbox?, payload }`; `tenant_id` is mandatory; the payload schema is registered per (type, version); an
-  unknown type or version is rejected. `sandbox` (D-13) is optional, absent means production, and
-  `createEvent` writes it only when `true`. Only the producing service sets it, from server-side state (the
+sandbox, payload }`; `tenant_id` is mandatory; the payload schema is registered per (type, version); an
+  unknown type or version is rejected. `sandbox` (D-13, D-29 INV-ENV-INPUT) is a required boolean: `createEvent`
+  takes it as a required argument and always writes it (`false` for production, never absent), and an envelope
+  without it fails `parseEvent` (a consumer sends it to the dead-letter path, never treats it as production).
+  Nothing in a schema, controller or service defaults an environment: no `.default()` and no `??`/`||`
+  fallback for `environment`, `sandbox` or `sbx` (a scan test pins it). The auth context's `sandbox` is always a
+  defined boolean, set from the verified token's `sbx` claim; the realtime ticket keeps it (D-30), and the ticket
+  redeem answer carries `sandbox`. Where an operator names an environment (issue a credential, register a reward
+  API, the internal balance read) it is a required request field. Only the producing service sets it, from server-side state (the
   verified integration credential, token claim `sbx`), never from client input or a payload field. Metering
   and billing read the envelope flag and nothing else. `audit.acting_request` is the one cross-service event
   name that does not follow `<owning-service>.<aggregate>.<past-tense-verb>`, because every service writes it.
