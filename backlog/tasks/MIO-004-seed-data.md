@@ -1,6 +1,6 @@
 ---
 id: MIO-004
-title: "Seed data: platform tenant, two operator tenants, wheel, store"
+title: 'Seed data: platform tenant, two operator tenants, wheel, store'
 epic: EPIC-01
 priority: P1
 money_impact: direct

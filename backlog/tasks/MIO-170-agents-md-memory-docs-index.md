@@ -1,6 +1,6 @@
 ---
 id: MIO-170
-title: "`AGENTS.md`, `CLAUDE.md`, `memory/`, docs index"
+title: '`AGENTS.md`, `CLAUDE.md`, `memory/`, docs index'
 epic: EPIC-16
 priority: P1
 money_impact: enabler

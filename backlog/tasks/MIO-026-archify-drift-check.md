@@ -1,6 +1,6 @@
 ---
 id: MIO-026
-title: "Drift check: IR against Nx project graph, compose and contracts"
+title: 'Drift check: IR against Nx project graph, compose and contracts'
 epic: EPIC-03
 priority: P2
 money_impact: none

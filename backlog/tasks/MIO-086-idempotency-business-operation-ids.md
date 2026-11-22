@@ -1,13 +1,13 @@
 ---
 id: MIO-086
-title: "Idempotency contract for value operations: scoped keys, durable business-operation ids"
+title: 'Idempotency contract for value operations: scoped keys, durable business-operation ids'
 epic: EPIC-08
 priority: P0
 money_impact: direct
 risk_class: locks
 status: todo
 depends_on: []
-blocked_by: ["starter: idempotency package"]
+blocked_by: ['starter: idempotency package']
 size: M
 ---
 
@@ -29,7 +29,7 @@ operations (MIO-082) adopt it.
      service id for service tokens), never a value from the request body;
    - `operation` is the HTTP method plus the route template (`POST /v1/redemptions`), or the command name
      for internal commands (`payments.reserve`).
-   Two users of one tenant, or two routes, that send the same client key never share a record.
+     Two users of one tenant, or two routes, that send the same client key never share a record.
 2. **Request fingerprint.** The record stores `request_hash = SHA-256` of the canonical request: the
    operation, the path parameters and the body canonicalised with RFC 8785 (JSON Canonicalization Scheme).
    Equivalent bodies (key order, whitespace) give the same hash.
@@ -52,9 +52,9 @@ operations (MIO-082) adopt it.
      re-executed under the lock; it is never treated as completed.
 7. **Durable business-operation id, independent of HTTP TTL.** Every value operation has an id derived
    deterministically from the scope: `operation_id = UUIDv5(namespace, tenant_id | principal | operation |
-   client_key)`. Domain tables store it under a unique constraint that never expires
+client_key)`. Domain tables store it under a unique constraint that never expires
    (`spins.operation_id`, `redemptions.operation_id`, `journal_transactions (tenant_id, operation_type,
-   operation_id)`). The HTTP record (TTL 24 hours) is only a response cache: after it is purged, a delayed
+operation_id)`). The HTTP record (TTL 24 hours) is only a response cache: after it is purged, a delayed
    replay hits the domain unique constraint and returns the existing operation (or 422 if the hash differs),
    and never creates a second one.
 8. **Internal commands.** Commands between services (engagement to payments) carry the business-operation

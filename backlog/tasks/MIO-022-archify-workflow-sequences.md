@@ -1,6 +1,6 @@
 ---
 id: MIO-022
-title: "Workflow and sequence diagrams: the 8-step flow and the redemption saga"
+title: 'Workflow and sequence diagrams: the 8-step flow and the redemption saga'
 epic: EPIC-03
 priority: P2
 money_impact: none

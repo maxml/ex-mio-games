@@ -18,16 +18,16 @@ The owner reviews the archify tasks before work starts. Every task in this epic 
 
 ## Tasks
 
-| ID | Title | Priority |
-|---|---|---|
-| MIO-020 | Add archify as a git submodule in `tools/archify` | P2 |
-| MIO-021 | Architecture IR: system context and containers | P2 |
-| MIO-022 | Workflow and sequence diagrams: the 8-step flow and the redemption saga | P2 |
-| MIO-023 | ERD: ledger and tenants | P2 |
-| MIO-024 | Lifecycle diagram: redemption status | P2 |
-| MIO-025 | CI: validate, deliver, fail on diff | P2 |
-| MIO-026 | Drift check: IR against Nx project graph, compose and contracts | P2 |
-| MIO-027 | Mermaid copies for GitHub | P2 |
+| ID      | Title                                                                   | Priority |
+| ------- | ----------------------------------------------------------------------- | -------- |
+| MIO-020 | Add archify as a git submodule in `tools/archify`                       | P2       |
+| MIO-021 | Architecture IR: system context and containers                          | P2       |
+| MIO-022 | Workflow and sequence diagrams: the 8-step flow and the redemption saga | P2       |
+| MIO-023 | ERD: ledger and tenants                                                 | P2       |
+| MIO-024 | Lifecycle diagram: redemption status                                    | P2       |
+| MIO-025 | CI: validate, deliver, fail on diff                                     | P2       |
+| MIO-026 | Drift check: IR against Nx project graph, compose and contracts         | P2       |
+| MIO-027 | Mermaid copies for GitHub                                               | P2       |
 
 ## Notes
 

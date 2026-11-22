@@ -1,6 +1,6 @@
 ---
 id: MIO-099
-title: "Revenue view for the platform admin: MRR and usage per operator"
+title: 'Revenue view for the platform admin: MRR and usage per operator'
 epic: EPIC-09
 priority: P1
 money_impact: direct

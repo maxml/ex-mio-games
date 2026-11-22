@@ -1,6 +1,6 @@
 ---
 id: MIO-044
-title: "Player identity mapping: casino launch token to player session"
+title: 'Player identity mapping: casino launch token to player session'
 epic: EPIC-05
 priority: P0
 money_impact: direct

@@ -1,13 +1,13 @@
 ---
 id: MIO-096
-title: "Entitlements: plan limits checked and counted atomically"
+title: 'Entitlements: plan limits checked and counted atomically'
 epic: EPIC-09
 priority: P1
 money_impact: direct
 risk_class: budget
 status: todo
 depends_on: [MIO-091, MIO-093]
-blocked_by: ["starter: entitlement evaluator (atomic consume, fail-closed)"]
+blocked_by: ['starter: entitlement evaluator (atomic consume, fail-closed)']
 size: M
 ---
 

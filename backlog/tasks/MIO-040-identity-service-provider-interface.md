@@ -7,7 +7,7 @@ money_impact: enabler
 risk_class: identity
 status: todo
 depends_on: [MIO-001]
-blocked_by: ["starter: identity service"]
+blocked_by: ['starter: identity service']
 size: L
 ---
 

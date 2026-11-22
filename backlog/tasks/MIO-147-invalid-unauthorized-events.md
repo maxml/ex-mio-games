@@ -1,6 +1,6 @@
 ---
 id: MIO-147
-title: "Part C: invalid or unauthorized events"
+title: 'Part C: invalid or unauthorized events'
 epic: EPIC-14
 priority: P1
 money_impact: direct

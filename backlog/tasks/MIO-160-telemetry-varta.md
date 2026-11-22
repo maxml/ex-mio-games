@@ -1,6 +1,6 @@
 ---
 id: MIO-160
-title: "Telemetry under the Varta contract: logs, traces, metrics, correlation ids"
+title: 'Telemetry under the Varta contract: logs, traces, metrics, correlation ids'
 epic: EPIC-15
 priority: P1
 money_impact: enabler

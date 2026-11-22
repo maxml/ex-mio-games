@@ -1,6 +1,6 @@
 ---
 id: MIO-097
-title: "Integration test console: send a test event and see it arrive"
+title: 'Integration test console: send a test event and see it arrive'
 epic: EPIC-09
 priority: P1
 money_impact: direct

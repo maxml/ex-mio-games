@@ -1,13 +1,14 @@
 ---
 id: MIO-002
-title: "Docker Compose stack: one container per service plus infrastructure"
+title: 'Docker Compose stack: one container per service plus infrastructure'
 epic: EPIC-01
 priority: P0
 money_impact: enabler
 risk_class: none
 status: todo
 depends_on: [MIO-001]
-blocked_by: ["starter: microservices layout (one container per service)", "starter: Redis with persistence"]
+blocked_by:
+  ['starter: microservices layout (one container per service)', 'starter: Redis with persistence']
 size: M
 ---
 

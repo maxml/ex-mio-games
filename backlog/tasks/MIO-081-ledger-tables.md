@@ -1,6 +1,6 @@
 ---
 id: MIO-081
-title: "Ledger tables: balanced journal transactions, integer amounts, no negative balance"
+title: 'Ledger tables: balanced journal transactions, integer amounts, no negative balance'
 epic: EPIC-08
 priority: P0
 money_impact: direct
@@ -36,7 +36,7 @@ Tables in the payments database (Postgres):
 - `balances` (materialised): `available`, `held` per account, `CHECK (available >= 0)`,
   `CHECK (held >= 0)`. Balance changes are conditional and atomic:
   `UPDATE balances SET available = available - $n, held = held + $n WHERE account_id = $1 AND
-  available >= $n`. A credit adds to the existing value; no code path writes an absolute balance.
+available >= $n`. A credit adds to the existing value; no code path writes an absolute balance.
 - **Amount validation** at the command boundary and in the database: integer, `> 0`, at most
   `1_000_000_000_000` per transaction; fractional, zero, negative, overflowing or string amounts are
   rejected before any write.

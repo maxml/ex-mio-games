@@ -18,7 +18,7 @@ reward?" even when the casino's reply (and the casino's own reference) was lost.
 ## Scope
 
 - Canonical inbound event: `{tenant_id, source, external_event_id, type: "deposit.succeeded",
-  external_player_id, amount_minor, currency, occurred_at}`.
+external_player_id, amount_minor, currency, occurred_at}`.
 - `CasinoAdapter` interface: `parseEvent(raw, headers) → CanonicalEvent | Rejection`,
   `issueReward(request, idempotencyKey) → IssueResult`, `getRewardStatus(idempotencyKey) → Status`,
   `verifySignature(raw, headers, secret)`.
@@ -29,8 +29,8 @@ reward?" even when the casino's reply (and the casino's own reference) was lost.
   2. re-sending `issueReward` with the same key is guaranteed by the casino to return the original
      result and reference without issuing again (idempotent replay), and the adapter uses that as its
      status lookup.
-  An adapter that can do neither is not registrable. `Status` is `issued(reference)`, `rejected(code)`,
-  `pending`, or `not_found`.
+     An adapter that can do neither is not registrable. `Status` is `issued(reference)`, `rejected(code)`,
+     `pending`, or `not_found`.
 - The reward mapping (reward type and parameters in canonical form) is frozen on the redemption at order
   time and passed to `issueReward` unchanged on every attempt.
 - Adapter registry keyed by the tenant's configured casino type.

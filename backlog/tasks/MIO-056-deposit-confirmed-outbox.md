@@ -1,13 +1,13 @@
 ---
 id: MIO-056
-title: "`DepositConfirmed` published through the outbox to RabbitMQ"
+title: '`DepositConfirmed` published through the outbox to RabbitMQ'
 epic: EPIC-06
 priority: P0
 money_impact: enabler
 risk_class: concurrency
 status: todo
 depends_on: [MIO-055, MIO-015]
-blocked_by: ["starter: event bus (outbox, inbox, DLQ) on RabbitMQ"]
+blocked_by: ['starter: event bus (outbox, inbox, DLQ) on RabbitMQ']
 size: M
 ---
 

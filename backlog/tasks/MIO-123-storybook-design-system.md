@@ -7,7 +7,7 @@ money_impact: direct
 risk_class: none
 status: todo
 depends_on: [MIO-122]
-blocked_by: ["starter: Storybook design system"]
+blocked_by: ['starter: Storybook design system']
 size: L
 ---
 

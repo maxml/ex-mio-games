@@ -2,13 +2,13 @@
 
 Five diagrams, each kept as a typed archify IR file (`*.json`), a rendered interactive page (`*.html`), and a Mermaid copy below that renders inline on any git host. The prose is in [overview.md](overview.md); decisions are in [`docs/adrs/`](../adrs/).
 
-| Diagram | Interactive page | Typed source |
-|---|---|---|
-| Context and containers | [architecture.html](architecture.html) | [architecture.json](architecture.json) |
-| Sequence: the 8-step workflow | [sequence.html](sequence.html) | [sequence.json](sequence.json) |
-| Workflow: redemption saga with compensations | [workflow.html](workflow.html) | [workflow.json](workflow.json) |
-| ERD: tenancy and ledger | [erd.html](erd.html) | [erd.json](erd.json) |
-| Lifecycle: redemption states | [lifecycle.html](lifecycle.html) | [lifecycle.json](lifecycle.json) |
+| Diagram                                      | Interactive page                       | Typed source                           |
+| -------------------------------------------- | -------------------------------------- | -------------------------------------- |
+| Context and containers                       | [architecture.html](architecture.html) | [architecture.json](architecture.json) |
+| Sequence: the 8-step workflow                | [sequence.html](sequence.html)         | [sequence.json](sequence.json)         |
+| Workflow: redemption saga with compensations | [workflow.html](workflow.html)         | [workflow.json](workflow.json)         |
+| ERD: tenancy and ledger                      | [erd.html](erd.html)                   | [erd.json](erd.json)                   |
+| Lifecycle: redemption states                 | [lifecycle.html](lifecycle.html)       | [lifecycle.json](lifecycle.json)       |
 
 The HTML pages are standalone files; open them locally in a browser (a git host shows their source, not the page).
 

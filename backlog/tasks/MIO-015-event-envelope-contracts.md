@@ -7,7 +7,7 @@ money_impact: enabler
 risk_class: guard
 status: todo
 depends_on: []
-blocked_by: ["starter: event bus (outbox, inbox, DLQ) on RabbitMQ"]
+blocked_by: ['starter: event bus (outbox, inbox, DLQ) on RabbitMQ']
 size: M
 ---
 

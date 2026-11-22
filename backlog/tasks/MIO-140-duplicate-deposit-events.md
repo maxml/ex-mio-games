@@ -1,6 +1,6 @@
 ---
 id: MIO-140
-title: "Part C: duplicate deposit events"
+title: 'Part C: duplicate deposit events'
 epic: EPIC-14
 priority: P1
 money_impact: direct

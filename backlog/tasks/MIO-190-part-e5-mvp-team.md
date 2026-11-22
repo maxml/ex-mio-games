@@ -1,6 +1,6 @@
 ---
 id: MIO-190
-title: "Part E5: smallest realistic team to build the MVP in six months"
+title: 'Part E5: smallest realistic team to build the MVP in six months'
 epic: EPIC-17
 priority: P1
 money_impact: enabler

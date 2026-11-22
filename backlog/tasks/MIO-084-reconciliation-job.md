@@ -1,6 +1,6 @@
 ---
 id: MIO-084
-title: "Reconciliation job and ledger conservation report"
+title: 'Reconciliation job and ledger conservation report'
 epic: EPIC-08
 priority: P1
 money_impact: direct

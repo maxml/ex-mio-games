@@ -1,6 +1,6 @@
 ---
 id: MIO-051
-title: "Casino A: simulator and adapter"
+title: 'Casino A: simulator and adapter'
 epic: EPIC-06
 priority: P0
 money_impact: direct
@@ -17,7 +17,7 @@ The first simulated casino platform, as its own container, and its adapter.
 ## Scope
 
 - `casino-a-sim`: sends signed deposit webhooks in schema A (for example `{eventId, playerId,
-  amount: {value, currency}, status: "SUCCESS", ts}` with header `X-A-Signature`), and exposes reward API A
+amount: {value, currency}, status: "SUCCESS", ts}` with header `X-A-Signature`), and exposes reward API A
   (synchronous `POST /bonuses` returning the final state). Recovery mode: native lookup by our key
   (`GET /bonuses?idempotencyKey=`).
 - Simulator UI or CLI to trigger a deposit for a player; it records issued rewards for inspection.

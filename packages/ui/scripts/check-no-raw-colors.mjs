@@ -12,7 +12,11 @@ import { join, dirname, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
-const ROOTS = [join(root, 'src'), join(root, '../../apps/web/app'), join(root, '../../apps/web/src')];
+const ROOTS = [
+  join(root, 'src'),
+  join(root, '../../apps/web/app'),
+  join(root, '../../apps/web/src'),
+];
 const ALLOWED_DIR = join(root, 'src/theme');
 const ALLOWED_FILE = join(root, 'src/tokens.css');
 
@@ -90,13 +94,16 @@ for (const file of ROOTS.filter(existsSync).flatMap((r) => [...walk(r)])) {
       // A named colour held in a constant (`const ALERT = 'crimson'`) is caught by the literal itself.
       if (/\.tsx?$/.test(file)) {
         for (const m of line.matchAll(/(['"`])\s*([A-Za-z]+)\s*\1/g)) {
-          if (NAMED.has(m[2].toLowerCase())) hits.push(`${where}   <- string literal that is a named colour "${m[2]}"`);
+          if (NAMED.has(m[2].toLowerCase()))
+            hits.push(`${where}   <- string literal that is a named colour "${m[2]}"`);
         }
       }
     });
 }
 if (hits.length) {
-  console.error(`Raw colours outside the token file and src/theme/ (use tokens):\n${hits.join('\n')}`);
+  console.error(
+    `Raw colours outside the token file and src/theme/ (use tokens):\n${hits.join('\n')}`,
+  );
   process.exit(1);
 }
 console.log('ok   no raw or named colours outside src/theme/');

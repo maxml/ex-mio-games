@@ -106,17 +106,17 @@ The lines were collected from the services' stdout with `docker compose logs`, f
 `"kind":"product_event"` (29 lines), and counted per event and tenant. Tenant A is the casino A operator,
 tenant B the casino B operator.
 
-| Funnel step                   | Event                             | Tenant A | Tenant B | Note                                                                       |
-| ----------------------------- | --------------------------------- | -------: | -------: | -------------------------------------------------------------------------- |
-| operator signs up             | `identity.operator_signed_up`     |        1 |        1 |                                                                            |
-| operator picks a plan         | `payments.plan_selected`          |        1 |        1 |                                                                            |
-| plan paid                     | `payments.payment_succeeded`      |        1 |        1 |                                                                            |
-| operator gets a casino key    | `identity.credential_issued`      |        1 |        1 |                                                                            |
-| player enters from the casino | `identity.player_launched`        |        4 |        2 | two launches per player (one token per audience)                           |
-| player deposits at the casino | `engagement.deposit_ingested`     |        2 |        1 | tenant A received 4 deliveries of 2 deposits: one deposit came 3 times     |
-| player spins                  | `engagement.spin_completed`       |        2 |        1 | the 10-way race produced exactly one spin                                  |
-| coins reach the wallet        | `payments.coins_credited`         |        2 |        1 |                                                                            |
-| player orders a reward        | `engagement.redemption_requested` |        4 |        1 | 5 parallel same-key requests are one order                                 |
+| Funnel step                   | Event                             | Tenant A | Tenant B | Note                                                                         |
+| ----------------------------- | --------------------------------- | -------: | -------: | ---------------------------------------------------------------------------- |
+| operator signs up             | `identity.operator_signed_up`     |        1 |        1 |                                                                              |
+| operator picks a plan         | `payments.plan_selected`          |        1 |        1 |                                                                              |
+| plan paid                     | `payments.payment_succeeded`      |        1 |        1 |                                                                              |
+| operator gets a casino key    | `identity.credential_issued`      |        1 |        1 |                                                                              |
+| player enters from the casino | `identity.player_launched`        |        4 |        2 | two launches per player (one token per audience)                             |
+| player deposits at the casino | `engagement.deposit_ingested`     |        2 |        1 | tenant A received 4 deliveries of 2 deposits: one deposit came 3 times       |
+| player spins                  | `engagement.spin_completed`       |        2 |        1 | the 10-way race produced exactly one spin                                    |
+| coins reach the wallet        | `payments.coins_credited`         |        2 |        1 |                                                                              |
+| player orders a reward        | `engagement.redemption_requested` |        4 |        1 | 5 parallel same-key requests are one order                                   |
 | order reaches an end          | `engagement.redemption_resolved`  |        1 |        0 | the one `rejected_funds` (a player with no coins); see the README known gaps |
 
 Operator activation is 2 of 2 operators through signup, plan, payment and key. The player loop of tenant A

@@ -1,6 +1,6 @@
 ---
 id: MIO-189
-title: "Part E3: PvP, Missions and Kingdom Builder without coupling to the integration layer"
+title: 'Part E3: PvP, Missions and Kingdom Builder without coupling to the integration layer'
 epic: EPIC-17
 priority: P1
 money_impact: enabler

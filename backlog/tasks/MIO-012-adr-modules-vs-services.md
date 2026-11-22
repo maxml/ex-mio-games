@@ -1,6 +1,6 @@
 ---
 id: MIO-012
-title: "ADR: which components are modules and which are services"
+title: 'ADR: which components are modules and which are services'
 epic: EPIC-02
 priority: P1
 money_impact: enabler

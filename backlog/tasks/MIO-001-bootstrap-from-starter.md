@@ -7,7 +7,8 @@ money_impact: enabler
 risk_class: none
 status: todo
 depends_on: []
-blocked_by: ["starter: microservices layout (one container per service)", "starter: service generator"]
+blocked_by:
+  ['starter: microservices layout (one container per service)', 'starter: service generator']
 size: M
 ---
 

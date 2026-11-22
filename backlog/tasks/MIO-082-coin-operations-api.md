@@ -1,6 +1,6 @@
 ---
 id: MIO-082
-title: "Coin operations API: credit, hold, capture, release, refund, all idempotent"
+title: 'Coin operations API: credit, hold, capture, release, refund, all idempotent'
 epic: EPIC-08
 priority: P0
 money_impact: direct

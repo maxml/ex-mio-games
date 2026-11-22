@@ -7,7 +7,7 @@ money_impact: enabler
 risk_class: none
 status: todo
 depends_on: [MIO-002]
-blocked_by: ["starter: Deckhand manifest for many services"]
+blocked_by: ['starter: Deckhand manifest for many services']
 size: S
 ---
 

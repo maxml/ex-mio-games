@@ -1,6 +1,6 @@
 ---
 id: MIO-070
-title: "ADR: new features (Missions, PvP, Kingdom Builder) consume canonical events only"
+title: 'ADR: new features (Missions, PvP, Kingdom Builder) consume canonical events only'
 epic: EPIC-07
 priority: P1
 money_impact: enabler

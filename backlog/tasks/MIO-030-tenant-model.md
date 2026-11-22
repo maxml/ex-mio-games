@@ -1,13 +1,13 @@
 ---
 id: MIO-030
-title: "Tenant model: platform tenant, operator tenants, tenants module inside identity"
+title: 'Tenant model: platform tenant, operator tenants, tenants module inside identity'
 epic: EPIC-04
 priority: P0
 money_impact: enabler
 risk_class: isolation
 status: todo
 depends_on: [MIO-040, MIO-013]
-blocked_by: ["starter: tenancy package (context, RLS, isolation test kit)"]
+blocked_by: ['starter: tenancy package (context, RLS, isolation test kit)']
 size: M
 ---
 

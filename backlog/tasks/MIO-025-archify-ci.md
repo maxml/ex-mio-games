@@ -1,6 +1,6 @@
 ---
 id: MIO-025
-title: "CI: validate, deliver, fail on diff"
+title: 'CI: validate, deliver, fail on diff'
 epic: EPIC-03
 priority: P2
 money_impact: none

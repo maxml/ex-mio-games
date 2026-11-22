@@ -12,7 +12,12 @@ export function CoinIcon({ className }: { className?: string }) {
   return (
     <svg viewBox="0 0 20 20" className={cn('size-5 shrink-0', className)} aria-hidden>
       <circle cx="10" cy="10" r="9" style={{ fill: 'var(--coin)' }} />
-      <circle cx="10" cy="10" r="6" style={{ fill: 'none', stroke: 'var(--surface)', strokeWidth: 1.5 }} />
+      <circle
+        cx="10"
+        cy="10"
+        r="6"
+        style={{ fill: 'none', stroke: 'var(--surface)', strokeWidth: 1.5 }}
+      />
     </svg>
   );
 }
@@ -20,7 +25,11 @@ export function CoinIcon({ className }: { className?: string }) {
 export function CoinBalance({ coins, live = true, size = 'md', className }: CoinBalanceProps) {
   return (
     <div
-      className={cn('inline-flex items-center gap-2 font-display font-bold tabular-nums', size === 'lg' ? 'text-3xl' : 'text-xl', className)}
+      className={cn(
+        'inline-flex items-center gap-2 font-display font-bold tabular-nums',
+        size === 'lg' ? 'text-3xl' : 'text-xl',
+        className,
+      )}
       role="status"
       aria-live={live ? 'polite' : 'off'}
     >

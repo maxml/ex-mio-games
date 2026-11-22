@@ -4,13 +4,13 @@ All colours, radii, fonts and shadows are CSS variables defined in `src/theme/to
 
 ## Token set
 
-| Group | Tokens | Used for |
-|---|---|---|
-| Surfaces and text | `bg`, `surface`, `surface-2`, `border`, `input-border`, `fg`, `fg-muted` | Page, cards, inset areas, decorative lines, form-field outlines (3:1), text |
-| Actions | `primary`, `primary-fg`, `accent`, `accent-fg`, `ring` | Buttons, selected state, focus outline |
-| Status | `success`, `warning`, `danger`, `info` | Status text and borders only, always with an icon or word |
-| Gamification | `coin`, `wheel-1` to `wheel-6`, `wheel-fg`, `wheel-rim` | Coin icon, wheel segments (cycled), segment labels, rim |
-| Shape and type | `radius-sm`, `radius-md`, `radius-lg`, `font-sans`, `font-display`, `shadow-card` | Corners, typefaces, card elevation |
+| Group             | Tokens                                                                            | Used for                                                                    |
+| ----------------- | --------------------------------------------------------------------------------- | --------------------------------------------------------------------------- |
+| Surfaces and text | `bg`, `surface`, `surface-2`, `border`, `input-border`, `fg`, `fg-muted`          | Page, cards, inset areas, decorative lines, form-field outlines (3:1), text |
+| Actions           | `primary`, `primary-fg`, `accent`, `accent-fg`, `ring`                            | Buttons, selected state, focus outline                                      |
+| Status            | `success`, `warning`, `danger`, `info`                                            | Status text and borders only, always with an icon or word                   |
+| Gamification      | `coin`, `wheel-1` to `wheel-6`, `wheel-fg`, `wheel-rim`                           | Coin icon, wheel segments (cycled), segment labels, rim                     |
+| Shape and type    | `radius-sm`, `radius-md`, `radius-lg`, `font-sans`, `font-display`, `shadow-card` | Corners, typefaces, card elevation                                          |
 
 `src/index.css` maps the semantic tokens to Tailwind utilities (`bg-surface`, `text-fg-muted`, `border-border`, `text-success`, ...) with `@theme inline`, so a utility reads the variable at runtime instead of a build-time copy.
 
@@ -19,7 +19,11 @@ All colours, radii, fonts and shadows are CSS variables defined in `src/theme/to
 A tenant theme is a JSON file with a subset of the token names (schema: `src/theme/tenant-theme.schema.json`). Two examples ship: `lucky-star.json` (dark, purple and gold, round) and `northbet.json` (light, green, square).
 
 ```json
-{ "id": "my-casino", "name": "My Casino", "tokens": { "primary": "#0b7a55", "primary-fg": "#ffffff", "radius-md": "4px" } }
+{
+  "id": "my-casino",
+  "name": "My Casino",
+  "tokens": { "primary": "#0b7a55", "primary-fg": "#ffffff", "radius-md": "4px" }
+}
 ```
 
 At runtime `themeStyle()` / `ThemeProvider` write each entry as an inline CSS variable (`--primary: ...`) on the widget root or `<html>`. Unlisted tokens fall back to `tokens.css`. No rebuild is needed; in production the server can return the same JSON in the widget bootstrap response.

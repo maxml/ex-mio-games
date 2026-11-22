@@ -7,7 +7,7 @@ money_impact: direct
 risk_class: none
 status: todo
 depends_on: [MIO-102, MIO-103, MIO-104]
-blocked_by: ["Varta: product events stream with long retention and a generated analytics dashboard"]
+blocked_by: ['Varta: product events stream with long retention and a generated analytics dashboard']
 size: M
 ---
 

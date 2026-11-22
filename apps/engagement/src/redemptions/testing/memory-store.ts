@@ -199,7 +199,8 @@ export class MemoryStore implements RedemptionStore {
     if (change.nextAttemptAt !== undefined) next.nextAttemptAt = change.nextAttemptAt;
     if (change.casinoReference !== undefined) next.casinoReference = change.casinoReference;
     if (change.failureReason !== undefined) next.failureReason = change.failureReason;
-    if (change.rewardRequest !== undefined) next.rewardRequest = structuredClone(change.rewardRequest);
+    if (change.rewardRequest !== undefined)
+      next.rewardRequest = structuredClone(change.rewardRequest);
     if (change.to === 'ISSUING' && next.firstIssuingAt === null) next.firstIssuingAt = at;
     if (change.to === 'UNKNOWN' && next.unknownSince === null) next.unknownSince = at;
     if (change.to === 'ISSUED' || change.to === 'REJECTED' || change.to === 'NEEDS_REVIEW')

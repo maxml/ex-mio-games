@@ -1,13 +1,13 @@
 ---
 id: MIO-032
-title: "Isolation enforcement: tenant context, Postgres RLS, composite keys"
+title: 'Isolation enforcement: tenant context, Postgres RLS, composite keys'
 epic: EPIC-04
 priority: P0
 money_impact: enabler
 risk_class: isolation
 status: todo
 depends_on: [MIO-030]
-blocked_by: ["starter: tenancy package (context, RLS, isolation test kit)"]
+blocked_by: ['starter: tenancy package (context, RLS, isolation test kit)']
 size: L
 ---
 
@@ -37,7 +37,7 @@ Forgetting a tenant filter cannot leak data, because the filter is not optional.
   affect zero rows; an insert in tenant A whose foreign key points at a row of tenant B fails.
 - A database-level test, connected as the app role, asserts `rolsuper = false`, `rolbypassrls = false`,
   and that the role owns no table; running the cross-tenant read as that role with `SET LOCAL
-  app.tenant_id` unset returns zero rows (not all rows).
+app.tenant_id` unset returns zero rows (not all rows).
 - Running a repository query outside a tenant context throws, it does not return all rows.
 - A migration check fails if any table with a `tenant_id` column has no RLS policy, no `WITH CHECK`, or
   RLS not forced.

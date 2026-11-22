@@ -1,6 +1,6 @@
 ---
 id: MIO-165
-title: "Security baseline: SECURITY.md, dependency review, static analysis"
+title: 'Security baseline: SECURITY.md, dependency review, static analysis'
 epic: EPIC-15
 priority: P2
 money_impact: enabler

@@ -1,6 +1,6 @@
 ---
 id: MIO-144
-title: "Part C: failed reward issuance and compensation"
+title: 'Part C: failed reward issuance and compensation'
 epic: EPIC-14
 priority: P1
 money_impact: direct

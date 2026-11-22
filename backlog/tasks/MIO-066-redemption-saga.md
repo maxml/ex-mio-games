@@ -1,13 +1,13 @@
 ---
 id: MIO-066
-title: "Redemption saga: hold, issue, capture or release, with a full state-transition table"
+title: 'Redemption saga: hold, issue, capture or release, with a full state-transition table'
 epic: EPIC-07
 priority: P0
 money_impact: direct
 risk_class: locks
 status: todo
 depends_on: [MIO-013, MIO-065, MIO-082, MIO-051, MIO-086]
-blocked_by: ["starter: idempotency package"]
+blocked_by: ['starter: idempotency package']
 size: L
 ---
 
@@ -41,11 +41,11 @@ edits never change an open redemption.
 
 ## Owners, commands and events
 
-| Owner | State it owns | Commands it accepts | Events it publishes |
-|---|---|---|---|
-| engagement (redemption) | redemption status, item and price snapshot, casino reference, attempt count | `POST /v1/redemptions` (player) | `RedemptionRequested`, `RedemptionStatusChanged`, `RedemptionIssued`, `RedemptionRejected`, `RedemptionNeedsReview` |
-| payments (hold) | hold status `HELD`, `CAPTURED`, `RELEASED`, `REFUNDED`; journal transactions | `PlaceHold`, `CaptureHold`, `ReleaseHold`, `RefundCapture` | `HoldPlaced`, `HoldRejected`, `HoldCaptured`, `HoldReleased`, `CaptureRefunded`, `HoldCommandRejected` |
-| casino adapter (integrations module in engagement) | provider request log | `issueReward(key)`, `getRewardStatus(key)` | (returns results; no events of its own) |
+| Owner                                              | State it owns                                                                | Commands it accepts                                        | Events it publishes                                                                                                 |
+| -------------------------------------------------- | ---------------------------------------------------------------------------- | ---------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------- |
+| engagement (redemption)                            | redemption status, item and price snapshot, casino reference, attempt count  | `POST /v1/redemptions` (player)                            | `RedemptionRequested`, `RedemptionStatusChanged`, `RedemptionIssued`, `RedemptionRejected`, `RedemptionNeedsReview` |
+| payments (hold)                                    | hold status `HELD`, `CAPTURED`, `RELEASED`, `REFUNDED`; journal transactions | `PlaceHold`, `CaptureHold`, `ReleaseHold`, `RefundCapture` | `HoldPlaced`, `HoldRejected`, `HoldCaptured`, `HoldReleased`, `CaptureRefunded`, `HoldCommandRejected`              |
+| casino adapter (integrations module in engagement) | provider request log                                                         | `issueReward(key)`, `getRewardStatus(key)`                 | (returns results; no events of its own)                                                                             |
 
 Commands travel through the sender's outbox and are handled through the receiver's inbox. Every command
 carries the business-operation id from MIO-086 as its idempotency key: `hold:{redemption_id}`,
@@ -54,38 +54,38 @@ is `redeem:{redemption_id}` on every attempt.
 
 ## Redemption state-transition table
 
-| From | Trigger | Guard | To | Durable effect in the same transaction |
-|---|---|---|---|---|
-| (none) | `POST /v1/redemptions` | player owns the session; item active; stock and per-player limit available | `REQUESTED` | in the **engagement** database only: redemption row with `operation_id`, item id, item version, frozen price and frozen reward mapping; a stock-and-limit reservation row (conditional decrement of stock and of the player's remaining limit); outbox `PlaceHold` |
-| `REQUESTED` | `HoldPlaced` | hold amount equals the frozen price | `RESERVED` | status change; outbox `IssueReward` job |
-| `REQUESTED` | `HoldRejected` (insufficient funds) | none | `REJECTED_FUNDS` (final) | status change; stock-and-limit reservation released; no casino call ever |
-| `RESERVED` | issue job starts | none | `ISSUING` | attempt recorded **before** the adapter call |
-| `ISSUING` | adapter success | none | `ISSUED` | casino reference stored; outbox `CaptureHold` |
-| `ISSUING` | adapter definitive rejection | rejection code is on the adapter's final list | `REJECTED` | reason stored; outbox `ReleaseHold` |
-| `ISSUING` | timeout, 5xx, network error, unparseable reply | none | `UNKNOWN` | attempt outcome stored; status inquiry scheduled (MIO-068) |
-| `UNKNOWN` | status inquiry: issued | none | `ISSUED` | as `ISSUING → ISSUED` |
-| `UNKNOWN` | status inquiry: casino has no record | attempts left | `ISSUING` | retry with the same casino key |
-| `UNKNOWN` | status inquiry: definitive rejection | none | `REJECTED` | as `ISSUING → REJECTED` |
-| `UNKNOWN` | still unknown past the maximum age (24 h) or attempts exhausted | none | `NEEDS_REVIEW` | alert; coins stay held; never released automatically |
-| `ISSUED` | `HoldCaptured` | none | `COMPLETED` (final success) | status change; stock-and-limit reservation committed |
-| `REJECTED` | `HoldReleased` | none | `RELEASED` (final failure) | status change; stock-and-limit reservation released |
-| `COMPLETED` | casino reports the reward revoked, or audited operator compensation | none | `REFUNDED` (final) | outbox `RefundCapture` |
-| `REJECTED`, `RELEASED` | late success from the casino (callback or inquiry) | none | `NEEDS_REVIEW` | alert; no automatic coin movement |
-| `ISSUED`, `COMPLETED` | late rejection from the casino | none | `NEEDS_REVIEW` | alert; no automatic coin movement |
-| any state | duplicate of an already applied trigger (same event id or same casino reply) | none | unchanged | none (inbox dedupe) |
-| `NEEDS_REVIEW` | operator resolves with a reason (`issued` or `not_issued`) | operator role; audit entry | `ISSUED` or `REJECTED` | normal capture or release follows |
+| From                   | Trigger                                                                      | Guard                                                                      | To                          | Durable effect in the same transaction                                                                                                                                                                                                                             |
+| ---------------------- | ---------------------------------------------------------------------------- | -------------------------------------------------------------------------- | --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| (none)                 | `POST /v1/redemptions`                                                       | player owns the session; item active; stock and per-player limit available | `REQUESTED`                 | in the **engagement** database only: redemption row with `operation_id`, item id, item version, frozen price and frozen reward mapping; a stock-and-limit reservation row (conditional decrement of stock and of the player's remaining limit); outbox `PlaceHold` |
+| `REQUESTED`            | `HoldPlaced`                                                                 | hold amount equals the frozen price                                        | `RESERVED`                  | status change; outbox `IssueReward` job                                                                                                                                                                                                                            |
+| `REQUESTED`            | `HoldRejected` (insufficient funds)                                          | none                                                                       | `REJECTED_FUNDS` (final)    | status change; stock-and-limit reservation released; no casino call ever                                                                                                                                                                                           |
+| `RESERVED`             | issue job starts                                                             | none                                                                       | `ISSUING`                   | attempt recorded **before** the adapter call                                                                                                                                                                                                                       |
+| `ISSUING`              | adapter success                                                              | none                                                                       | `ISSUED`                    | casino reference stored; outbox `CaptureHold`                                                                                                                                                                                                                      |
+| `ISSUING`              | adapter definitive rejection                                                 | rejection code is on the adapter's final list                              | `REJECTED`                  | reason stored; outbox `ReleaseHold`                                                                                                                                                                                                                                |
+| `ISSUING`              | timeout, 5xx, network error, unparseable reply                               | none                                                                       | `UNKNOWN`                   | attempt outcome stored; status inquiry scheduled (MIO-068)                                                                                                                                                                                                         |
+| `UNKNOWN`              | status inquiry: issued                                                       | none                                                                       | `ISSUED`                    | as `ISSUING → ISSUED`                                                                                                                                                                                                                                              |
+| `UNKNOWN`              | status inquiry: casino has no record                                         | attempts left                                                              | `ISSUING`                   | retry with the same casino key                                                                                                                                                                                                                                     |
+| `UNKNOWN`              | status inquiry: definitive rejection                                         | none                                                                       | `REJECTED`                  | as `ISSUING → REJECTED`                                                                                                                                                                                                                                            |
+| `UNKNOWN`              | still unknown past the maximum age (24 h) or attempts exhausted              | none                                                                       | `NEEDS_REVIEW`              | alert; coins stay held; never released automatically                                                                                                                                                                                                               |
+| `ISSUED`               | `HoldCaptured`                                                               | none                                                                       | `COMPLETED` (final success) | status change; stock-and-limit reservation committed                                                                                                                                                                                                               |
+| `REJECTED`             | `HoldReleased`                                                               | none                                                                       | `RELEASED` (final failure)  | status change; stock-and-limit reservation released                                                                                                                                                                                                                |
+| `COMPLETED`            | casino reports the reward revoked, or audited operator compensation          | none                                                                       | `REFUNDED` (final)          | outbox `RefundCapture`                                                                                                                                                                                                                                             |
+| `REJECTED`, `RELEASED` | late success from the casino (callback or inquiry)                           | none                                                                       | `NEEDS_REVIEW`              | alert; no automatic coin movement                                                                                                                                                                                                                                  |
+| `ISSUED`, `COMPLETED`  | late rejection from the casino                                               | none                                                                       | `NEEDS_REVIEW`              | alert; no automatic coin movement                                                                                                                                                                                                                                  |
+| any state              | duplicate of an already applied trigger (same event id or same casino reply) | none                                                                       | unchanged                   | none (inbox dedupe)                                                                                                                                                                                                                                                |
+| `NEEDS_REVIEW`         | operator resolves with a reason (`issued` or `not_issued`)                   | operator role; audit entry                                                 | `ISSUED` or `REJECTED`      | normal capture or release follows                                                                                                                                                                                                                                  |
 
 Every pair not in this table is rejected (MIO-067 tests all pairs).
 
 ## Hold state-transition table (payments)
 
-| From | Command | To | Repeated command | Conflicting command |
-|---|---|---|---|---|
-| (none) | `PlaceHold` with enough available | `HELD` | same result, one hold | n/a |
-| (none) | `PlaceHold` without enough available | none, `HoldRejected` | same rejection | n/a |
-| `HELD` | `CaptureHold` | `CAPTURED` | same result, one capture | `ReleaseHold` after capture: `HoldCommandRejected hold_already_captured` |
-| `HELD` | `ReleaseHold` | `RELEASED` | same result, one release | `CaptureHold` after release: `HoldCommandRejected hold_already_released`, redemption goes to `NEEDS_REVIEW` |
-| `CAPTURED` | `RefundCapture` | `REFUNDED` | same result, one refund | `RefundCapture` on a hold that was never captured: rejected |
+| From       | Command                              | To                   | Repeated command         | Conflicting command                                                                                         |
+| ---------- | ------------------------------------ | -------------------- | ------------------------ | ----------------------------------------------------------------------------------------------------------- |
+| (none)     | `PlaceHold` with enough available    | `HELD`               | same result, one hold    | n/a                                                                                                         |
+| (none)     | `PlaceHold` without enough available | none, `HoldRejected` | same rejection           | n/a                                                                                                         |
+| `HELD`     | `CaptureHold`                        | `CAPTURED`           | same result, one capture | `ReleaseHold` after capture: `HoldCommandRejected hold_already_captured`                                    |
+| `HELD`     | `ReleaseHold`                        | `RELEASED`           | same result, one release | `CaptureHold` after release: `HoldCommandRejected hold_already_released`, redemption goes to `NEEDS_REVIEW` |
+| `CAPTURED` | `RefundCapture`                      | `REFUNDED`           | same result, one refund  | `RefundCapture` on a hold that was never captured: rejected                                                 |
 
 ## Acceptance criteria
 

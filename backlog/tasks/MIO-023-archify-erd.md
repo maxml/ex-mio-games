@@ -1,6 +1,6 @@
 ---
 id: MIO-023
-title: "ERD: ledger and tenants"
+title: 'ERD: ledger and tenants'
 epic: EPIC-03
 priority: P2
 money_impact: none

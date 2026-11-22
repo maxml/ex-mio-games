@@ -24,15 +24,18 @@ export class IdentityTicketRedeemer implements TicketRedeemer {
 
   async redeem(ticket: string): Promise<Principal | null> {
     const fetchImpl = this.options.fetchImpl ?? fetch;
-    const res = await fetchImpl(`${this.identityUrl.replace(/\/$/, '')}${INTERNAL_ROUTES.realtimeTicketRedeem}`, {
-      method: 'POST',
-      headers: {
-        authorization: `Bearer ${await this.tokens.tokenFor('identity')}`,
-        'content-type': 'application/json',
+    const res = await fetchImpl(
+      `${this.identityUrl.replace(/\/$/, '')}${INTERNAL_ROUTES.realtimeTicketRedeem}`,
+      {
+        method: 'POST',
+        headers: {
+          authorization: `Bearer ${await this.tokens.tokenFor('identity')}`,
+          'content-type': 'application/json',
+        },
+        body: JSON.stringify({ ticket }),
+        signal: AbortSignal.timeout(this.options.timeoutMs ?? 3000),
       },
-      body: JSON.stringify({ ticket }),
-      signal: AbortSignal.timeout(this.options.timeoutMs ?? 3000),
-    });
+    );
     // A refused ticket is an answer, not a failure: 400 (malformed), 401 (bad / replayed), 403 (suspended).
     if (res.status === 400 || res.status === 401 || res.status === 403) return null;
     if (!res.ok) throw new Error(`identity realtime-tickets/redeem answered ${res.status}`);

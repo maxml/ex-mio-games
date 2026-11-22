@@ -1,6 +1,6 @@
 ---
 id: MIO-182
-title: "Part E: `docs/scaling.md` assembles the six answers"
+title: 'Part E: `docs/scaling.md` assembles the six answers'
 epic: EPIC-17
 priority: P1
 money_impact: enabler

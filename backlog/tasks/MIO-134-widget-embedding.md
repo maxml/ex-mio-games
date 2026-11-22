@@ -1,6 +1,6 @@
 ---
 id: MIO-134
-title: "Embedding: launch the widget from a casino page with a launch token, proven across two origins"
+title: 'Embedding: launch the widget from a casino page with a launch token, proven across two origins'
 epic: EPIC-13
 priority: P0
 money_impact: direct

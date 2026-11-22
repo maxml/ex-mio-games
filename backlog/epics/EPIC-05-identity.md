@@ -15,15 +15,15 @@ replaced quickly. Locally the Firebase Auth Emulator is used, so a clean clone n
 
 ## Tasks
 
-| ID | Title | Priority |
-|---|---|---|
-| MIO-040 | Identity service with `IdentityProvider` interface and Firebase Auth Emulator adapter | P0 |
-| MIO-041 | Identity provider choice: Firebase Identity Platform or AWS Cognito | P2 |
-| MIO-042 | Own user ids and own tokens (JWT + JWKS) | P0 |
-| MIO-043 | Operator staff sign-up and sign-in, email unique per tenant | P0 |
-| MIO-044 | Player identity mapping: casino launch token to player session | P0 |
-| MIO-045 | Roles and permissions (`can(subject, action, object)`) in our database | P0 |
-| MIO-046 | Service-to-service authentication | P0 |
+| ID      | Title                                                                                 | Priority |
+| ------- | ------------------------------------------------------------------------------------- | -------- |
+| MIO-040 | Identity service with `IdentityProvider` interface and Firebase Auth Emulator adapter | P0       |
+| MIO-041 | Identity provider choice: Firebase Identity Platform or AWS Cognito                   | P2       |
+| MIO-042 | Own user ids and own tokens (JWT + JWKS)                                              | P0       |
+| MIO-043 | Operator staff sign-up and sign-in, email unique per tenant                           | P0       |
+| MIO-044 | Player identity mapping: casino launch token to player session                        | P0       |
+| MIO-045 | Roles and permissions (`can(subject, action, object)`) in our database                | P0       |
+| MIO-046 | Service-to-service authentication                                                     | P0       |
 
 ## One-way doors
 

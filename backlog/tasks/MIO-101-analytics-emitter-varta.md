@@ -7,7 +7,7 @@ money_impact: enabler
 risk_class: guard
 status: todo
 depends_on: [MIO-100, MIO-013]
-blocked_by: ["starter: analytics emitter", "starter: event bus (outbox, inbox, DLQ) on RabbitMQ"]
+blocked_by: ['starter: analytics emitter', 'starter: event bus (outbox, inbox, DLQ) on RabbitMQ']
 size: M
 ---
 

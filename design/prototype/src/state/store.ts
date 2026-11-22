@@ -92,7 +92,11 @@ export function cancelPayment(id: string, store: Store = appStore): void {
  * Redemption lifecycle (pending, issuing, issued or failed then refunded). The timers live here,
  * not in a component, so leaving the widget never strands a redemption half-way.
  */
-export function startRedeem(itemId: string, store: Store = appStore, wait: (fn: () => void, ms: number) => void = (fn, ms) => void setTimeout(fn, ms)) {
+export function startRedeem(
+  itemId: string,
+  store: Store = appStore,
+  wait: (fn: () => void, ms: number) => void = (fn, ms) => void setTimeout(fn, ms),
+) {
   const id = uid('rd');
   const down = store.get().player.casinoDown; // decided when the player clicks
   store.dispatch({ type: 'redeem/start', id, itemId });

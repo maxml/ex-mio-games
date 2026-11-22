@@ -1,13 +1,13 @@
 ---
 id: MIO-112
-title: "Push events with server-side catch-up: spin granted, balance changed, redemption status changed"
+title: 'Push events with server-side catch-up: spin granted, balance changed, redemption status changed'
 epic: EPIC-11
 priority: P1
 money_impact: direct
 risk_class: isolation
 status: todo
 depends_on: [MIO-110, MIO-061, MIO-083, MIO-067, MIO-134]
-blocked_by: ["starter: resilient websocket"]
+blocked_by: ['starter: resilient websocket']
 size: M
 ---
 

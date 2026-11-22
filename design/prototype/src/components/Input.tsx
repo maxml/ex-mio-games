@@ -1,4 +1,10 @@
-import { forwardRef, useId, type InputHTMLAttributes, type ReactNode, type SelectHTMLAttributes } from 'react';
+import {
+  forwardRef,
+  useId,
+  type InputHTMLAttributes,
+  type ReactNode,
+  type SelectHTMLAttributes,
+} from 'react';
 import { cn } from './cn';
 
 // One field look for every form control. The border uses `input-border` (3:1 on the surface),
@@ -12,7 +18,10 @@ export interface InputProps extends Omit<InputHTMLAttributes<HTMLInputElement>, 
   invalid?: boolean;
 }
 
-export const Input = forwardRef<HTMLInputElement, InputProps>(function Input({ size = 'md', invalid, className, ...rest }, ref) {
+export const Input = forwardRef<HTMLInputElement, InputProps>(function Input(
+  { size = 'md', invalid, className, ...rest },
+  ref,
+) {
   return (
     <input
       ref={ref}
@@ -27,8 +36,22 @@ export interface SelectProps extends Omit<SelectHTMLAttributes<HTMLSelectElement
   size?: keyof typeof SIZE;
 }
 
-export const Select = forwardRef<HTMLSelectElement, SelectProps>(function Select({ size = 'md', className, ...rest }, ref) {
-  return <select ref={ref} className={cn(BASE, 'border-input-border', size === 'md' ? 'h-10 px-3' : 'h-9 px-2', className)} {...rest} />;
+export const Select = forwardRef<HTMLSelectElement, SelectProps>(function Select(
+  { size = 'md', className, ...rest },
+  ref,
+) {
+  return (
+    <select
+      ref={ref}
+      className={cn(
+        BASE,
+        'border-input-border',
+        size === 'md' ? 'h-10 px-3' : 'h-9 px-2',
+        className,
+      )}
+      {...rest}
+    />
+  );
 });
 
 /** Label + control + hint/error, wired with matching ids. The control is a render prop to receive them. */
@@ -48,10 +71,16 @@ export function Field({
   const text = error ?? hint;
   return (
     <div>
-      <label htmlFor={id} className="mb-1 block text-sm font-semibold">{label}</label>
+      <label htmlFor={id} className="mb-1 block text-sm font-semibold">
+        {label}
+      </label>
       {children({ id, invalid: Boolean(error), describedBy: text ? msgId : undefined })}
       {text && (
-        <p id={msgId} role={error ? 'alert' : undefined} className={cn('mt-1 text-xs', error ? 'text-danger' : 'text-fg-muted')}>
+        <p
+          id={msgId}
+          role={error ? 'alert' : undefined}
+          className={cn('mt-1 text-xs', error ? 'text-danger' : 'text-fg-muted')}
+        >
           {text}
         </p>
       )}

@@ -7,7 +7,8 @@ money_impact: enabler
 risk_class: guard
 status: todo
 depends_on: [MIO-054, MIO-063, MIO-066]
-blocked_by: ["starter: rate limiter (per tenant, per principal, per IP; fail-closed; tenant fairness)"]
+blocked_by:
+  ['starter: rate limiter (per tenant, per principal, per IP; fail-closed; tenant fairness)']
 size: S
 ---
 

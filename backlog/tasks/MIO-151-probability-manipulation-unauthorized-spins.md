@@ -1,6 +1,6 @@
 ---
 id: MIO-151
-title: "Part C: reward probability manipulation and unauthorized spins"
+title: 'Part C: reward probability manipulation and unauthorized spins'
 epic: EPIC-14
 priority: P1
 money_impact: direct

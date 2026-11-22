@@ -1,6 +1,6 @@
 ---
 id: MIO-135
-title: "Decision: how the widget lives inside a casino site (iframe or signed-token SDK) and how its session works"
+title: 'Decision: how the widget lives inside a casino site (iframe or signed-token SDK) and how its session works'
 epic: EPIC-13
 priority: P0
 money_impact: direct

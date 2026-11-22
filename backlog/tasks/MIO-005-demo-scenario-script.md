@@ -1,12 +1,36 @@
 ---
 id: MIO-005
-title: "One-command demo of the first sellable slice (signup to paid plan, with the 8-step player flow)"
+title: 'One-command demo of the first sellable slice (signup to paid plan, with the 8-step player flow)'
 epic: EPIC-01
 priority: P0
 money_impact: direct
 risk_class: none
 status: todo
-depends_on: [MIO-002, MIO-032, MIO-044, MIO-045, MIO-051, MIO-054, MIO-055, MIO-056, MIO-061, MIO-063, MIO-064, MIO-066, MIO-067, MIO-083, MIO-092, MIO-093, MIO-094, MIO-101, MIO-102, MIO-103, MIO-130, MIO-134]
+depends_on:
+  [
+    MIO-002,
+    MIO-032,
+    MIO-044,
+    MIO-045,
+    MIO-051,
+    MIO-054,
+    MIO-055,
+    MIO-056,
+    MIO-061,
+    MIO-063,
+    MIO-064,
+    MIO-066,
+    MIO-067,
+    MIO-083,
+    MIO-092,
+    MIO-093,
+    MIO-094,
+    MIO-101,
+    MIO-102,
+    MIO-103,
+    MIO-130,
+    MIO-134,
+  ]
 size: M
 ---
 
