@@ -25,6 +25,13 @@ import { createSeedProvider } from '../model/seeds'; // RED: module missing
 import { SpinService } from './spin.service'; // RED: module missing
 import { selectSegment } from './wheel'; // RED: module missing
 
+// rc fix (INV-SPIN-ENV-NOAUTH): `availableSpins` fails closed without an auth context, as `spin` does in
+// its controller. Over HTTP the service-kit interceptor sets the context; here a production player has it.
+jest.mock('@ex-mio/service-kit', () => ({
+  ...jest.requireActual('@ex-mio/service-kit'),
+  currentAuth: () => ({ mode: 'user', principalId: 'p', roles: [] }),
+}));
+
 /** The versioned seed store the REAL provider reads (R2-3). A rotation is `add(tenant, v + 1, ...)`. */
 class MemorySeedStore implements SeedStore {
   private readonly m = new Map<string, string>();
