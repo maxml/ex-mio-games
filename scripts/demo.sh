@@ -537,7 +537,12 @@ done
 call GET "$ENG/v1/redemptions/$TO_ID" -H "$(auth "$PA_ENG")"
 expect_status 200
 expect_jq '.status=="issued"'
+expect_jq '.history==[]'
+note "players get no history (its causes carry operator detail); the operator route shows the path"
+call GET "$ENG/v1/operator/redemptions/$TO_ID" -H "$(auth "${OP_ENG[A]}")"
+expect_status 200
 expect_jq '[.history[].to]|index("UNKNOWN")!=null'
+expect_jq '[.history[]|"\(.from)->\(.to)"] as $p | ($p|index("UNKNOWN->ISSUED"))!=null and ([$p[]|select(endswith("->ISSUED"))]|length)==1 and ([$p[]|select(endswith("->COMPLETED"))]|length)<=1 and ([$p[]|select(test("->(REJECTED|RELEASED|NEEDS_REVIEW)$"))]|length)==0'
 call GET "$SIM/__issued?casino=a"
 expect_jq "[.[]|select(.player_id==\"A-PLAYER-77\")]|length==3"
 note "three redemptions, three issued rewards on the casino: the timeout produced no second reward"
@@ -639,7 +644,7 @@ note "the ticket is now FAILED (code rejected); MIO reads it on its next poll (a
 wait_for "rejected order RELEASED" 100 '[ "$(redemption_state "$PB_ENG" "$REJ_ID")" = RELEASED ]' 'call GET "$ENG/v1/operator/redemptions/$REJ_ID" -H "$(auth "${OP_ENG[B]}")"'
 call GET "$ENG/v1/redemptions/$REJ_ID" -H "$(auth "$PB_ENG")"
 expect_status 200
-expect_jq '.status=="failed_refunded" and .state=="RELEASED" and (.failure_reason|startswith("casino_rejected:"))'
+expect_jq '.status=="failed_refunded" and .state=="RELEASED" and (.failure_reason|startswith("casino_rejected:")) and .history==[]'
 call GET "$ENG/v1/operator/redemptions/$REJ_ID" -H "$(auth "${OP_ENG[B]}")"
 expect_status 200
 expect_jq '[.history[]|"\(.from)->\(.to)"] as $p | ($p|index("UNKNOWN->REJECTED"))!=null and ($p|index("REJECTED->RELEASED"))!=null and ([$p[]|select(endswith("->RELEASED"))]|length)==1 and ([$p[]|select(endswith("->ISSUED"))]|length)==0'
