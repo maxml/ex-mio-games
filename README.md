@@ -442,25 +442,25 @@ can be run for one project with `pnpm nx run <project>:<target>`.
 | Frontend layering                                                                   | `pnpm lint:fsd`                                                                                                                             | nothing running                                                |
 | Design system in a browser                                                          | `pnpm storybook` (port 6006)                                                                                                                | nothing running                                                |
 
-`pnpm test` (`nx run-many -t test`, one project at a time) on this commit. Twelve of the thirteen projects pass:
+`pnpm test` (`nx run-many -t test`, one project at a time) on the release commit `33462ab` (2026-11-22). All thirteen projects pass; the skipped tests are marked
+skipped in the source, and the known-defect tests that are expected to fail are `it.failing`, counted as passed:
 
 ```text
-@ex-mio/contracts     102 passed        @ex-mio/engagement    323 passed
-@ex-mio/tenancy        19 passed        @ex-mio/payments      174 passed
-@ex-mio/logger         49 passed        @ex-mio/identity      244 passed
+@ex-mio/contracts     122 passed        @ex-mio/engagement    391 passed, 2 skipped
+@ex-mio/tenancy        19 passed        @ex-mio/payments      181 passed
+@ex-mio/logger         81 passed        @ex-mio/identity      274 passed
 @ex-mio/bus            16 passed        @ex-mio/casino-sim     25 passed
 @ex-mio/idempotency     6 passed        @ex-mio/ui             89 passed
-@ex-mio/service-kit   127 passed        @ex-mio/web           163 passed, 1 failed (164)
+@ex-mio/service-kit   160 passed, 5 skipped    @ex-mio/web    187 passed
 ```
 
-The one failure is a web timing test that ran on a machine at load average 30:
-`player-widget-money.test.tsx` "says the result is unknown, re-queries, and shows the result when the re-query
-succeeds" did not find the text `Result unknown` within its wait. It was not re-run in isolation, so it is not
-yet shown to be a flake.
+`pnpm lint`, `pnpm typecheck`, `pnpm lint:fsd`, `pnpm format:check`, `tsc` for `tests/compose` and
+`ci/check-prompts.sh` also pass on that commit.
 
-The integration suites were run on the stack on 2026-11-22, on `int/fix-round` at `f3ef110` (run "r2"):
-`pnpm test:compose` 247 of 247 passed (17 suites), `pnpm --filter @ex-mio/payments test:db` 181 of 181 passed
-(8 suites), `pnpm --filter @ex-mio/engagement test:pg` 50 of 50 passed (4 suites), and `scripts/demo.sh` passed
+The integration suites were run on a stack slot on 2026-11-22, on the same commit `33462ab` (final run; the
+output is kept with the release materials): `pnpm test:compose` 250 of 250 passed (18 suites),
+`pnpm --filter @ex-mio/payments test:db` 181 of 181 passed (8 suites),
+`pnpm --filter @ex-mio/engagement test:pg` 50 of 50 passed (4 suites), and `scripts/demo.sh` on a fresh slot passed
 40 steps and 194 assertions with 0 failures, including Part C cases C-1 to C-8 against the live stack. The Part C
 compose tests behind those cases are in `tests/compose/src/partc-issuance.compose.test.ts`. No CI run exists (the
 repository has no remote). The compose counts quoted in [`docs/ai/`](docs/ai/README.md) (98 then 107 of 111) are
@@ -626,14 +626,13 @@ reconciles every tenant's ledger and reports usage on an interval; `pnpm --filte
 
 ## Next steps
 
-1. Record one full run of `test:db`, `test:pg` and `test:compose` on the final tree (S-12).
-2. Authenticated journal replay for realtime, and a Redis adapter for more than one engagement instance.
-3. Provably-fair draws: publish a hash of the seed before play, reveal after rotation.
-4. Stripe provider and hosted checkout; entitlements by plan. Refresh tokens and a production identity provider.
-5. Rate limits per tenant; alerts on reconciliation and dead-letter depth.
-6. Service routes for the sandbox check, go-live and reading the published rules and wheel back, so the console stops answering them from its mock.
-7. Per-service deployment secrets and the blue-green rollout through Deckhand; observability through Varta.
-8. Move integrations into their own service when a second operator team needs independent releases.
+1. Authenticated journal replay for realtime, and a Redis adapter for more than one engagement instance.
+2. Provably-fair draws: publish a hash of the seed before play, reveal after rotation.
+3. Stripe provider and hosted checkout; entitlements by plan. Refresh tokens and a production identity provider.
+4. Rate limits per tenant; alerts on reconciliation and dead-letter depth.
+5. Service routes for the sandbox check, go-live and reading the published rules and wheel back, so the console stops answering them from its mock.
+6. Per-service deployment secrets and the blue-green rollout through Deckhand; observability through Varta.
+7. Move integrations into their own service when a second operator team needs independent releases.
 
 ## How this was built
 
