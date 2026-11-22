@@ -1,10 +1,18 @@
 'use client';
 
 import { ThemeProvider } from '@/layers/shared/ui';
+import { useWidgetOpened } from '../model/use-widget-opened';
 import { PlayerWidgetView } from './PlayerWidgetView';
 
 /** Route body of the embeddable widget: tenant theme on the root, the widget in a narrow column. */
-export function EmbeddedPlayerWidget({ themeId }: { themeId?: string }) {
+export function EmbeddedPlayerWidget({
+  themeId,
+  launchToken,
+}: {
+  themeId?: string;
+  launchToken?: string;
+}) {
+  useWidgetOpened(launchToken);
   return (
     <ThemeProvider initialId={themeId ?? 'mio'}>
       <main id="main" tabIndex={-1} className="mx-auto w-full max-w-xl p-2 outline-none">

@@ -103,7 +103,9 @@ the `player_launched` step are counted as two populations, not joined per person
 - The web BFF reads the tenant of an anonymous `widget_opened` from the launch token's key id,
   unverified (nothing can verify it before the exchange). A forged key id can add anonymous rows to
   some tenant. The event is not used for money.
-- The widget page does not call `POST /api/widget/opened` yet: the browser launch flow is not wired
-  (no caller of `/api/session/launch`). Call it on mount, with the launch token in the body, when it is.
+- The embedded widget calls `POST /api/widget/opened` once per mount (`useWidgetOpened`). The launch
+  token comes from the page's `?token=` query parameter; without it, and without a player session,
+  the BFF has no tenant to name and writes nothing. The browser launch flow itself
+  (`/api/session/launch`) still has no caller.
 - The commit hook is TypeORM's transaction subscriber, registered on first use. The tests drive it with
   a stand-in transaction that calls the same subscriber methods; a Postgres run was not part of this change.
