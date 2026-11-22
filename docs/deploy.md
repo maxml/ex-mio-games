@@ -2,7 +2,7 @@
 
 The manifest is `.deckhand/deploy.yml`; the contract is in the Deckhand repo (`docs/contracts/deploy-manifest.md`).
 Validate it with the Deckhand engine: `validate --manifest .deckhand/deploy.yml` and `schema-check --manifest .deckhand/deploy.yml`.
-The six `services.*.env` secret warnings it prints are the per-service mappings described below and are accepted.
+The `services.*.env` secret warnings it prints are the per-service mappings and the `db` role passwords described below and are accepted.
 
 ## Shape
 
@@ -45,8 +45,11 @@ Generate every secret fresh (hex, no `$`, no quotes, no spaces); never reuse the
 
 `docker/postgres/init.sh` creates the three databases and six roles on the first start of an empty data directory.
 It has no password defaults: a missing `<SVC>_OWNER_DB_PASSWORD` / `<SVC>_APP_DB_PASSWORD` aborts the init. Each value
-is taken from the environment, else from the mounted secrets file (`/run/secrets/deckhand_secrets.env`). Local compose
-keeps the stock `postgres` image, mounts the script and passes its development values explicitly.
+is taken from the environment, else (fallback only, when readable) from the mounted secrets file
+(`/run/secrets/deckhand_secrets.env`). The postgres entrypoint runs the script as uid `postgres` and drops supplementary
+groups, so it cannot read the `root:root` `0640` secrets file: the manifest therefore passes the six role passwords to
+the `db` service as inline `env:` entries (like `POSTGRES_PASSWORD`; accepted validator warnings, visible to
+`docker inspect`). Local compose keeps the stock `postgres` image, mounts the script and passes its development values explicitly.
 
 ## Migrations and backup
 

@@ -14,10 +14,11 @@
 # Passwords come from the container environment and there are NO defaults: a missing
 # variable aborts the init (the container stays down) instead of creating a role with a
 # well-known password. The local compose file passes its development values explicitly.
-# Under Deckhand the six variables are not in the container environment but in the mounted
-# secrets file (/run/secrets/deckhand_secrets.env, KEY=value lines, hex values): a variable
-# that is not set in the environment is read from there. Override the path with
-# DECKHAND_SECRETS_FILE.
+# Under Deckhand the six variables are passed inline in the db service `env:` of
+# .deckhand/deploy.yml: this script runs as uid postgres, which cannot read the root:root 0640
+# secrets file. As a fallback only, a variable that is not set in the environment is read from
+# the mounted secrets file (/run/secrets/deckhand_secrets.env, KEY=value lines, hex values)
+# when it is readable. Override the path with DECKHAND_SECRETS_FILE.
 set -eu
 
 secrets_file="${DECKHAND_SECRETS_FILE:-/run/secrets/deckhand_secrets.env}"

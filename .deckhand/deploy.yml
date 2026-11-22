@@ -162,8 +162,15 @@ services:
     env:
       POSTGRES_USER: '${POSTGRES_USER}'
       POSTGRES_PASSWORD: '${POSTGRES_PASSWORD}'
-      # The six role passwords (<SVC>_OWNER_DB_PASSWORD, <SVC>_APP_DB_PASSWORD) are NOT inline:
-      # init.sh reads them from the mounted secrets file, and aborts when one is missing.
+      # The six role passwords are inline too (accepted warnings, like POSTGRES_PASSWORD): the
+      # postgres entrypoint runs init.sh as uid postgres, which cannot read the root:root 0640
+      # secrets file. init.sh reads the environment first; a missing one aborts the init.
+      IDENTITY_OWNER_DB_PASSWORD: '${IDENTITY_OWNER_DB_PASSWORD}'
+      IDENTITY_APP_DB_PASSWORD: '${IDENTITY_APP_DB_PASSWORD}'
+      ENGAGEMENT_OWNER_DB_PASSWORD: '${ENGAGEMENT_OWNER_DB_PASSWORD}'
+      ENGAGEMENT_APP_DB_PASSWORD: '${ENGAGEMENT_APP_DB_PASSWORD}'
+      PAYMENTS_OWNER_DB_PASSWORD: '${PAYMENTS_OWNER_DB_PASSWORD}'
+      PAYMENTS_APP_DB_PASSWORD: '${PAYMENTS_APP_DB_PASSWORD}'
     resources: { cpu: '1', memory: '1G' }
   rabbitmq:
     image: rabbitmq:3.13
