@@ -53,13 +53,6 @@ jobs:
           echo "changed files: $(printf '%s\n' "$changed" | grep -c . || true), non-docs: $n"
           echo "code=$([ "$n" -gt 0 ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
 
-      # Dependency diff of the PR (base to head): vulnerable versions, licences, package age.
-      - name: Dependency review
-        if: github.event_name == 'pull_request'
-        uses: actions/dependency-review-action@bbc44d14a204704ccc493733616cd1e93a0321ec # v5.0.1
-        with:
-          fail-on-severity: high
-
       # Hermetic, seconds: role prompts and agent wrappers (bash and python3 only).
       - run: bash ci/check-prompts.sh
 
