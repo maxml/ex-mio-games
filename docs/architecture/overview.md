@@ -91,7 +91,7 @@ The operator console (in `web`, backed by `identity`, `engagement` and `payments
 
 ## 12. Observability, audit, security
 
-- **Observability.** Structured JSON logs with redaction go to stdout, where Varta collects them. Partial: the product-event line contract (matching Varta's schema, with a conformance test) and its logger function are built, but no service calls it yet, so no product event is emitted. Next: emit business events through the outbox, and changes inside Varta (separate stream, longer retention). Wiring to a running Varta is described, not run here.
+- **Observability.** Structured JSON logs with redaction go to stdout, where Varta collects them. Built: the product-event line contract (matching Varta's schema, with a conformance test) and 12 product events that identity, engagement, payments and the web backend write to stdout after their commits (`docs/analytics.md` lists each event and its emitting function; for example `SpinService.spin` emits `engagement.spin_completed`). Partial: no Varta instance received a line, and there is no metrics endpoint or counter. Next: changes inside Varta (separate stream, longer retention). Wiring to a running Varta is described, not run here.
 - **Audit.** An append-only audit log in `identity`. Every request that carries `acting_tenant`, allowed or refused, is audited through an `audit_intents` table (fail closed with 503 if the intent cannot be written) and an `audit.acting_request` event that identity consumes. The decision records the authorization outcome, not the HTTP status. Personal data stays in `identity`, so erasure never edits audit rows.
 - **Security.** Casino webhook signatures in the adapters; RS256 JWT with JWKS; service tokens with an audience and route allow-list per client (a forged `x-tenant-id` is ignored everywhere); RBAC through a permission guard; zod validation on controllers; secrets redacted at the logger; fail-fast configuration; separate owner and app database roles. Rate limiting is next, not built.
 - **Honest limit.** Isolation of services at deployment level, in particular per-service secret delivery, is designed only and is not claimed. Database-level isolation is built and tested.
@@ -123,7 +123,7 @@ The operator console (in `web`, backed by `identity`, `engagement` and `payments
 | Identity interface with Firebase Auth Emulator | Built (staff and operators; players use the launch token) |
 | Realtime push (Socket.IO gateway in engagement, one-time ticket, rooms per tenant and player) | Built, at most once |
 | Websocket replay of missed events | Next (client resyncs over REST) |
-| Product events on stdout (Varta contract) | Partial (contract and logger built, no service emits yet) |
+| Product events on stdout (Varta contract) | Built (12 events emitted, conformance-tested); not received by a running Varta |
 | Redis balance projection | Partial (wired and optional, off in default compose) |
 | Rate limiting, Redis counters | Next |
 | Operator console writes for rules and wheel versions | Partial (reads real, publish calls mocked) |

@@ -29,7 +29,7 @@ Identity provider choice. Criteria, in order: per-tenant users with the same ema
 
 ### Phase 1: observability and SLOs
 
-- Structured logs with correlation, tenant and trace ids go to Varta (structured stdout logs are Built, the product-event contract is Built but no service emits product events yet, and the wiring to a running Varta is described, not run here; changes inside Varta such as a separate stream and longer retention are Designed).
+- Structured logs with correlation, tenant and trace ids go to Varta (structured stdout logs are Built, the product-event contract is Built and 12 product events are emitted to stdout by the services (`docs/analytics.md`), but the wiring to a running Varta is described, not run here; changes inside Varta such as a separate stream and longer retention are Designed).
 - Two user-journey SLOs to start: deposit to spin credit visible, and redemption request to final status. Initial targets are proposals: 99.5% of deposits credit a spin within 5 seconds, 99% of redemptions reach a final status within 2 minutes, zero double credits. Revisit after four weeks of real data.
 - Alerts tied to the SLOs and to the invariants: ledger reconciliation mismatch, DLQ depth, redemptions in `UNKNOWN` or `NEEDS_REVIEW` past their deadline, inbound signature failures per tenant.
 - Runbooks: DLQ replay, `NEEDS_REVIEW` redemption, casino unreachable, broker down. One named on-call role.

@@ -1,4 +1,4 @@
-# Decision log (D-1 to D-25)
+# Decision log (D-1 to D-28)
 
 Tests, comments and docs in this repository cite decisions as `D-<n>`. This page resolves them.
 Each entry has the decision, the reason, and where it is enforced. A decision came either from the
@@ -216,6 +216,48 @@ after reconnect. Pushes leave only after the handler's transaction commits.
 Reason: the websocket is mandatory; engagement already consumes the events.
 Enforced in: `apps/engagement/src/realtime/realtime.gateway.ts`, `packages/contracts/src/realtime.ts`,
 `apps/engagement/src/realtime/realtime.gateway.test.ts` (`COMMIT-ONLY`).
+
+## Environments, audit scope and demo gaps
+
+**D-26. A third occurrence of a defect class is closed at its choke point.** The final release-candidate
+review found two classes that earlier rounds had "fixed": environment scoping (spin credits, then
+integration secrets, then ingest dedupe) and the audit decision (first the HTTP status, then refusals
+inside a handler). By D-17 the call sites stop being patched and both become invariants.
+INV-ENV: every table that holds environment-scoped data carries `sandbox`, and every unique constraint,
+primary key and dedupe or idempotency key on such a table includes `sandbox` (or `environment`). Keys
+built in code go through one helper that requires the environment. INV-AUD: the audit `decision` is
+`refused` for every authorization refusal, whether a guard or a policy check inside a service raised it
+(one typed error, `AuthorizationRefused`); every other outcome is `allowed` with its real status. This
+supersedes the literal wording of D-24.
+Reason: three rounds on the same class showed that call-site fixes move the defect.
+Enforced in: only the envelope part today, `packages/contracts/src/events.contracts.test.ts`
+(`INV-ENV-SANDBOX`). The schema scan over `pg_constraint` and the role-matrix audit test are written
+by the review owner, are not in this tree, and are listed in `submission/known-gaps.md` (S-11).
+
+**D-27. Gaps found by the end-to-end demo.** The operator registers each casino's reward API (base URL
+and a per-environment signing secret) in identity, which serves it to engagement as `reward_api`;
+without it an order goes to `NEEDS_REVIEW` with `no_adapter`, the fail-safe. Engagement gets audited
+`PUT /v1/operator/wheel` (versioned segments and weights, sum above zero) and `PUT /v1/operator/rules`
+(deposit to spins) for `operator_admin`, and a new tenant gets a default wheel and rule on signup.
+The operator reads the provider subscription id from `GET /v1/operator/plan` (payments). The web
+runtime config returns `realtimeUrl`, and engagement allows the web origin; the same-origin
+`/socket.io/*` rewrite stays as a fallback, not as the main path. `scripts/demo.sh` is the acceptance
+test: its setup steps may use the new routes, its assertions are never edited by the implementer.
+Reason: the recorded demo showed no rule, no reward API and a broken socket path on a fresh stack.
+Enforced in: `apps/identity/src/identity.reward-api.test.ts`,
+`apps/engagement/src/controllers/operator-config.controller.test.ts`,
+`apps/engagement/src/integrations/tenant-ports.test.ts`, `apps/web/src/layers/shared/config/runtime.test.ts`.
+
+**D-28. Defaults for the invariant-test owner.** The audit log records acting requests and service
+calls (D-11); a refusal for an ordinary operator, viewer or player goes to the structured log, not to
+the audit log. One user serves both environments, and the environment comes from the credential or the
+launch token, never from the user. A sandbox order skips the stock step and the per-player limit, and
+carries `sandbox=true`; `store_items` stays global and `item_player_usage` includes `sandbox`.
+`POST /v1/spins` requires the `player` role; acting principals and operators are refused. The owner may
+override these defaults.
+Reason: the invariant tests of D-26 needed a stated answer for each of these cases.
+Enforced in: the sandbox order rule by the saga (`apps/engagement/src/services/redemption-saga.service.ts`);
+the role and audit-scope rows are pinned only by the review owner's matrix test, not yet in this tree.
 
 ## Process and analytics
 

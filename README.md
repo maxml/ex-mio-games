@@ -309,8 +309,13 @@ The one failure is a web timing test that ran on a machine at load average 30:
 succeeds" did not find the text `Result unknown` within its wait. It was not re-run in isolation, so it is not
 yet shown to be a flake.
 
-<!-- OUTPUT: `pnpm --filter @ex-mio/payments test:db` and `pnpm --filter @ex-mio/engagement test:pg` -->
-<!-- OUTPUT: `pnpm test:compose` (suite and test counts against the running stack) -->
+No output of `pnpm --filter @ex-mio/payments test:db`, `pnpm --filter @ex-mio/engagement test:pg` or
+`pnpm test:compose` is committed on this tree, and no CI run exists (the repository has no remote). The compose
+counts quoted in [`docs/ai/`](docs/ai/README.md) (98 then 107 of 111) are reviewer-reported on an earlier tree.
+See S-12 in [`docs/submission/known-gaps.md`](docs/submission/known-gaps.md). `test:pg` needs `DATABASE_URL` set
+as the engagement service role, for example
+`postgresql://engagement:engagement-dev@localhost:54329/engagement` (from the header of
+`apps/engagement/src/redemptions/redemption-store.pg.itest.ts`).
 
 ```text
 $ pnpm lint
@@ -336,9 +341,12 @@ second one.
   in two tenants. Players do not have provider accounts: a player is the casino's launch token plus our mapping.
 - Coins are virtual, whole numbers, with no cash value. Amounts from casinos are integers in minor units; a float
   is rejected.
-- A deposit grants spins by a per-tenant rule; the demo rule is "a deposit of at least 20.00 grants one spin".
-- Rules, reward tables and store items are tenant configuration, and odds changes are versioned. Publishing a new
-  rule or wheel version has no API route yet; the console answers those calls from its mock adapter.
+- A deposit grants spins by a per-tenant rule. A new tenant gets a default rule and wheel on signup (D-27, see
+  `docs/submission/known-gaps.md` G-4); the demo rule is "a deposit of at least 20.00 grants one spin", and an
+  operator changes it with `PUT /v1/operator/rules`. No SQL seeding is needed on a fresh stack.
+- Rules, reward tables and store items are tenant configuration, and odds changes are versioned. Publishing uses
+  `PUT /v1/operator/rules` and `PUT /v1/operator/wheel`; the console still answers those calls from its mock
+  adapter until the BFF is switched to the routes (G-4).
 - The coin credit for a spin travels by event, so a balance read is eventually consistent for a moment after a
   spin. Money commands read Postgres.
 - Access tokens last 15 minutes. Refresh tokens are not built.
@@ -365,7 +373,7 @@ Checked against the code. The full table with the reasons is section 14 of
 | Operator signup and plan checkout against the fake provider                                  | Built                                                                  |
 | Realtime push over Socket.IO with a one-time ticket                                          | Built, at most once                                                    |
 | Web: player widget and operator console                                                      | Built, minimal; rules and wheel publishing are mocked (see known gaps) |
-| Product events for Varta                                                                     | Partial: contract and logger function, no service emits yet            |
+| Product events for Varta                                                                     | Built: 12 events on stdout; no Varta instance received them            |
 | Redis balance projection                                                                     | Partial: wired, optional, off in default compose                       |
 | Missed-event replay on websocket reconnect                                                   | Next                                                                   |
 | Rate limiting                                                                                | Next                                                                   |
@@ -419,12 +427,13 @@ reconciles every tenant's ledger and reports usage on an interval; `pnpm --filte
 
 ## Next steps
 
-1. Fill the recorded outputs in this README from one full run of the stack.
+1. Record one full run of `test:db`, `test:pg` and `test:compose` on the final tree (S-12).
 2. Authenticated journal replay for realtime, and a Redis adapter for more than one engagement instance.
 3. Provably-fair draws: publish a hash of the seed before play, reveal after rotation.
 4. Stripe provider and hosted checkout; entitlements by plan. Refresh tokens and a production identity provider.
-5. Rate limits per tenant; emit product events from the services; alerts on reconciliation and dead-letter depth.
-6. API routes for publishing rules and wheel versions, so the console stops answering them from its mock.
+5. Rate limits per tenant; alerts on reconciliation and dead-letter depth.
+6. Switch the web BFF to the rules and wheel routes, so the console stops answering them from its mock; add the
+   sandbox-check and go-live routes (G-4).
 7. Per-service deployment secrets and the blue-green rollout through Deckhand; observability through Varta.
 8. Move integrations into their own service when a second operator team needs independent releases.
 
