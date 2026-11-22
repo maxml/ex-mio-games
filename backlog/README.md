@@ -88,6 +88,8 @@ but code waits for the starter capability. A task whose blocker is a decision or
 
 ## Estimates and totals
 
+The hours below are planning data: the estimated effort for a human team to take the product to production. They are not the time the prototype took.
+
 **Buffer rule (owner decision):** every task carries a 20% buffer. `estimate_hours` is always
 `ceil(estimate_hours_base * 1.2)`; the size bands apply to the base value. The buffer is per task, so the
 totals below are sums of the per-task values, not 1.2 times the base total.

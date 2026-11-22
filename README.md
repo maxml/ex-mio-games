@@ -19,8 +19,9 @@ Terms used here are explained in the [glossary](docs/glossary.md).
 - Design: 14 ADRs and 5 architecture diagrams in [`docs/adrs/`](docs/adrs/) and [`docs/architecture/`](docs/architecture/README.md).
 - Process: AI agents in separate roles, with reviews of up to three rounds per area. See [How AI was used](#how-ai-was-used).
 - Planning: the whole product is split into a backlog of **166 tasks in 18 epics**, each with acceptance criteria
-  and an hour estimate: 2,828 hours of estimated effort in total. Start at
-  [`backlog/README.md`](backlog/README.md).
+  and a risk class. The prototype implements the first slice (P0, 49 tasks) and the Part C reliability cases; the
+  rest of the tasks are planned, not built. Start at [`backlog/README.md`](backlog/README.md). The effort estimate for a
+  human team to take it to production is in [`docs/scaling/`](docs/scaling/README.md).
 
 Why these tasks, in this order: the first goal is a sellable slice (priority P0): an operator signs up, registers a
 casino, and a deposit turns into a spin, coins and an issued reward. Here the casino is the simulator. Anything that protects money or tenant data

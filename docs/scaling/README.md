@@ -194,6 +194,8 @@ Answer: three engineers and a part-time product owner, about 3.5 FTE. Everything
 
 Not in the core team and bought or borrowed: SRE (about 0.2 FTE, a contractor for the first two months to set up backups, alerts and the restore drill; after that the founding engineer carries on-call), QA (replaced by test-first process, Section 6).
 
+The hours in this section are the estimated effort for a human team to take the product to production. They are not the time the prototype took.
+
 Reasoning for the number: the MVP scope is the first sellable slice (P0, 49 tasks) plus production hardening (P1, 83 tasks); P2 and P3 (34 tasks) come later. Source of the effort figure: the backlog in this repository. Every task file carries `estimate_hours`, the estimated effort of one experienced engineer to reach the acceptance criteria (code, tests, review fixes, docs; no meetings). The totals below are the sums of that field and are reproduced by the command in `backlog/README.md`. Assumptions of this plan: 6 productive hours per engineer per day and 21 working days per month.
 
 | Scope                     | Tasks | Estimated effort (hours) | Person-days at 6 h | Person-months at 21 days |
