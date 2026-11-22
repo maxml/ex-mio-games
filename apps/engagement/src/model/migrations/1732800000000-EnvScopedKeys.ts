@@ -24,10 +24,6 @@ export class EnvScopedKeys1732800000000 implements MigrationInterface {
     await q.query(
       `ALTER TABLE "inbound_events" ADD UNIQUE ("tenant_id", "sandbox", "source", "external_event_id")`,
     );
-    // The row id is minted by engagement, but the primary key names the environment too, so every
-    // key of the table includes it (INV-ENV-SCHEMA-2). Nothing references this key.
-    await q.query(`ALTER TABLE "inbound_events" DROP CONSTRAINT "inbound_events_pkey"`);
-    await q.query(`ALTER TABLE "inbound_events" ADD PRIMARY KEY ("tenant_id", "sandbox", "id")`);
 
     await q.query(
       `ALTER TABLE "item_player_usage" ADD COLUMN "sandbox" boolean NOT NULL DEFAULT false`,
@@ -49,8 +45,6 @@ export class EnvScopedKeys1732800000000 implements MigrationInterface {
       `ALTER TABLE "item_player_usage" ADD PRIMARY KEY ("tenant_id", "item_id", "player_id")`,
     );
     await q.query(`ALTER TABLE "item_player_usage" DROP COLUMN "sandbox"`);
-    await q.query(`ALTER TABLE "inbound_events" DROP CONSTRAINT "inbound_events_pkey"`);
-    await q.query(`ALTER TABLE "inbound_events" ADD PRIMARY KEY ("tenant_id", "id")`);
     await q.query(
       `ALTER TABLE "inbound_events" DROP CONSTRAINT "inbound_events_tenant_id_sandbox_source_external_event_id_key"`,
     );
