@@ -27,6 +27,7 @@ structured log lines under Varta's telemetry contract; it has no runtime depende
 | MIO-107 | Privacy: PII rules, consent, delete-by-actor runbook                                   | P1       |
 | MIO-108 | Experiment exposure event                                                              | P3       |
 | MIO-199 | Product events take the environment from one source, not a required field nobody reads | P2       |
+| MIO-215 | A large amount in a product event prop does not drop the whole event                   | P2       |
 
 ## One-way doors
 
