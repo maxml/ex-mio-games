@@ -7,14 +7,14 @@
 | What went wrong                                                                                                                                                           | How it was caught                                                           | Evidence                                                      |
 | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------- | ------------------------------------------------------------- |
 | Tests that could not fail: a cache test that built a new verifier per call, a loop sized from the constant it claimed to pin, a row-level-security test over empty tables | The reviewer deleted one entry or one guard and watched the test stay green | `defects-found.md` case 10; `verification.md`                 |
-| A no-op left in place of a removed call, with a test that needed the no-op                                                                                                | The reviewer read the test against the decision and rewrote it              | case study 5, `6d88297`, `11497e7`                            |
-| A failure only the real stack showed (acting answered 500)                                                                                                                | A reviewer test run under compose                                           | case study 3, `223c35f`, `11497e7`                            |
-| A money path nobody tested: sandbox token spends a production credit                                                                                                      | End-to-end trace of one flag across four services                           | case study 1, `adb795a`, `1a810ae`                            |
+| A no-op left in place of a removed call, with a test that needed the no-op                                                                                                | The reviewer read the test against the decision and rewrote it              | case study 5, `3c92da3`, `07651b9`                            |
+| A failure only the real stack showed (acting answered 500)                                                                                                                | A reviewer test run under compose                                           | case study 3, `37ab302`, `07651b9`                            |
+| A money path nobody tested: sandbox token spends a production credit                                                                                                      | End-to-end trace of one flag across four services                           | case study 1, `fd7d690`, `f113368`                            |
 | A durable record that said the wrong thing: audit decision from the status code, a `provider_links` row for an account that never existed                                 | A reader-side test: read the record and check what it says                  | case studies 2 and 5                                          |
 | Frozen tests that no correct code could pass: a token expected to be expired at +901 s after a 30 s leeway was decided                                                    | The reviewer built a reference implementation and ran the tests against it  | `verification.md`, "Frozen tests that could not be satisfied" |
 | Reviewer's own test was vacuous: it went green with the guard removed because it failed on a different guard first                                                        | A later round re-applied the mutation                                       | `verification.md`, "A reviewer's own spec was vacuous too"    |
 | A mutation claim that was false (dropping a row lock)                                                                                                                     | 30 runs, no failure; the claim was withdrawn                                | `verification.md`                                             |
-| The same one-token SQL mistake in a helper and again in a test (`name[]` not cast)                                                                                        | Compose runs of the integrated tree                                         | case study 4, `0335cea`, `8bb4701`                            |
+| The same one-token SQL mistake in a helper and again in a test (`name[]` not cast)                                                                                        | Compose runs of the integrated tree                                         | case study 4, `58d5fd6`, `b43d404`                            |
 
 ## Fixes that moved the defect instead of removing it
 
@@ -42,13 +42,13 @@ repository:
 
 - **F5, a shape the first model could not hold.** The identity integration reported one environment,
   the newest credential's, so issuing a sandbox credential took away the production webhook secret.
-  The merged tree still had it, so `adb795a` added the red test `F5-1` in
+  The merged tree still had it, so `fd7d690` added the red test `F5-1` in
   `apps/identity/src/identity.http.test.ts` (a production and a newer sandbox credential must both be
   served, each with its environment). The fix changed the contract itself, not one call site
-  (`1a810ae`: `packages/contracts/src/identity.ts` and `credentials.service.ts`).
+  (`f113368`: `packages/contracts/src/identity.ts` and `credentials.service.ts`).
 - **The after-commit fake.** The `COMMIT-ONLY` tests used a fake transaction that left
   `isTransactionActive` true when the commit and rollback events fired, which real TypeORM does not.
-  The push fix could look correct against a fake that did not behave like the real runner. `a83c8be`
+  The push fix could look correct against a fake that did not behave like the real runner. `615f174`
   changed the fake (see the diff of `realtime.gateway.test.ts`) when the push moved to the logger's
   `afterCommit`.
 - **The audit decision and the acting ban, the no-op for D-21 and the sandbox credit table**, described

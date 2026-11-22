@@ -12,17 +12,17 @@ kind matters as much as the first, because a test that cannot fail gives false c
 
 | Step                                  | What happened                                                                                                                                                                                                                                                                                                                                                                     | Reference                    |
 | ------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------- |
-| 1. The defect                         | Prototype v1. The wheel component credited the last spin from an effect that ran on mount. The widget unmounts the wheel when the player changes tab, so spinning, opening the Store tab and returning credited the same prize again                                                                                                                                              | `f8e2380`                    |
+| 1. The defect                         | Prototype v1. The wheel component credited the last spin from an effect that ran on mount. The widget unmounts the wheel when the player changes tab, so spinning, opening the Store tab and returning credited the same prize again                                                                                                                                              | `531ae65`                    |
 | 2. How the reviewer found it          | A click-test in a real browser: 445 coins, spin, Store tab, back to Wheel: 470 coins and a new history row without a spin. Reproduced in two runs. A related defect from the same root: switching tab during the 4.2 s animation consumed the spin and showed no coins until the player came back                                                                                 | review round 1               |
 | 3. What the reviewer asked for        | Not a patch at the call site. Credit when the result arrives, in the one place that stands in for the server, keyed by a spin id; the wheel only animates and ignores a result it already holds when it mounts. The test the reviewer specified: mount the wheel with a non-null result and assert that it reports no spin end                                                    | review round 1               |
-| 4. The fix                            | The credit moved into the store reducer, keyed by spin id (a spin id is credited once). The wheel remembers the last id it saw and starts from the id it was given at mount                                                                                                                                                                                                       | `d1460a2`                    |
-| 5. The tests that pin it              | `Wheel.test.tsx`: "mounted with a result already in hand: no animation, no onSpinEnd (the old re-credit bug)" and "unmount and remount with the same result does not report it again". `store.test.ts`: "replaying the same spin id (what a remount used to do) changes nothing" and "subscribing and unsubscribing views never moves the balance"                                | `d1460a2`                    |
-| 6. The mutation that turns them red   | The reviewer removed the spin-id check from the reducer: `store.test.ts` "replaying the same spin id" went red, 1 of 17. Separately the reviewer replaced the wheel's initial `handled` value with `null`: the 2 remount tests went red. Both were restored afterwards                                                                                                            | review round 2, at `d1460a2` |
+| 4. The fix                            | The credit moved into the store reducer, keyed by spin id (a spin id is credited once). The wheel remembers the last id it saw and starts from the id it was given at mount                                                                                                                                                                                                       | `cadcce7`                    |
+| 5. The tests that pin it              | `Wheel.test.tsx`: "mounted with a result already in hand: no animation, no onSpinEnd (the old re-credit bug)" and "unmount and remount with the same result does not report it again". `store.test.ts`: "replaying the same spin id (what a remount used to do) changes nothing" and "subscribing and unsubscribing views never moves the balance"                                | `cadcce7`                    |
+| 6. The mutation that turns them red   | The reviewer removed the spin-id check from the reducer: `store.test.ts` "replaying the same spin id" went red, 1 of 17. Separately the reviewer replaced the wheel's initial `handled` value with `null`: the 2 remount tests went red. Both were restored afterwards                                                                                                            | review round 2, at `cadcce7` |
 | 7. What the fix moved                 | The reviewer re-ran the browser scenario (445 stays 445, history rows 4 stay 4), then looked for new ways to get the same double credit: a double click (one spin consumed), routing away mid-spin (one credit), two browser tabs (separate in-memory stores, so nothing to double-credit; the real ledger must repeat the id check on the server). It did not find a second path | review round 2               |
-| 8. The reviewer's own regression spec | The reviewer committed its own properties for the neighbouring money rules found in the same round (`ac16804`). Those found two further defects in the fix (go-live without a paid plan, and a payment for a cancelled plan, cases 1 and 2 below), fixed in `b0e2878`                                                                                                             | `ac16804`, `b0e2878`         |
+| 8. The reviewer's own regression spec | The reviewer committed its own properties for the neighbouring money rules found in the same round (`e8792eb`). Those found two further defects in the fix (go-live without a paid plan, and a payment for a cancelled plan, cases 1 and 2 below), fixed in `069743c`                                                                                                             | `e8792eb`, `069743c`         |
 
 Outcome: round 3 re-ran 29 of 29 tests and 9 mutations, all red as expected, and recommended merge.
-It was merged in `b0776d5`. The suite had 17 tests at `d1460a2` and 29 at `b0e2878`.
+It was merged in `1eebc05`. The suite had 17 tests at `cadcce7` and 29 at `069743c`.
 
 ## Other defects, in the order they were found
 
@@ -34,7 +34,7 @@ It was merged in `b0776d5`. The suite had 17 tests at `d1460a2` and 29 at `b0e28
 - **How found.** Click-test: step bar, sandbox, go live. Also a mutation: flipping the button's check
   to `true` left all 17 tests green, so nothing pinned it.
 - **Fix.** The rule moved into the reducer: go live needs an account, a paid plan and a passed
-  sandbox (`b0e2878`).
+  sandbox (`069743c`).
 - **Pinned by.** `store.test.ts`: "go live needs a paid plan even with an account and a passed
   sandbox", plus matching tests for the account and the sandbox. Mutation: dropping `planActive` from
   the guard turns exactly that test red.
@@ -47,7 +47,7 @@ It was merged in `b0776d5`. The suite had 17 tests at `d1460a2` and 29 at `b0e28
 - **How found.** Click-test and code reading (a timer that nothing cancelled, and an invoice action that
   stored neither plan nor amount).
 - **Fix.** The payment attempt (id, plan, amount from the price list, outcome) moved into the store. The
-  reducer marks Paid only for a live attempt, and a plan change during an attempt is refused (`b0e2878`).
+  reducer marks Paid only for a live attempt, and a plan change during an attempt is refused (`069743c`).
 - **Pinned by.** Store tests: "a late provider answer for a cancelled attempt never pays", "the plan
   cannot change while an attempt is in flight, nor after payment", "cancel aborts the attempt". The
   reviewer re-applied four mutations, one per guard, and each turned its test red.
@@ -62,9 +62,9 @@ It was merged in `b0776d5`. The suite had 17 tests at `d1460a2` and 29 at `b0e28
 - **How found.** A probe on the live stack: the payments outbox held 6 of 6 rows unpublished and the
   broker counted about 11 republishes per second, growing with every credit. A reviewer property test
   was red.
-- **Fix.** Attempts, next-attempt time and a parked state with backoff (`fa93712`).
+- **Fix.** Attempts, next-attempt time and a parked state with backoff (`0c7ef63`).
 - **Pinned by.** New cases in `packages/bus/src/bus.test.ts` and the reviewer's compose property tests
-  (`873f900`).
+  (`8be77d8`).
 
 ### 4. No reconnect to the broker (foundation)
 
@@ -74,9 +74,9 @@ It was merged in `b0776d5`. The suite had 17 tests at `d1460a2` and 29 at `b0e28
 - **How found.** A probe: close all broker connections and read the readiness endpoint at +2 s, +15 s
   and +45 s. It stayed 503.
 - **Fix.** Reconnect with backoff (500 ms up to 15 s by default), re-creating channels and topology
-  (`fa93712`).
+  (`0c7ef63`).
 - **Pinned by.** Tests added in `packages/service-kit/src/ops.test.ts` and compose resilience tests
-  (`72efc69`).
+  (`daba327`).
 
 ### 5. The database owner role could switch off tenant isolation (foundation)
 
@@ -85,8 +85,8 @@ It was merged in `b0776d5`. The suite had 17 tests at `d1460a2` and 29 at `b0e28
   or a careless migration, needs one statement.
 - **How found.** A probe as the service role: the same query went from 0 rows to 6 rows across 4 tenants.
 - **Fix.** Two roles per service. An owner role runs migrations; an app role is not the owner, has
-  `NOBYPASSRLS`, and has only the grants listed in one migration (`b2cc040`).
-- **Pinned by.** Reviewer property T3 (`873f900`), compose role tests (`72efc69`), and a test that pins
+  `NOBYPASSRLS`, and has only the grants listed in one migration (`4324fbf`).
+- **Pinned by.** Reviewer property T3 (`8be77d8`), compose role tests (`daba327`), and a test that pins
   the exact grants.
 
 ### 6. A forged tenant header in production (foundation)
@@ -95,7 +95,7 @@ It was merged in `b0776d5`. The suite had 17 tests at `d1460a2` and 29 at `b0e28
   that placeholder, with `/v1/credits` routed publicly: anyone could credit coins to any tenant.
 - **How found.** Reading plus reviewer property T6.
 - **Fix.** The tenancy module throws on boot in production unless a verified-token resolver is passed,
-  and the silent header fallbacks were removed so a wiring mistake fails closed (`c7e6fa0`).
+  and the silent header fallbacks were removed so a wiring mistake fails closed (`d152488`).
 - **Pinned by.** Tests in `packages/tenancy/src/tenancy.test.ts`.
 
 ### 7. Redemption saga returned stock twice, and replay could pay a reward with no coins held (store)
@@ -112,7 +112,7 @@ It was merged in `b0776d5`. The suite had 17 tests at `d1460a2` and 29 at `b0e28
   Replay is allowed only for a review entered from the unknown state, enforced in `apply`. For
   the adapter-before-commit mutation the reviewer asked for a wrapper outside the saga's control that
   records the stored state at each casino call. The store and saga tests were fixed and frozen in
-  `f5dcb4c`; the mutation re-run on the final code belongs to the coder's review, which was still
+  `c92431a`; the mutation re-run on the final code belongs to the coder's review, which was still
   in progress.
 - **Pinned by.** `store-conformance.ts`: "releasing the reservation twice restores stock once" and
   "stock is returned exactly once through release, review and not_issued"; saga test
@@ -139,7 +139,7 @@ It was merged in `b0776d5`. The suite had 17 tests at `d1460a2` and 29 at `b0e28
 - **How found.** The reviewer reproduced it on a reference implementation of the obvious reading of
   the spec. The frozen tests only used canonical URLs, so they would have passed.
 - **Fix.** Spec: the mode comes from the matched route (an internal marker read by the reflector),
-  never from the raw URL. Decision D-14 (`132cf8c`).
+  never from the raw URL. Decision D-14 (`4b408a4`).
 - **Pinned by.** `identity.http.test.ts`, "INV-S2S-3 an operator token on an encoded internal URL ...
   is never served", plus a test that every internal route carries the marker.
 
@@ -152,7 +152,7 @@ It was merged in `b0776d5`. The suite had 17 tests at `d1460a2` and 29 at `b0e28
   that read empty tables).
 - **How found.** Mutation: delete one entry from the constant.
 - **Fix.** The tests use a literal list, and a separate contract test pins the constant against the same
-  literal, in the identity fix rounds (`d2c0461`, `132cf8c`).
+  literal, in the identity fix rounds (`bd60eb2`, `4b408a4`).
 - **Pinned by.** The explicit matrix rows in `identity.access.test.ts` and the contract pin test.
 - **Same class elsewhere.** A claimed mutation "drop SKIP LOCKED" in ingest turned out not to fail in
   30 of 30 runs (the lock was irrelevant under that isolation level), and the claim was withdrawn.

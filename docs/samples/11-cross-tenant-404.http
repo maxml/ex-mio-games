@@ -16,7 +16,7 @@ Authorization: Bearer {{tenant_a_player_token}}
 GET {{engagement}}/v1/redemptions/{{player_77_redemption_id}}
 Authorization: Bearer {{player_12_token}}
 
-# Response (captured from scripts/demo.sh on 2026-11-22, run on dd9d464, C-6; a second player of casino A):
+# Response (captured from scripts/demo.sh on 2026-11-22, run on 1aa98e0, C-6; a second player of casino A):
 # HTTP/1.1 404 Not Found
 # {"message":"redemption not found","code":"redemption_not_found"}
 

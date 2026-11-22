@@ -308,7 +308,7 @@ Enforced in: (1) `packages/service-kit/src/review-migrations-immutable.test.ts` 
 (4) `apps/engagement/src/controllers/review-r2-acting-config.test.ts`,
 `apps/engagement/src/controllers/review-fr2-acting-store.test.ts` and
 `apps/identity/src/review-fr2-acting-integration.test.ts`. The compose, `test:db` and `test:pg` suites
-passed on this code on 2026-11-22 (the integration branch at `33462ab`: 250 of 250, 181 of 181, 50 of 50; see S-12 in
+passed on this code on 2026-11-22 (the integration branch at `2aa4b7a`: 250 of 250, 181 of 181, 50 of 50; see S-12 in
 `docs/submission/known-gaps.md`).
 
 ## Process and analytics

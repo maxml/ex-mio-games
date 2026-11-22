@@ -1,6 +1,6 @@
 # Spec: identity, tenancy and admission (feature spec)
 
-Status: Stage A (spec and red tests, no implementation). Base: `foundation` (2d8e1f3). Implementation is Stage B and must not edit the
+Status: Stage A (spec and red tests, no implementation). Base: `foundation` (30f4290). Implementation is Stage B and must not edit the
 frozen tests listed in section 4. Backlog: MIO-030, 031, 032 (identity part), 034, 040, 042, 043, 044, 045, 046 (service-to-service,
 taken by this area, coordinator decision D-4).
 Contracts: `packages/contracts/src/identity.ts` (zod schemas, constants, error codes).

@@ -9,7 +9,7 @@
 GET {{engagement}}/v1/redemptions/{{redemption_id}}
 Authorization: Bearer {{player_token}}
 
-# Response (captured from scripts/demo.sh on 2026-11-22, run on dd9d464, a casino A order read shortly after it was issued;
+# Response (captured from scripts/demo.sh on 2026-11-22, run on 1aa98e0, a casino A order read shortly after it was issued;
 # the state later moves from ISSUED to COMPLETED, and the public status stays "issued"):
 # HTTP/1.1 200 OK
 # {"id":"01a20399-ed06-73b9-8fb6-614f20ae112f","item_id":"01a20399-a3b6-7fed-a8c5-4f6bff8c1552","price":50,"status":"issued","state":"ISSUED","attempts":1,"casino_reference":"bonus-43840e0a-951e-474d-ae09-49d5dd526c4a","failure_reason":null,"history":[],"created_at":"2026-11-22T14:12:29.062Z","updated_at":"2026-11-22T14:12:30.589Z"}
@@ -18,7 +18,7 @@ Authorization: Bearer {{player_token}}
 GET {{engagement}}/v1/redemptions/{{rejected_redemption_id}}
 Authorization: Bearer {{player_token}}
 
-# Response (captured from scripts/demo.sh on 2026-11-22, run on dd9d464, C-8; the casino's reason in the run was "rejected"):
+# Response (captured from scripts/demo.sh on 2026-11-22, run on 1aa98e0, C-8; the casino's reason in the run was "rejected"):
 # HTTP/1.1 200 OK
 # {"id":"01a2039b-74bd-7451-b07a-f444636a39d8","item_id":"01a2039b-6cfa-7d0d-94d3-b661832b34ed","price":50,"status":"failed_refunded","state":"RELEASED","attempts":1,"casino_reference":"tkt-809ac6a3-12b4-43b5-b6df-7cde68f2fa2c","failure_reason":"casino_rejected:rejected","history":[],"created_at":"2026-11-22T14:14:09.341Z","updated_at":"2026-11-22T14:15:15.615Z"}
 

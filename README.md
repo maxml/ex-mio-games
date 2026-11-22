@@ -164,7 +164,7 @@ order ends `RELEASED`, the balance returns to the baseline exactly once and the 
 back). The recorded run below includes C-8.
 
 Recorded output of that script, captured from `scripts/demo.sh` on 2026-11-22 against the compose stack built
-from commit `dd9d464` (run suffix 56719). The run printed `DONE: 40 steps, 194 assertions passed, 0 recorded failure(s)`
+from commit `1aa98e0` (run suffix 56719). The run printed `DONE: 40 steps, 194 assertions passed, 0 recorded failure(s)`
 and exited 0, including Part C cases C-1 to C-8. Secrets and tokens are shown as `<redacted>`; the `PASS` lines
 and long bodies are trimmed (`...`); nothing else is edited. Each block names the demo steps it comes from.
 
@@ -330,7 +330,7 @@ arrived:
 ### Gaps the first recorded run exposed
 
 An earlier recorded run (37 steps, 13 failures) exposed three gaps. All three are closed (decision D-27), and the
-output above, from the run on `dd9d464`, shows them closed: the redemption reaches the casino and ends `ISSUED`
+output above, from the run on `1aa98e0`, shows them closed: the redemption reaches the casino and ends `ISSUED`
 or `RELEASED`, and the socket works through the web origin.
 
 - **Socket.IO.** The web `/config` now returns `realtimeUrl` (engagement's public URL, `PUBLIC_REALTIME_URL`),
@@ -443,7 +443,7 @@ can be run for one project with `pnpm nx run <project>:<target>`.
 | Frontend layering                                                                   | `pnpm lint:fsd`                                                                                                                             | nothing running                                                |
 | Design system in a browser                                                          | `pnpm storybook` (port 6006)                                                                                                                | nothing running                                                |
 
-`pnpm test` (`nx run-many -t test`, one project at a time) on the release commit `33462ab` (2026-11-22). All thirteen projects pass; the skipped tests are marked
+`pnpm test` (`nx run-many -t test`, one project at a time) on the release commit `2aa4b7a` (2026-11-22). All thirteen projects pass; the skipped tests are marked
 skipped in the source, and the known-defect tests that are expected to fail are `it.failing`, counted as passed:
 
 ```text
@@ -458,7 +458,7 @@ skipped in the source, and the known-defect tests that are expected to fail are 
 `pnpm lint`, `pnpm typecheck`, `pnpm lint:fsd`, `pnpm format:check`, `tsc` for `tests/compose` and
 `ci/check-prompts.sh` also pass on that commit.
 
-The integration suites were run on a stack slot on 2026-11-22, on the same commit `33462ab` (final run; the
+The integration suites were run on a stack slot on 2026-11-22, on the same commit `2aa4b7a` (final run; the
 output is in [`evidence/`](evidence/README.md): `compose.txt`, `pay-db.txt`, `eng-pg.txt`, `demo-run.txt`): `pnpm test:compose` 250 of 250 passed (18 suites),
 `pnpm --filter @ex-mio/payments test:db` 181 of 181 passed (8 suites),
 `pnpm --filter @ex-mio/engagement test:pg` 50 of 50 passed (4 suites), and `scripts/demo.sh` on a fresh slot passed

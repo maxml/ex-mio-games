@@ -5,7 +5,7 @@
 GET {{engagement}}/v1/store/items
 Authorization: Bearer {{player_token}}
 
-# Response (captured from scripts/demo.sh on 2026-11-22, run on dd9d464; the item in the run has no stock or per-player limit):
+# Response (captured from scripts/demo.sh on 2026-11-22, run on 1aa98e0; the item in the run has no stock or per-player limit):
 # HTTP/1.1 200 OK
 # [{"id":"01a20399-a3b6-7fed-a8c5-4f6bff8c1552","name":"5 EUR bonus","description":"Bonus credited to the casino wallet","image_url":null,"price":50,"reward":{"type":"bonus","params":{"currency":"EUR","amount_minor":500}},"stock":null,"per_player_limit":null,"active":true,"version":1}]
 

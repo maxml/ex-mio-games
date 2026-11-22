@@ -16,7 +16,7 @@ Authorization: Bearer {{player_token}}
 GET {{payments}}/v1/players/{{player_id}}/balance
 Authorization: Bearer {{operator_payments_token}}
 
-# Response (captured from scripts/demo.sh on 2026-11-22, run on dd9d464; after a 500-coin spin and one 50-coin redemption):
+# Response (captured from scripts/demo.sh on 2026-11-22, run on 1aa98e0; after a 500-coin spin and one 50-coin redemption):
 # HTTP/1.1 200 OK
 # {"wallet_id":"01a20399-e459-741c-bc03-7118046b196e","available":450,"held":0,"currency":"COIN"}
 

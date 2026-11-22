@@ -24,7 +24,7 @@ break each piece of work before it was merged.
 | `decisions.md`       | Human decisions against AI proposals, including the ones where the human overruled the AI                                  |
 | `defects-found.md`   | Defects that independent AI review caught before merge, with the test that now pins each one, and one fully traced example |
 | `verification.md`    | How AI output was checked, and what went wrong along the way                                                               |
-| `case-studies.md`    | Six defects on the integration branch at `dd9d464`: how each was caught, the fixing commit and the test that pins it       |
+| `case-studies.md`    | Six defects on the integration branch at `1aa98e0`: how each was caught, the fixing commit and the test that pins it       |
 | `../decision-log.md` | What each `D-<n>` cited in tests and comments means, with the reason and where it is enforced                              |
 | `limits.md`          | What the AI got wrong, fixes that moved a defect, and what the process does not cover                                      |
 
@@ -41,8 +41,8 @@ below come from that run.
    existed. It found 2 blockers and 8 major problems (dependency cycles, a saga that promised atomicity
    across two databases, a sandbox that could bypass billing). They were fixed in `44e5a98` and
    `d31f1a5`. The AI-readiness rules were set at this stage too.
-3. **Design first.** A clickable design prototype came before the services (`698dd94`, then `f8e2380`).
-   It went through three review rounds (`d1460a2`, `b0e2878`) and was merged in `b0776d5`.
+3. **Design first.** A clickable design prototype came before the services (`41d7c67`, then `531ae65`).
+   It went through three review rounds (`cadcce7`, `069743c`) and was merged in `1eebc05`.
 4. **Specs and red tests.** For each risky area (identity, payments, ingest and spins, bonus store and
    redemption saga) a spec author wrote a contract and a test author wrote failing tests from it, before
    any implementation. A review of the specs and tests ("Stage A") followed. Every area needed at
@@ -98,7 +98,7 @@ decisions, including 8 in which the owner overruled an AI recommendation.
 
 ## What the process produced
 
-- Foundation review at `2d8e1f3`: 18 findings (5 major). 12 of 13 reviewer mutations on guards
+- Foundation review at `30f4290`: 18 findings (5 major). 12 of 13 reviewer mutations on guards
   went red, and one hole was found in the layering lint. 8 reviewer property tests failed on purpose
   until the fixes landed.
 - Prototype: 3 rounds, 15 findings in round 1, 2 major in round 2, 0 in round 3 (2 minor remain

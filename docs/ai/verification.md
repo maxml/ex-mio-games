@@ -141,7 +141,7 @@ frozen-test conflicts on the test side and ran the whole compose suite against t
   repository has no remote (known gaps S-12). The captured counts are the per-project unit counts and
   the demo run, both in the root README. A reader can still re-check a claim: each frozen test names
   its mutation in its header, so the mutation can be applied and the test seen to go red.
-- The end-to-end demo run on `dd9d464` (40 steps, 194 assertions passed, Part C cases C-1 to C-8) is recorded
+- The end-to-end demo run on `1aa98e0` (40 steps, 194 assertions passed, Part C cases C-1 to C-8) is recorded
   in the root README. The compose and Postgres suites have no committed run on the final tree (known gaps S-12).
 - The one-sentence outcome of each review is the reviewer's, and the owner has not re-run them.
 - Reviews that read code instead of running a browser are marked as such in the review text.
