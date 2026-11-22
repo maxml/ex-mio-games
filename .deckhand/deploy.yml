@@ -1,12 +1,23 @@
 # Deckhand deploy manifest: the contract this project exposes to the external
 # Deckhand blue-green delivery system. Spec: the Deckhand repo,
-# docs/contracts/deploy-manifest.md.
+# docs/contracts/deploy-manifest.md. Runbook: docs/deploy.md.
+#
+# Shape of the deployment:
+# - Only `web` is public (one host, path `/*`). identity, engagement and payments are private
+#   services on the project network; the web BFF reaches them by service name.
+# - Redis is not deployed: engagement only reports it in its health output, and a production
+#   REDIS_URL must be rediss://. Local compose still runs it.
+# - Deckhand delivers ONE secrets file to every service, so a name shared by several services
+#   (DATABASE_URL, SERVICE_CLIENT_SECRET) cannot live in it. Those are mapped per service,
+#   inline, from distinct names: `DATABASE_URL: '${IDENTITY_DATABASE_URL}'` and so on. That is
+#   why the validator warns about secrets in `services.*.env`; the values are visible to
+#   `docker inspect` on the VPS, and that is accepted for these.
+# - web has no dotenv: every variable it reads is inline.
 #
 # Production requirements the services enforce at boot:
 # - DATABASE_SSL must be stated (disable | require | verify-full). A self-hosted
 #   Postgres without TLS sets `disable` explicitly; a managed one sets `require`
 #   or `verify-full` (+ DATABASE_CA_CERT_PATH). See docs/CONTRACTS.md, "Postgres TLS".
-# - REDIS_URL, when set, must use rediss:// (TLS).
 # - A development-only value (CREDENTIALS_KEK or PLATFORM_ADMIN_PASSWORD containing `dev-`) is rejected.
 # - Identity's signing keys live in its `signing_keys` table (sealed with CREDENTIALS_KEK), not in env.
 apiVersion: deckhand/v1
@@ -25,9 +36,10 @@ pipeline:
   extra: ['pnpm lint:fsd']
 
 # Images built in CI and pushed to the registry (never built on the prod host).
+# The registry is the VPS-local one; images are <registry>/<slug>/<name>:<sha>.
 build:
   context: . # monorepo: the build context is the repo root
-  registry: ghcr.io/maxml
+  registry: 127.0.0.1:5000
   images:
     - name: identity
       dockerfile: apps/identity/Dockerfile
@@ -35,25 +47,35 @@ build:
       dockerfile: apps/engagement/Dockerfile
     - name: payments
       dockerfile: apps/payments/Dockerfile
+    - name: casino-sim
+      dockerfile: apps/casino-sim/Dockerfile
     - name: web
       dockerfile: apps/web/Dockerfile
       # The web image is domain-agnostic: no build args. The browser talks to the
       # services on the SAME ORIGIN (single_host: true routes the paths below),
       # and the SSR base is read at runtime from API_URL. One image promotes
       # dev -> prod with no rebuild.
+    - name: db
+      dockerfile: docker/postgres/Dockerfile # stock postgres + the init script (3 databases, 6 roles)
+    - name: firebase-auth
+      dockerfile: docker/firebase-emulator/Dockerfile
 
 services:
   identity:
     image: identity
-    strategy: blue-green
+    strategy: blue-green # private: no `public`, reached as http://identity:4001
     port: 4001 # internal container port (no host port)
     health:
       live: /healthz/live # 200, no dependencies
       ready: /healthz/ready # 503 when the database or broker is down: blocks cutover
-    public:
-      paths: ['/v1/tenants*', '/v1/auth*']
+    env:
+      DATABASE_URL: '${IDENTITY_DATABASE_URL}'
+      BASE_DOMAIN: '${BASE_DOMAIN}'
+      # casino-sim is a plain-http host on the project network; production refuses http reward
+      # APIs unless the host is allowed.
+      REWARD_API_ALLOW_HOSTS: 'casino-sim'
     resources: { cpu: '0.5', memory: '512M' }
-    depends_on: [db, rabbitmq]
+    depends_on: [db, rabbitmq, firebase-auth]
   engagement:
     image: engagement
     strategy: blue-green
@@ -61,10 +83,13 @@ services:
     health:
       live: /healthz/live
       ready: /healthz/ready
-    public:
-      paths: ['/v1/tenant-projection*', '/v1/engagement*', '/socket.io/*']
+    env:
+      DATABASE_URL: '${ENGAGEMENT_DATABASE_URL}'
+      SERVICE_CLIENT_SECRET: '${ENGAGEMENT_SERVICE_CLIENT_SECRET}'
+      IDENTITY_URL: 'http://identity:4001'
+      PAYMENTS_URL: '${PAYMENTS_URL}'
     resources: { cpu: '0.5', memory: '512M' }
-    depends_on: [db, rabbitmq, redis]
+    depends_on: [db, rabbitmq]
   payments:
     image: payments
     strategy: blue-green
@@ -72,10 +97,12 @@ services:
     health:
       live: /healthz/live
       ready: /healthz/ready
-    public:
-      # No /v1/credits: coins are credited only by the payments consumer (D-1), and the
-      # demo endpoint trusts a caller-supplied tenant header, so it is not mounted in production.
-      paths: ['/v1/payments*']
+    # No /v1/credits: coins are credited only by the payments consumer (D-1), and the
+    # demo endpoint trusts a caller-supplied tenant header, so it is not mounted in production.
+    env:
+      DATABASE_URL: '${PAYMENTS_DATABASE_URL}'
+      SERVICE_CLIENT_SECRET: '${PAYMENTS_SERVICE_CLIENT_SECRET}'
+      IDENTITY_URL: 'http://identity:4001'
     resources: { cpu: '0.5', memory: '512M' }
     depends_on: [db, rabbitmq]
   web:
@@ -83,16 +110,47 @@ services:
     strategy: blue-green
     port: 3000
     health:
-      # A web route, not the services' /healthz (which the paths above route elsewhere).
       ready: /health
     public:
-      paths: ['/*'] # everything else goes to web
+      paths: ['/*'] # the only public service
     env:
-      # Server-side base for web -> service calls, read at RUNTIME.
+      # Server-side bases for web -> service calls, read at RUNTIME.
       API_URL: 'http://identity:4001'
+      IDENTITY_URL: 'http://identity:4001'
+      ENGAGEMENT_URL: 'http://engagement:4002'
+      PAYMENTS_URL: 'http://payments:4003'
+      BASE_DOMAIN: '${BASE_DOMAIN}'
     resources: { cpu: '0.5', memory: '512M' }
+    depends_on: [identity, engagement, payments]
+  casino-sim:
+    # Test double of a casino (reward API, signed events) for the demo. Private; SIM_FAULTS
+    # turns on its fault injection, which is why it must never be public.
+    image: casino-sim
+    kind: app
+    strategy: singleton
+    internal: true
+    port: 4004
+    health:
+      ready: /healthz/ready
+    env:
+      PORT: '4004'
+      SIM_FAULTS: '1'
+    resources: { cpu: '0.25', memory: '256M' }
+  firebase-auth:
+    # Auth emulator: identity's provider in this deployment (`IDENTITY_PROVIDER` defaults to
+    # firebase-emulator; `fake` is refused in production). In memory: accounts created through
+    # it are gone after a restart.
+    image: firebase-auth
+    kind: app
+    strategy: singleton
+    internal: true
+    port: 9099
+    healthcheck:
+      test: 'node -e "fetch(''http://127.0.0.1:9099/'').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"'
+    resources: { cpu: '0.5', memory: '768M' }
   db:
-    image: postgres:16
+    image: db # built: docker/postgres/Dockerfile (stock postgres:16 + init.sh)
+    kind: datastore # same definition in every release: not recreated per deploy
     strategy: singleton # stateful: not blue-green
     internal: true # no host port; reachable only on the docker network
     port: 5432
@@ -100,19 +158,22 @@ services:
     env:
       POSTGRES_USER: '${POSTGRES_USER}'
       POSTGRES_PASSWORD: '${POSTGRES_PASSWORD}'
+      # The six role passwords (<SVC>_OWNER_DB_PASSWORD, <SVC>_APP_DB_PASSWORD) are NOT inline:
+      # init.sh reads them from the mounted secrets file, and aborts when one is missing.
     resources: { cpu: '1', memory: '1G' }
   rabbitmq:
-    image: rabbitmq:3.13-management
+    image: rabbitmq:3.13
+    kind: datastore
     strategy: singleton
     internal: true
     port: 5672
     volumes: ['rabbitmqdata:/var/lib/rabbitmq']
-  redis:
-    image: redis:7
-    strategy: singleton
-    internal: true
-    port: 6379
-    volumes: ['redisdata:/data']
+    env:
+      RABBITMQ_DEFAULT_USER: '${RABBITMQ_DEFAULT_USER}'
+      RABBITMQ_DEFAULT_PASS: '${RABBITMQ_DEFAULT_PASS}'
+    healthcheck:
+      test: 'rabbitmq-diagnostics -q ping'
+    resources: { cpu: '0.5', memory: '512M' }
 
 domains:
   base: '${PROJECT_SLUG}.${DECKHAND_BASE_DOMAIN}'
@@ -123,52 +184,75 @@ env:
   required: [
       'POSTGRES_USER',
       'POSTGRES_PASSWORD',
+      # Role passwords: the db init script creates the roles from the first six; the app-role
+      # URLs below embed the *_APP_ ones and the migration URLs the *_OWNER_ ones.
+      'IDENTITY_OWNER_DB_PASSWORD',
+      'IDENTITY_APP_DB_PASSWORD',
+      'ENGAGEMENT_OWNER_DB_PASSWORD',
+      'ENGAGEMENT_APP_DB_PASSWORD',
+      'PAYMENTS_OWNER_DB_PASSWORD',
+      'PAYMENTS_APP_DB_PASSWORD',
       'IDENTITY_DATABASE_URL',
       'ENGAGEMENT_DATABASE_URL',
       'PAYMENTS_DATABASE_URL',
-      # Owner-role URLs, for scripts/migrate-all.sh only. The services get the app-role URLs above.
+      # Owner-role URLs: read by the migration step only. The services get the app-role URLs above.
       'IDENTITY_MIGRATION_DATABASE_URL',
       'ENGAGEMENT_MIGRATION_DATABASE_URL',
       'PAYMENTS_MIGRATION_DATABASE_URL',
       'DATABASE_SSL',
+      'RABBITMQ_DEFAULT_USER',
+      'RABBITMQ_DEFAULT_PASS',
       'AMQP_URL',
-      'REDIS_URL',
+      'BASE_DOMAIN', # identity and web: the same value
       'CREDENTIALS_KEK',
       'PLATFORM_ADMIN_EMAIL',
       'PLATFORM_ADMIN_PASSWORD',
       'SERVICE_CLIENT_SECRETS', # identity: JSON service name -> secret
-      'SERVICE_CLIENT_SECRET', # engagement and payments: their own secret
-      'IDENTITY_URL',
+      'ENGAGEMENT_SERVICE_CLIENT_SECRET', # engagement: equals its entry in SERVICE_CLIENT_SECRETS
+      'PAYMENTS_SERVICE_CLIENT_SECRET', # payments: equals its entry in SERVICE_CLIENT_SECRETS
+      'WHEEL_SEEDS', # engagement: JSON tenant wheel id -> seed, required in production
+      'USAGE_KEY_SALT', # payments: fails closed without it in production
+      'FAKE_PROVIDER_WEBHOOK_SECRET', # payments: 32+ chars, required in production
+      'PAYMENTS_URL', # engagement: where the coin reserve is called
     ]
-  optional: ['API_URL']
-  runtime_public: ['PUBLIC_API_URL']
+  optional: []
+  runtime_public: []
   public_build: []
 
 version:
-  source: git-tag
+  source: auto
   inject_as: APP_VERSION # flows into the health `version` field
 
 # Each service ships its own migration entry point: `node dist/migrate.js` in its
 # image (the images have no pnpm and no TypeORM CLI). Deckhand runs `run` with
 # `/bin/sh -lc` in a runtime container that holds NO checkout, so a repo script
 # (scripts/migrate-all.sh) is not there: the step is inline, one `docker run` of each
-# service's own api image, in turn, joined with && so the first failure stops the deploy
-# (needs IMAGE_PREFIX, IMAGE_TAG, the *_MIGRATION_DATABASE_URL variables and DATABASE_SSL;
-# optional DOCKER_NETWORK). `node dist/migrate.js` exits non-zero when no migrations are
+# service's own image, in turn, joined with && so the first failure stops the deploy.
+# The engine supplies DECKHAND_IMAGE_<NAME> (the image reference of this release); the
+# containers join the project network `<slug>_backend` and read the secrets file
+# through --env-file (the file is on the VPS at the same path inside the engine container;
+# its values must be unquoted). Each one maps its own owner-role URL onto
+# MIGRATION_DATABASE_URL. `node dist/migrate.js` exits non-zero when no migrations are
 # shipped or any is still pending afterwards. scripts/migrate-all.sh is the same loop for
 # a developer's shell. The migrations are TypeScript, not SQL files, so the SQL linter has
 # nothing to read: engine `other` skips it.
 migrations:
-  run: 'docker run --rm --network "${DOCKER_NETWORK:-bridge}" -e "MIGRATION_DATABASE_URL=$IDENTITY_MIGRATION_DATABASE_URL" -e NODE_ENV=production -e "DATABASE_SSL=$DATABASE_SSL" "$IMAGE_PREFIX/identity:$IMAGE_TAG" node dist/migrate.js && docker run --rm --network "${DOCKER_NETWORK:-bridge}" -e "MIGRATION_DATABASE_URL=$ENGAGEMENT_MIGRATION_DATABASE_URL" -e NODE_ENV=production -e "DATABASE_SSL=$DATABASE_SSL" "$IMAGE_PREFIX/engagement:$IMAGE_TAG" node dist/migrate.js && docker run --rm --network "${DOCKER_NETWORK:-bridge}" -e "MIGRATION_DATABASE_URL=$PAYMENTS_MIGRATION_DATABASE_URL" -e NODE_ENV=production -e "DATABASE_SSL=$DATABASE_SSL" "$IMAGE_PREFIX/payments:$IMAGE_TAG" node dist/migrate.js'
+  run: >-
+    docker run --rm --network ex-mio_backend --env-file /srv/deckhand/ex-mio/rendered/.env -e NODE_ENV=production
+    "$DECKHAND_IMAGE_IDENTITY" sh -c 'MIGRATION_DATABASE_URL=$IDENTITY_MIGRATION_DATABASE_URL exec node dist/migrate.js'
+    && docker run --rm --network ex-mio_backend --env-file /srv/deckhand/ex-mio/rendered/.env -e NODE_ENV=production
+    "$DECKHAND_IMAGE_ENGAGEMENT" sh -c 'MIGRATION_DATABASE_URL=$ENGAGEMENT_MIGRATION_DATABASE_URL exec node dist/migrate.js'
+    && docker run --rm --network ex-mio_backend --env-file /srv/deckhand/ex-mio/rendered/.env -e NODE_ENV=production
+    "$DECKHAND_IMAGE_PAYMENTS" sh -c 'MIGRATION_DATABASE_URL=$PAYMENTS_MIGRATION_DATABASE_URL exec node dist/migrate.js'
   when: expand-before-cutover # expand (additive) BEFORE cutover; contract in the NEXT deploy
   backward_compatible: true # required for blue-green: blue must run against the expanded schema
-  backup_before: true # database snapshot before expand
+  backup_before: true # database snapshot before expand: deploy/backup.sh dumps all three databases
   breaking: false # true: maintenance-window path, not blue-green
   engine: other
   timeout: 300
 
 deploy:
   target: default # server name from the Deckhand registry
-  healthcheck_timeout: 120 # wait for ready on each public service before cutover (s)
+  healthcheck_timeout: 180 # wait for ready on each service before cutover (s)
   drain_timeout: 30
   rollback: auto # auto-rollback if green never becomes ready

@@ -13,14 +13,19 @@
 # Usage:   docker compose -p demo up -d --wait && scripts/demo.sh
 #          On a slot: scripts/stack-up.sh, then `set -a; . ./.env.stack; set +a` and scripts/demo.sh.
 # Env:     COMPOSE_PROJECT (default "demo"), *_PORT (same names compose uses), DEMO_SLUG_SUFFIX.
+#          Against another deployment: IDENTITY_URL, ENGAGEMENT_URL, PAYMENTS_URL, CASINO_SIM_URL,
+#          WEB_URL (each replaces the localhost URL) and DEMO_BASE_DOMAIN (the identity BASE_DOMAIN,
+#          default mio.localhost). Run it where the private services are reachable.
 set -uo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
 
-IDN="http://localhost:${IDENTITY_PORT:-4001}"
-ENG="http://localhost:${ENGAGEMENT_PORT:-4002}"
-PAY="http://localhost:${PAYMENTS_PORT:-4003}"
-SIM="http://localhost:${CASINO_SIM_PORT:-4004}"
-WEB="http://localhost:${WEB_PORT:-3000}"
+IDN="${IDENTITY_URL:-http://localhost:${IDENTITY_PORT:-4001}}"
+ENG="${ENGAGEMENT_URL:-http://localhost:${ENGAGEMENT_PORT:-4002}}"
+PAY="${PAYMENTS_URL:-http://localhost:${PAYMENTS_PORT:-4003}}"
+SIM="${CASINO_SIM_URL:-http://localhost:${CASINO_SIM_PORT:-4004}}"
+WEB="${WEB_URL:-http://localhost:${WEB_PORT:-3000}}"
+# Tenant host suffix: must equal the identity BASE_DOMAIN of the stack under test.
+BASE_DOMAIN="${DEMO_BASE_DOMAIN:-mio.localhost}"
 # Addresses of the services as the casino simulator sees them (inside the compose network).
 ENG_INTERNAL="http://engagement:4002"
 SIM_INTERNAL="http://casino-sim:4004"
@@ -208,7 +213,7 @@ for X in A B; do
   TID[$X]="$(jqr .tenant.id)"
 
   for aud in identity payments engagement; do
-    call POST "$IDN/v1/auth/login" -H 'content-type: application/json' -H "host: ${SLUG[$X]}.mio.localhost" \
+    call POST "$IDN/v1/auth/login" -H 'content-type: application/json' -H "host: ${SLUG[$X]}.${BASE_DOMAIN}" \
       -d "$(jq -nc --arg e "boss@${SLUG[$X]}.test" --arg pw "$PASSWORD" --arg a "$aud" '{email:$e,password:$pw,audience:$a}')"
     expect_status 200
     case "$aud" in

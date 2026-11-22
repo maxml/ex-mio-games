@@ -11,8 +11,31 @@
 # Both roles are NOT superusers and do NOT bypass row-level security (NOBYPASSRLS),
 # and can connect to their own database only: PUBLIC loses CONNECT on every
 # service database and on `postgres` and `template1` too.
-# Passwords come from the container environment; the defaults are for local use only.
+# Passwords come from the container environment and there are NO defaults: a missing
+# variable aborts the init (the container stays down) instead of creating a role with a
+# well-known password. The local compose file passes its development values explicitly.
+# Under Deckhand the six variables are not in the container environment but in the mounted
+# secrets file (/run/secrets/deckhand_secrets.env, KEY=value lines, hex values): a variable
+# that is not set in the environment is read from there. Override the path with
+# DECKHAND_SECRETS_FILE.
 set -eu
+
+secrets_file="${DECKHAND_SECRETS_FILE:-/run/secrets/deckhand_secrets.env}"
+
+# require_password NAME: prints the value of NAME from the environment, else from the secrets
+# file; exits non-zero when it is missing or empty (the caller's assignment aborts under set -e).
+require_password() {
+  name="$1"
+  eval "value=\${$name:-}"
+  if [ -z "$value" ] && [ -r "$secrets_file" ]; then
+    value="$(sed -n "s/^${name}=//p" "$secrets_file" | tail -n 1)"
+  fi
+  if [ -z "$value" ]; then
+    echo "init.sh: $name is not set (environment or $secrets_file); refusing to create roles without it" >&2
+    exit 1
+  fi
+  printf '%s' "$value"
+}
 
 create_service_db() {
   svc="$1"
@@ -47,9 +70,17 @@ CREATE EVENT TRIGGER deny_app_role_acl ON ddl_command_start
 SQL
 }
 
-create_service_db identity "${IDENTITY_OWNER_DB_PASSWORD:-identity-owner-dev}" "${IDENTITY_APP_DB_PASSWORD:-identity-app-dev}"
-create_service_db engagement "${ENGAGEMENT_OWNER_DB_PASSWORD:-engagement-owner-dev}" "${ENGAGEMENT_APP_DB_PASSWORD:-engagement-app-dev}"
-create_service_db payments "${PAYMENTS_OWNER_DB_PASSWORD:-payments-owner-dev}" "${PAYMENTS_APP_DB_PASSWORD:-payments-app-dev}"
+# Resolve all six first: a missing one must abort before any role or database exists.
+IDENTITY_OWNER_PW="$(require_password IDENTITY_OWNER_DB_PASSWORD)"
+IDENTITY_APP_PW="$(require_password IDENTITY_APP_DB_PASSWORD)"
+ENGAGEMENT_OWNER_PW="$(require_password ENGAGEMENT_OWNER_DB_PASSWORD)"
+ENGAGEMENT_APP_PW="$(require_password ENGAGEMENT_APP_DB_PASSWORD)"
+PAYMENTS_OWNER_PW="$(require_password PAYMENTS_OWNER_DB_PASSWORD)"
+PAYMENTS_APP_PW="$(require_password PAYMENTS_APP_DB_PASSWORD)"
+
+create_service_db identity "$IDENTITY_OWNER_PW" "$IDENTITY_APP_PW"
+create_service_db engagement "$ENGAGEMENT_OWNER_PW" "$ENGAGEMENT_APP_PW"
+create_service_db payments "$PAYMENTS_OWNER_PW" "$PAYMENTS_APP_PW"
 
 # A service role has no business in the maintenance databases.
 psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname postgres <<'SQL'
