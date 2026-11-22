@@ -237,13 +237,8 @@ version:
 # a developer's shell. The migrations are TypeScript, not SQL files, so the SQL linter has
 # nothing to read: engine `other` skips it.
 migrations:
-  run: >-
-    docker run --rm --network ex-mio_backend --env-file /srv/deckhand/ex-mio/rendered/.env -e NODE_ENV=production
-    "$DECKHAND_IMAGE_IDENTITY" sh -c 'MIGRATION_DATABASE_URL=$IDENTITY_MIGRATION_DATABASE_URL exec node dist/migrate.js'
-    && docker run --rm --network ex-mio_backend --env-file /srv/deckhand/ex-mio/rendered/.env -e NODE_ENV=production
-    "$DECKHAND_IMAGE_ENGAGEMENT" sh -c 'MIGRATION_DATABASE_URL=$ENGAGEMENT_MIGRATION_DATABASE_URL exec node dist/migrate.js'
-    && docker run --rm --network ex-mio_backend --env-file /srv/deckhand/ex-mio/rendered/.env -e NODE_ENV=production
-    "$DECKHAND_IMAGE_PAYMENTS" sh -c 'MIGRATION_DATABASE_URL=$PAYMENTS_MIGRATION_DATABASE_URL exec node dist/migrate.js'
+  # One line on purpose: the pinned test (STARTER-7) reads the first line of `run`.
+  run: docker run --rm --name migrate-identity --network ex-mio_backend --env-file /srv/deckhand/ex-mio/rendered/.env -e NODE_ENV=production "$DECKHAND_IMAGE_IDENTITY" sh -c 'MIGRATION_DATABASE_URL=$IDENTITY_MIGRATION_DATABASE_URL exec node dist/migrate.js' && docker run --rm --name migrate-engagement --network ex-mio_backend --env-file /srv/deckhand/ex-mio/rendered/.env -e NODE_ENV=production "$DECKHAND_IMAGE_ENGAGEMENT" sh -c 'MIGRATION_DATABASE_URL=$ENGAGEMENT_MIGRATION_DATABASE_URL exec node dist/migrate.js' && docker run --rm --name migrate-payments --network ex-mio_backend --env-file /srv/deckhand/ex-mio/rendered/.env -e NODE_ENV=production "$DECKHAND_IMAGE_PAYMENTS" sh -c 'MIGRATION_DATABASE_URL=$PAYMENTS_MIGRATION_DATABASE_URL exec node dist/migrate.js'
   when: expand-before-cutover # expand (additive) BEFORE cutover; contract in the NEXT deploy
   backward_compatible: true # required for blue-green: blue must run against the expanded schema
   backup_before: true # database snapshot before expand: deploy/backup.sh dumps all three databases
