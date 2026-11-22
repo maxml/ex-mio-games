@@ -128,6 +128,25 @@ service has its own database. See [`docs/architecture/overview.md`](docs/archite
 diagrams and the reasons, and [`docs/how-to/where-to-change.md`](docs/how-to/where-to-change.md) for where to add
 a third casino or a reward type.
 
+The 14 architecture decision records in [`docs/adrs/`](docs/adrs/):
+
+| ADR  | Title                                                                                      | Decided                                                                                                                   |
+| ---- | ------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------- |
+| 0001 | [Microservices and their cost](docs/adrs/0001-microservices-and-their-cost.md)             | Five deployables split along stable seams, with payments as the only writer of coins.                                     |
+| 0002 | [Tenancy model](docs/adrs/0002-tenancy-model.md)                                           | One shared database per service, `tenant_id` on every row, row-level security, tenant taken only from the verified token. |
+| 0003 | [RabbitMQ with outbox and inbox](docs/adrs/0003-rabbitmq-outbox-inbox.md)                  | A broker from the start; effects are exactly once through a transactional outbox and an inbox.                            |
+| 0004 | [Virtual currency ledger](docs/adrs/0004-virtual-currency-ledger.md)                       | A double-entry ledger in the payments database, written only by payments, with idempotent operations.                     |
+| 0005 | [Server-authoritative RNG](docs/adrs/0005-rng-and-fairness.md)                             | The server draws the spin from stored data so an auditor can reproduce it, and a spin credit is used once.                |
+| 0006 | [Redemption saga](docs/adrs/0006-redemption-saga.md)                                       | Redemption runs as retryable steps with compensation; a timeout is not treated as a failure.                              |
+| 0007 | [Identity behind an interface](docs/adrs/0007-identity-interface-and-emulator.md)          | Sign-in uses the Firebase Auth Emulator now; the provider can be replaced and the choice is deferred.                     |
+| 0008 | [Integration adapters](docs/adrs/0008-integration-adapters-canonical-model.md)             | Each casino has an adapter that maps to one canonical model, so the rules and the ledger know no casino format.           |
+| 0009 | [Analytics through Varta](docs/adrs/0009-analytics-via-varta.md)                           | Product events go to Varta without a runtime dependency on it, with honest delivery guarantees and no personal data.      |
+| 0010 | [TypeORM](docs/adrs/0010-typeorm.md)                                                       | TypeORM for persistence, with raw SQL where row-level security or conditional updates need it.                            |
+| 0011 | [Container per service and Deckhand](docs/adrs/0011-container-per-service-and-deckhand.md) | Each service is its own container with its own database; deployment is delegated to Deckhand.                             |
+| 0012 | [Diagrams as code](docs/adrs/0012-archify-and-mermaid.md)                                  | Diagrams are written as text with archify and kept with a Mermaid copy.                                                   |
+| 0013 | [Frontend architecture](docs/adrs/0013-fsd-frontend-architecture.md)                       | The web app follows Feature-Sliced Design on the Next App Router.                                                         |
+| 0014 | [Realtime client](docs/adrs/0014-realtime-websocket-client.md)                             | One socket.io client per tab that reconnects with backoff, and resyncs over REST.                                         |
+
 ## What you can try in 5 minutes
 
 ```sh
