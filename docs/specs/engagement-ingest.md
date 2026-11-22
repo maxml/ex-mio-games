@@ -1,5 +1,7 @@
 # Spec: engagement ingest, rules and wheel (area L3)
 
+Diagram: section [2](../../docs/architecture/README.md#2-sequence-the-8-step-workflow) of the diagram hub (why each diagram exists: [table](../../docs/architecture/README.md#why-each-diagram-exists)).
+
 Backlog: MIO-050..057, 060..064, 069 (fairness core); Part C cases MIO-140, 141, 147, 151, 154 as far as
 they touch ingest, credits and spins. Service: `apps/engagement` (module `src/integrations/` and the
 rules, credits and wheel code) and `apps/casino-sim`. Status: frozen at Stage A; the coder implements

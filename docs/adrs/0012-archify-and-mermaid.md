@@ -1,5 +1,7 @@
 # 0012. Diagrams as code: archify, with a Mermaid copy
 
+Diagram: all five, in [the diagram hub](../../docs/architecture/README.md#why-each-diagram-exists).
+
 - Status: accepted
 - Deciders: product owner (maxml), architecture session
 - Date: 2026-11-21

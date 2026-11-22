@@ -1,5 +1,7 @@
 # Spec: identity, tenancy and admission (feature spec)
 
+Diagram: section [1](../../docs/architecture/README.md#1-context-and-containers), [2](../../docs/architecture/README.md#2-sequence-the-8-step-workflow), [4](../../docs/architecture/README.md#4-erd-tenancy-and-ledger) of the diagram hub (why each diagram exists: [table](../../docs/architecture/README.md#why-each-diagram-exists)).
+
 Status: Stage A (spec and red tests, no implementation). Base: `foundation` (30f4290). Implementation is Stage B and must not edit the
 frozen tests listed in section 4. Backlog: MIO-030, 031, 032 (identity part), 034, 040, 042, 043, 044, 045, 046 (service-to-service,
 taken by this area, coordinator decision D-4).

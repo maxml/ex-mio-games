@@ -1,5 +1,7 @@
 # Payments: coin ledger, balances, billing, usage
 
+Diagram: section [2](../../docs/architecture/README.md#2-sequence-the-8-step-workflow), [3](../../docs/architecture/README.md#3-workflow-redemption-saga-with-compensations), [4](../../docs/architecture/README.md#4-erd-tenancy-and-ledger) of the diagram hub (why each diagram exists: [table](../../docs/architecture/README.md#why-each-diagram-exists)).
+
 Area spec for `apps/payments`. Backlog: MIO-080..086 (ledger), MIO-090, 091, 093, 095, 098 (billing,
 metering), MIO-150 rows 01, 02, 04..10, 12..20, 28. Contracts live in `packages/contracts`
 (`src/payments.ts`, `src/events.ts`). Status: spec + red tests (stage A, fix round); no implementation yet.

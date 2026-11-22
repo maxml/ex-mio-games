@@ -86,6 +86,64 @@ By part of the task:
 - Part D, AI-native development: [`docs/ai/`](docs/ai/README.md).
 - Part E, scaling the product: [`docs/scaling/`](docs/scaling/README.md).
 
+## Architecture: how to view it
+
+Three ways, from quickest to richest:
+
+1. The system diagram below is Mermaid, which GitHub draws in place.
+2. PNG renders of all five diagrams are in [`docs/architecture/img/`](docs/architecture/img/). The overview:
+   ![MIO Games: context and containers](docs/architecture/img/architecture.png)
+3. The interactive pages are standalone HTML files. Open one locally, for example
+   `xdg-open docs/architecture/architecture.html` on Linux or `open docs/architecture/architecture.html` on macOS.
+   GitHub shows their source, not the page.
+
+```mermaid
+flowchart LR
+  player([Player browser]) -->|HTTPS| web
+  casino([casino-sim: Casino A and B]) -->|signed events, HMAC| engagement
+  engagement -.->|issue reward, status| casino
+
+  subgraph platform [MIO Games platform: one container per service]
+    web[web: widget and operator console]
+    identity[identity: authN, authZ, tenants module]
+    engagement[engagement: ingestion, integrations module, rules, wheel, store, saga]
+    payments[payments: ledger, coin operations, fake provider]
+    rabbit{{RabbitMQ: outbox and inbox}}
+    redis[(Redis: optional balance projection)]
+    idb[(Postgres identity)]
+    edb[(Postgres engagement)]
+    pdb[(Postgres payments)]
+  end
+
+  web -->|login, launch| identity
+  web -->|REST, websocket /rt| engagement
+  engagement -->|sync coin reserve| payments
+  identity --> idb
+  engagement --> edb
+  payments --> pdb
+  identity -.-> rabbit
+  engagement -.-> rabbit
+  rabbit -.-> payments
+  payments -.-> redis
+
+  varta[[Varta: observability and analytics]]
+  deckhand[[Deckhand: blue-green deploy]]
+  platform -.->|logs, events on stdout| varta
+  deckhand -.->|deploys containers| platform
+```
+
+| Diagram                                                                                      | Question it answers                                             | ADRs                                     | Part A items                                                                                |
+| -------------------------------------------------------------------------------------------- | --------------------------------------------------------------- | ---------------------------------------- | ------------------------------------------------------------------------------------------- |
+| [Context and containers](docs/architecture/README.md#1-context-and-containers)               | What are the parts and who talks to whom?                       | 0001, 0002, 0003, 0007, 0008, 0009, 0011 | tenant isolation, integration layer, identity mapping, ledger, admin console, observability |
+| [Sequence](docs/architecture/README.md#2-sequence-the-8-step-workflow)                       | What happens from deposit to a tracked reward?                  | 0003, 0004, 0005, 0006, 0008             | ingestion and deduplication, identity mapping, ledger, redemption                           |
+| [Redemption saga](docs/architecture/README.md#3-workflow-redemption-saga-with-compensations) | Which steps and compensations does a redemption run?            | 0004, 0006, 0008                         | redemption and delivery                                                                     |
+| [ERD](docs/architecture/README.md#4-erd-tenancy-and-ledger)                                  | Which tables carry the tenant, and how does the ledger balance? | 0002, 0004, 0007                         | tenant isolation, ledger, identity mapping                                                  |
+| [Lifecycle](docs/architecture/README.md#5-lifecycle-redemption-states)                       | Which redemption states and moves are allowed?                  | 0006                                     | redemption and delivery                                                                     |
+
+The rules engine, admin configuration, and observability and security have no diagram of their own. The hub
+[`docs/architecture/README.md`](docs/architecture/README.md) says why each diagram exists and links the specs and
+reliability cases.
+
 ## What was built
 
 One complete flow runs end to end against two simulated casinos that have different event formats, signature

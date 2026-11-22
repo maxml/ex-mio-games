@@ -1,5 +1,7 @@
 # 0009. Product analytics through Varta, with an honest delivery guarantee
 
+Diagram: section [1](../../docs/architecture/README.md#1-context-and-containers) of the diagram hub (why each diagram exists: [table](../../docs/architecture/README.md#why-each-diagram-exists)).
+
 - Status: accepted
 - Deciders: product owner (maxml), architecture session
 - Date: 2026-11-21

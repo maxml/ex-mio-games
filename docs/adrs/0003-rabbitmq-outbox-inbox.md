@@ -1,5 +1,7 @@
 # 0003. RabbitMQ with transactional outbox and inbox
 
+Diagram: section [1](../../docs/architecture/README.md#1-context-and-containers), [2](../../docs/architecture/README.md#2-sequence-the-8-step-workflow) of the diagram hub (why each diagram exists: [table](../../docs/architecture/README.md#why-each-diagram-exists)).
+
 - Status: accepted
 - Deciders: product owner (maxml), architecture session
 - Date: 2026-11-21

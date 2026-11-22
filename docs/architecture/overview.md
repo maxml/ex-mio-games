@@ -1,5 +1,7 @@
 # MIO Games architecture overview
 
+Diagram: section [1](../../docs/architecture/README.md#1-context-and-containers), [2](../../docs/architecture/README.md#2-sequence-the-8-step-workflow), [3](../../docs/architecture/README.md#3-workflow-redemption-saga-with-compensations), [4](../../docs/architecture/README.md#4-erd-tenancy-and-ledger), [5](../../docs/architecture/README.md#5-lifecycle-redemption-states) of the diagram hub (why each diagram exists: [table](../../docs/architecture/README.md#why-each-diagram-exists)).
+
 This answers Part A of the brief. Diagrams are in [README.md](README.md). Decisions and their trade-offs are in [`docs/adrs/`](../adrs/).
 
 Legend used throughout: **Built** means implemented in the submission and checked against the code. **Partial** means the core is implemented and the stated part is not. **Next** means described and decided, not implemented (older text calls this "Designed").

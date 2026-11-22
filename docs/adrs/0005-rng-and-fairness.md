@@ -1,5 +1,7 @@
 # 0005. Server-authoritative RNG and wheel fairness
 
+Diagram: section [2](../../docs/architecture/README.md#2-sequence-the-8-step-workflow) of the diagram hub (why each diagram exists: [table](../../docs/architecture/README.md#why-each-diagram-exists)).
+
 - Status: accepted
 - Deciders: product owner (maxml), architecture session
 - Date: 2026-11-21

@@ -1,5 +1,7 @@
 # Spec: engagement store (bonus catalog and redemption saga)
 
+Diagram: section [2](../../docs/architecture/README.md#2-sequence-the-8-step-workflow), [3](../../docs/architecture/README.md#3-workflow-redemption-saga-with-compensations), [5](../../docs/architecture/README.md#5-lifecycle-redemption-states) of the diagram hub (why each diagram exists: [table](../../docs/architecture/README.md#why-each-diagram-exists)).
+
 Backlog: MIO-065, MIO-066, MIO-067, MIO-068, MIO-142 to MIO-145 (store and saga parts). Binding coordinator
 decisions: D-1 (the payments service owns every coin operation; the redemption reserve is a synchronous internal
 API), D-2 (one casino port), D-3 (same key in parallel), D-8 (saga gaps), D-9 (payments idempotency and contract

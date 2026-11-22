@@ -1,5 +1,7 @@
 # 0014. Realtime: one socket.io client per tab, with reconnect and backoff
 
+Diagram: section [2](../../docs/architecture/README.md#2-sequence-the-8-step-workflow) of the diagram hub (why each diagram exists: [table](../../docs/architecture/README.md#why-each-diagram-exists)).
+
 - Status: accepted (client and server are built: the gateway lives in `engagement`, namespace `/rt`)
 - Deciders: maintainers
 - Date: 2026-11-21

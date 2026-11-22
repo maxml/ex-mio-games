@@ -1,5 +1,7 @@
 # 0006. Redemption as a saga with compensation
 
+Diagram: section [2](../../docs/architecture/README.md#2-sequence-the-8-step-workflow), [3](../../docs/architecture/README.md#3-workflow-redemption-saga-with-compensations), [5](../../docs/architecture/README.md#5-lifecycle-redemption-states) of the diagram hub (why each diagram exists: [table](../../docs/architecture/README.md#why-each-diagram-exists)).
+
 - Status: accepted
 - Deciders: product owner (maxml), architecture session
 - Date: 2026-11-21

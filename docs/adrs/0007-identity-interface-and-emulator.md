@@ -1,5 +1,7 @@
 # 0007. Identity behind an interface, local emulator now, provider choice deferred
 
+Diagram: section [1](../../docs/architecture/README.md#1-context-and-containers), [4](../../docs/architecture/README.md#4-erd-tenancy-and-ledger) of the diagram hub (why each diagram exists: [table](../../docs/architecture/README.md#why-each-diagram-exists)).
+
 - Status: accepted (the production provider choice is explicitly open)
 - Deciders: product owner (maxml), architecture session
 - Date: 2026-11-21

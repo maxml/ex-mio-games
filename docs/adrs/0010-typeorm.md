@@ -1,5 +1,7 @@
 # 0010. TypeORM for persistence
 
+Diagram: section [4](../../docs/architecture/README.md#4-erd-tenancy-and-ledger) of the diagram hub (why each diagram exists: [table](../../docs/architecture/README.md#why-each-diagram-exists)).
+
 - Status: accepted
 - Deciders: product owner (maxml)
 - Date: 2026-11-21
