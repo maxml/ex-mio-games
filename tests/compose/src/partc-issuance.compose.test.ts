@@ -1,22 +1,38 @@
+import { uuidv7 } from '@ex-mio/contracts';
 import type { PlayerSession } from './player-session';
 import { seedCoins } from './seed-coins';
 import {
   armFault,
   balanceOf,
+  casinoDeposit,
+  compose,
+  engagementOutbox,
+  inboundRowsOf,
   inOrder,
   issuedFor,
   journalOf,
+  mySpins,
+  operatorRedemption,
   partCTenant,
   PRICE,
   redeem,
+  republish,
   reserveStateOf,
   resetCasino,
+  SEGMENT_COINS,
   sleep,
+  spin,
+  stackReady,
   transitions,
   waitForState,
   type PartCTenant,
 } from './partc';
 import { eventually, urls } from './env';
+
+const DEPOSIT_CONFIRMED = 'engagement.deposit.confirmed';
+const SPIN_COMPLETED = 'engagement.spin.completed';
+/** States the saga stops in (NEEDS_REVIEW waits for an operator, so a test stops there too). */
+const TERMINAL = ['COMPLETED', 'RELEASED', 'REFUNDED', 'REJECTED_FUNDS', 'NEEDS_REVIEW'];
 
 /*
  * Part C on the real stack: issuance that times out, is rejected, or times out on a casino that
@@ -32,7 +48,13 @@ import { eventually, urls } from './env';
  *      `not_found` -> the SAME key is sent again (UNKNOWN -> ISSUING, cause `retry_same_key`);
  *  - a 422 from the casino is `rejected`: -> REJECTED -> release -> RELEASED.
  *  The product never releases coins on `not_found` alone (within the issue deadline it re-sends);
- *  a release needs the casino's `rejected`.
+ *  a release needs the casino's `rejected`. This is the SPECIFIED behaviour, which test 3 pins:
+ *  docs/specs/engagement-store.md section 1 item 4 (`not_found` -> retry with the same key while
+ *  attempts < 8), item 7 (release gate: `not_found` never releases on the automatic path, not even
+ *  at exhaustion), the state table row `UNKNOWN -> ISSUING` on `not_found`, and D-18 (coins move
+ *  only on evidence; a missing record is not evidence that nothing was issued).
+ * Tests 4 and 5 add the bus side of Part C: deposit webhook -> spin credit -> spin -> coins.
+ * Test 5 stops and starts the `rabbitmq` service (`docker compose stop|start`), so it runs last.
  * Coins: the payments reserve id is the order id; the journal holds one `reserve`, then one
  * `capture` or one `release` under that id. Balances are read through the operator route.
  *
@@ -79,7 +101,12 @@ describe('Part C issuance failures (compose, casino-sim faults)', () => {
     expect(done.state).toBe('COMPLETED');
     const path = transitions(done);
     expect(
-      inOrder(path, ['RESERVED->ISSUING', 'ISSUING->UNKNOWN', 'UNKNOWN->ISSUED', 'ISSUED->COMPLETED']),
+      inOrder(path, [
+        'RESERVED->ISSUING',
+        'ISSUING->UNKNOWN',
+        'UNKNOWN->ISSUED',
+        'ISSUED->COMPLETED',
+      ]),
     ).toBe(true);
     expect(done.history.find((h) => h.to === 'UNKNOWN')?.cause).toBe('casino_unknown');
     expect(done.history.find((h) => h.from === 'UNKNOWN' && h.to === 'ISSUED')?.cause).toBe(
@@ -105,9 +132,9 @@ describe('Part C issuance failures (compose, casino-sim faults)', () => {
 
     const done = await waitForState(t, id, ['RELEASED', 'COMPLETED', 'NEEDS_REVIEW']);
     expect(done.state).toBe('RELEASED');
-    expect(inOrder(transitions(done), ['RESERVED->ISSUING', 'ISSUING->REJECTED', 'REJECTED->RELEASED'])).toBe(
-      true,
-    );
+    expect(
+      inOrder(transitions(done), ['RESERVED->ISSUING', 'ISSUING->REJECTED', 'REJECTED->RELEASED']),
+    ).toBe(true);
     expect(done.failure_reason).toMatch(/^casino_rejected:/);
     expect(done.attempts).toBe(1);
 
@@ -154,6 +181,122 @@ describe('Part C issuance failures (compose, casino-sim faults)', () => {
     expect(await journalOf(t.tenant.tenantId, id)).toEqual({ reserve: 1, release: 1 });
     expect(await reserveStateOf(t.tenant.tenantId, id)).toBe('released');
   }, 150_000);
+
+  // Mutation that must turn this red: in ingestion.service.ts drop the `if (inserted)` around the
+  // outbox write -> a second `engagement.deposit.confirmed` for the same casino event is in the
+  // outbox (count 2). Second mutation: in pg-repositories.ts `insertIfAbsent`, drop
+  // `ON CONFLICT (tenant_id, source, external_event_id) DO NOTHING` -> the unique index makes the
+  // copies fail, so `delivered` is not [200, 200, 200]. Third mutation (the coin side): in
+  // ledger.service.ts `creditSpin` pass `operationId: uuidv7()` instead of the spin id -> the
+  // spin delivered again (below, with a fresh event id) is credited twice.
+  it('a deposit webhook delivered three times grants one spin, and that spin credits its coins exactly once', async () => {
+    const p = await t.tenant.player();
+    const eventId = `partc-dup-${uuidv7()}`;
+    await armFault({ kind: 'duplicateDelivery', player_id: p.externalPlayerId, copies: 3 });
+    // Three identical signed webhooks: the fault really fired (not a single delivery).
+    expect(await casinoDeposit(t, p, eventId)).toEqual([200, 200, 200]);
+
+    expect(await inboundRowsOf(t.tenant.tenantId, eventId)).toBe(1);
+    expect(
+      await engagementOutbox(t.tenant.tenantId, DEPOSIT_CONFIRMED, 'external_event_id', eventId),
+    ).toHaveLength(1);
+    await eventually(async () => ((await mySpins(p)) === 1 ? true : undefined), 30_000);
+    await sleep(5_000); // a late second grant from a second event would show here
+    expect(await mySpins(p)).toBe(1);
+
+    const first = await spin(p);
+    expect(first.status).toBe(201);
+    const { spin_id: spinId, reward_coins: coins } = (await first.json()) as {
+      spin_id: string;
+      reward_coins: number;
+    };
+    expect(coins).toBe(SEGMENT_COINS);
+    const second = await spin(p);
+    expect(second.status).toBe(409);
+    expect(((await second.json()) as { code: string }).code).toBe('no_credit');
+
+    // Payments credits the spin through the bus. Then the same spin arrives again, as a broker
+    // redelivery would bring it (same event id) and as a re-emitted event would (new event id).
+    await eventually(
+      async () => ((await balanceOf(t, p))?.available === SEGMENT_COINS ? true : undefined),
+      30_000,
+    );
+    const [env] = await engagementOutbox(t.tenant.tenantId, SPIN_COMPLETED, 'spin_id', spinId);
+    expect(env).toBeDefined();
+    await republish(env!);
+    await republish({ ...env!, event_id: uuidv7() });
+
+    expect(await settledBalance(p)).toEqual({ available: SEGMENT_COINS, held: 0 });
+    expect(await journalOf(t.tenant.tenantId, spinId)).toEqual({ spin_award: 1 });
+  }, 150_000);
+
+  // Mutation that must turn this red: in service-kit messaging.ts `onLost`, drop
+  // `.then(() => this.scheduleReconnect())` -> engagement never reconnects after the broker is
+  // back, the second spin's `spin.completed` stays in the outbox and its coins never arrive
+  // (available stays at one segment minus the price). Second mutation: in ledger.service.ts
+  // `creditSpin` pass `operationId: uuidv7()` instead of the spin id -> the second spin,
+  // delivered again after the restart, is credited twice (available one segment too high, two
+  // `spin_award` rows). Third mutation: in the saga's `capture`, take the `catch` branch for an
+  // `ok` reply too (reschedule instead of ISSUED -> COMPLETED) -> the order never reaches a
+  // terminal state (waitForState names where it is stuck: ISSUED).
+  it('a broker restart in the middle of a redemption: the order ends in exactly one terminal state and no coins move twice', async () => {
+    const p = await t.tenant.player();
+    // Two deposits, two spins: one spin before the outage, one while the broker is down.
+    expect(await casinoDeposit(t, p, `partc-rmq-a-${uuidv7()}`)).toEqual([200]);
+    expect(await casinoDeposit(t, p, `partc-rmq-b-${uuidv7()}`)).toEqual([200]);
+    await eventually(async () => ((await mySpins(p)) === 2 ? true : undefined), 30_000);
+    const first = await spin(p);
+    expect(first.status).toBe(201);
+    const spin1 = ((await first.json()) as { spin_id: string }).spin_id;
+    await eventually(
+      async () => ((await balanceOf(t, p))?.available === SEGMENT_COINS ? true : undefined),
+      30_000,
+    );
+
+    // The order is in flight at the casino (request recorded, reply stalled) when the broker goes.
+    await armFault({ kind: 'timeout', player_id: p.externalPlayerId });
+    const id = await redeem(t, p);
+    await eventually(async () => ((await issuedFor(id)) === 1 ? true : undefined), 30_000);
+    expect(TERMINAL).not.toContain((await operatorRedemption(t, id)).state);
+
+    let spin2 = '';
+    try {
+      await compose('stop', 'rabbitmq');
+      // While the broker is down: the order is still not settled twice, and a spin is accepted
+      // (its event waits in engagement's outbox). Same Idempotency-Key on every try (D-3).
+      const key = `spin-rmq-${uuidv7()}`;
+      spin2 = await eventually(async () => {
+        const r = await spin(p, key);
+        return r.status === 201 ? ((await r.json()) as { spin_id: string }).spin_id : undefined;
+      }, 30_000);
+    } finally {
+      await compose('start', 'rabbitmq');
+    }
+    await stackReady();
+
+    const done = await waitForState(t, id, TERMINAL, 120_000);
+    expect(done.state).toBe('COMPLETED');
+    // The second spin's coins arrive after the restart, once; then the same spin comes again.
+    await eventually(
+      async () =>
+        (await balanceOf(t, p))?.available === 2 * SEGMENT_COINS - PRICE ? true : undefined,
+      90_000,
+    );
+    const [env] = await engagementOutbox(t.tenant.tenantId, SPIN_COMPLETED, 'spin_id', spin2);
+    expect(env).toBeDefined();
+    await republish(env!);
+    await republish({ ...env!, event_id: uuidv7() });
+
+    expect(await settledBalance(p)).toEqual({ available: 2 * SEGMENT_COINS - PRICE, held: 0 });
+    const after = await operatorRedemption(t, id);
+    expect(after.state).toBe('COMPLETED');
+    expect(after.history.filter((h) => TERMINAL.includes(h.to))).toHaveLength(1);
+    expect(await issuedFor(id)).toBe(1);
+    expect(await journalOf(t.tenant.tenantId, id)).toEqual({ reserve: 1, capture: 1 });
+    expect(await reserveStateOf(t.tenant.tenantId, id)).toBe('captured');
+    expect(await journalOf(t.tenant.tenantId, spin1)).toEqual({ spin_award: 1 });
+    expect(await journalOf(t.tenant.tenantId, spin2)).toEqual({ spin_award: 1 });
+  }, 360_000);
 });
 
 afterAll(async () => {

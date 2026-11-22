@@ -1,3 +1,7 @@
+import { execFile } from 'node:child_process';
+import { resolve } from 'node:path';
+import { promisify } from 'node:util';
+import { connect } from 'amqplib';
 import { uuidv7 } from '@ex-mio/contracts';
 import { eventually, pgAs, urls } from './env';
 import { newTenant, type PlayerSession, type TestTenant } from './player-session';
@@ -60,7 +64,11 @@ export async function partCTenant(): Promise<PartCTenant> {
       body: JSON.stringify({
         name: 'Part C wheel',
         segments: [
-          { label: `${SEGMENT_COINS} coins`, weight: 1, reward: { type: 'coins', amount: SEGMENT_COINS } },
+          {
+            label: `${SEGMENT_COINS} coins`,
+            weight: 1,
+            reward: { type: 'coins', amount: SEGMENT_COINS },
+          },
         ],
       }),
     });
@@ -239,7 +247,10 @@ export interface Balance {
   held: number;
 }
 
-export async function balanceOf(t: PartCTenant, player: PlayerSession): Promise<Balance | undefined> {
+export async function balanceOf(
+  t: PartCTenant,
+  player: PlayerSession,
+): Promise<Balance | undefined> {
   const r = await fetch(`${urls.payments}/v1/players/${player.userId}/balance`, {
     headers: { authorization: `Bearer ${t.operatorPayments}` },
   });
@@ -263,14 +274,19 @@ export async function journalOf(
       [operationId],
     );
     await db.query('COMMIT');
-    return Object.fromEntries(rows.map((r: { operation_type: string; n: number }) => [r.operation_type, r.n]));
+    return Object.fromEntries(
+      rows.map((r: { operation_type: string; n: number }) => [r.operation_type, r.n]),
+    );
   } finally {
     await db.end();
   }
 }
 
 /** The reserve row payments holds for the order. */
-export async function reserveStateOf(tenantId: string, reserveId: string): Promise<string | undefined> {
+export async function reserveStateOf(
+  tenantId: string,
+  reserveId: string,
+): Promise<string | undefined> {
   const db = await pgAs('payments_app');
   try {
     await db.query('BEGIN');
@@ -281,6 +297,74 @@ export async function reserveStateOf(tenantId: string, reserveId: string): Promi
   } finally {
     await db.end();
   }
+}
+
+/**
+ * Outbox envelopes engagement wrote for one event type whose payload field `field` equals `value`
+ * (the outbox has no RLS: the relay works across tenants, the row still carries `tenant_id`).
+ */
+export async function engagementOutbox(
+  tenantId: string,
+  type: string,
+  field: string,
+  value: string,
+): Promise<Array<Record<string, unknown>>> {
+  const db = await pgAs('engagement_app');
+  try {
+    const { rows } = await db.query(
+      `SELECT envelope FROM outbox
+        WHERE tenant_id = $1 AND type = $2 AND envelope->'payload'->>$3 = $4
+        ORDER BY created_at`,
+      [tenantId, type, field, value],
+    );
+    return rows.map((r: { envelope: Record<string, unknown> }) => r.envelope);
+  } finally {
+    await db.end();
+  }
+}
+
+/** Publishes an envelope to the events exchange as the relay would (persistent, confirmed). */
+export async function republish(envelope: Record<string, unknown>): Promise<void> {
+  const conn = await connect(urls.amqp);
+  try {
+    const ch = await conn.createConfirmChannel();
+    const type = String(envelope.type);
+    ch.publish('mio.events', type, Buffer.from(JSON.stringify(envelope)), {
+      persistent: true,
+      contentType: 'application/json',
+      messageId: String(envelope.event_id),
+      type,
+    });
+    await ch.waitForConfirms();
+  } finally {
+    await conn.close();
+  }
+}
+
+// ---- the stack itself --------------------------------------------------------------------------
+
+const sh = promisify(execFile);
+const repoRoot = resolve(__dirname, '../../..');
+
+/** `docker compose <args>` on the stack under test (same project as the other compose tests). */
+export async function compose(...args: string[]): Promise<void> {
+  await sh('docker', ['compose', ...args], { cwd: repoRoot, timeout: 120_000 });
+}
+
+const readiness = async (base: string): Promise<number> => {
+  try {
+    return (await fetch(`${base}/healthz/ready`)).status;
+  } catch {
+    return 0;
+  }
+};
+
+/** Every service answers ready (its broker session is up again). */
+export async function stackReady(timeoutMs = 120_000): Promise<void> {
+  await eventually(async () => {
+    const codes = await Promise.all([urls.identity, urls.engagement, urls.payments].map(readiness));
+    return codes.every((c) => c === 200) ? true : undefined;
+  }, timeoutMs);
 }
 
 /** Ingest rows of one casino event in the tenant (engagement's dedupe key). */
