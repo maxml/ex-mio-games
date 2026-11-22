@@ -125,6 +125,12 @@ docker compose up -d --wait
 scripts/demo.sh            # prints each request and the trimmed response, asserts it, exits non-zero on a mismatch
 ```
 
+Its Part C steps are C-1 duplicate deposit, C-2 concurrent spins, C-3 duplicate redemption, C-4 casino timeout,
+C-5 invalid or unauthorized events, C-6 player isolation (C-6b no negative balance), C-7 tenant isolation and
+C-8 failed reward issuance (casino B rejects the bonus: the coins stay held while the ticket is pending, then the
+order ends `RELEASED`, the balance returns to the baseline exactly once and the stock and per-player limit come
+back). C-8 was added after the recorded run below, so that run has no output for it.
+
 Recorded output of that script on a clean stack (secrets and tokens shown as `<redacted>`, bodies trimmed).
 The first run of 37 steps made 133 assertions pass and recorded 13 failures, all from two product gaps listed
 under "Known gaps from the recorded run" below.
@@ -223,6 +229,21 @@ from that first run.
   stays as a fallback with `skipTrailingSlashRedirect` so `/socket.io/` is no longer redirected.
 - **Redemption reaching the casino.** An operator registers the casino reward API with
   `PUT /v1/operator/integrations/:casino/reward-api` (identity); it is served to engagement as `reward_api`.
+  The URL is checked twice (D-30). The PUT refuses credentials in the URL and literal loopback, private,
+  link-local (cloud metadata) and unspecified addresses. Engagement's transport resolves the host at call
+  time and refuses the same ranges, never follows a redirect (a 3xx counts as "outcome unknown"), and in
+  production requires `https`; identity's PUT likewise refuses a plain-http URL for the `production`
+  environment (the sandbox endpoint may be http). `REWARD_API_ALLOW_HOSTS` (comma separated host names,
+  read by identity and engagement) exempts listed hosts from the https rule, and from the address rule in
+  engagement's transport; compose sets it to `casino-sim` on both services. The casino's rejection
+  reason is cut to 64 characters of `[A-Za-z0-9_.:-]` before it is stored or shown.
+- **The environment is always stated (INV-ENV-INPUT, D-29).** Nothing defaults to production. These requests
+  now answer **400 `VALIDATION_FAILED`** when `environment` (`production` or `sandbox`) is missing:
+  `POST /v1/credentials` (body `{ platform, environment }`), `PUT /v1/operator/integrations/:casino/reward-api`
+  (body `{ environment, base_url, ... }`), and the internal `GET /internal/v1/tenants/:tenantId/players/:playerId/balance`
+  (query `sandbox=true|false`, service tokens only). A player's environment is never a request field: it comes
+  from the launch token, and the realtime ticket carries it (a sandbox player gets a sandbox ticket). An event
+  without `sandbox` is invalid and goes to the dead-letter path.
 - **Wheel, rules and subscription id.** `PUT /v1/operator/wheel` and `PUT /v1/operator/rules` (engagement,
   `operator_admin`), a default wheel and rule on signup, and `GET /v1/operator/plan` (payments) replace the
   database steps; the script no longer reads or writes any database.
@@ -416,8 +437,9 @@ Checked against the code. The full table with the reasons is section 14 of
   already consumed is an open question.
 - Postgres TLS is explicit in production: set `DATABASE_SSL` to `disable`, `require` or `verify-full`. Identity
   refuses to start in production with a development `CREDENTIALS_KEK` or `PLATFORM_ADMIN_PASSWORD` or with the
-  `fake` identity provider. Migrations are a separate step (`scripts/migrate-all.sh`, which the manifest
-  `.deckhand/deploy.yml` points at).
+  `fake` identity provider. Migrations are a separate step: the manifest `.deckhand/deploy.yml` runs
+  `docker run <service image> node dist/migrate.js` inline for each service (the Deckhand container has no checkout,
+  so it cannot run a repo script); `scripts/migrate-all.sh` is the same loop for a shell.
 
 The full list, with the web calls that no service answers yet, is in
 [`docs/submission/known-gaps.md`](docs/submission/known-gaps.md).

@@ -12,7 +12,7 @@ import {
   type WebhookResult,
 } from '@ex-mio/contracts';
 import type { IdempotentOutcome } from '@ex-mio/idempotency';
-import { Db, type Tx } from '@ex-mio/service-kit';
+import { AuthorizationRefused, Db, type Tx } from '@ex-mio/service-kit';
 import { currentTenant, runWithTenant } from '@ex-mio/tenancy';
 import { BillingRepository } from '../model/billing.repository';
 import { LEDGER_FAULTS, type LedgerFaults } from '../model/ledger.faults';
@@ -268,7 +268,9 @@ export class BillingService {
 
   private actor(): { tenantId: string; principalId: string } {
     const { tenantId, principalId } = currentTenant();
-    if (!principalId) throw new LedgerError('forbidden', 'a principal is required');
+    if (!principalId) {
+      throw new AuthorizationRefused({ code: 'forbidden', message: 'a principal is required' });
+    }
     return { tenantId, principalId };
   }
 

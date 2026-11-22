@@ -149,13 +149,17 @@ version:
   inject_as: APP_VERSION # flows into the health `version` field
 
 # Each service ships its own migration entry point: `node dist/migrate.js` in its
-# image (the images have no pnpm and no TypeORM CLI). scripts/migrate-all.sh runs
-# the three in turn (needs IMAGE_PREFIX, the *_MIGRATION_DATABASE_URL variables and
-# DATABASE_SSL); exit 0 = all applied, non-zero = stop the deploy. The migrations
-# are TypeScript, not SQL files, so the SQL linter has nothing to read: engine
-# `other` skips it.
+# image (the images have no pnpm and no TypeORM CLI). Deckhand runs `run` with
+# `/bin/sh -lc` in a runtime container that holds NO checkout, so a repo script
+# (scripts/migrate-all.sh) is not there: the step is inline, one `docker run` of each
+# service's own api image, in turn, joined with && so the first failure stops the deploy
+# (needs IMAGE_PREFIX, IMAGE_TAG, the *_MIGRATION_DATABASE_URL variables and DATABASE_SSL;
+# optional DOCKER_NETWORK). `node dist/migrate.js` exits non-zero when no migrations are
+# shipped or any is still pending afterwards. scripts/migrate-all.sh is the same loop for
+# a developer's shell. The migrations are TypeScript, not SQL files, so the SQL linter has
+# nothing to read: engine `other` skips it.
 migrations:
-  run: 'sh scripts/migrate-all.sh'
+  run: 'docker run --rm --network "${DOCKER_NETWORK:-bridge}" -e "MIGRATION_DATABASE_URL=$IDENTITY_MIGRATION_DATABASE_URL" -e NODE_ENV=production -e "DATABASE_SSL=$DATABASE_SSL" "$IMAGE_PREFIX/identity:$IMAGE_TAG" node dist/migrate.js && docker run --rm --network "${DOCKER_NETWORK:-bridge}" -e "MIGRATION_DATABASE_URL=$ENGAGEMENT_MIGRATION_DATABASE_URL" -e NODE_ENV=production -e "DATABASE_SSL=$DATABASE_SSL" "$IMAGE_PREFIX/engagement:$IMAGE_TAG" node dist/migrate.js && docker run --rm --network "${DOCKER_NETWORK:-bridge}" -e "MIGRATION_DATABASE_URL=$PAYMENTS_MIGRATION_DATABASE_URL" -e NODE_ENV=production -e "DATABASE_SSL=$DATABASE_SSL" "$IMAGE_PREFIX/payments:$IMAGE_TAG" node dist/migrate.js'
   when: expand-before-cutover # expand (additive) BEFORE cutover; contract in the NEXT deploy
   backward_compatible: true # required for blue-green: blue must run against the expanded schema
   backup_before: true # database snapshot before expand

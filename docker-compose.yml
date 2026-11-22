@@ -117,6 +117,8 @@ services:
       # Runtime role: not the table owner. The owner URL is given to the migrate step only.
       DATABASE_URL: postgresql://identity_app:identity-app-dev@postgres:5432/identity
       BASE_DOMAIN: mio.localhost
+      # D-30 (F1): the reward-API PUT refuses http for a production endpoint unless the host is listed.
+      REWARD_API_ALLOW_HOSTS: casino-sim
       PLATFORM_ADMIN_EMAIL: root@mio.test
       PLATFORM_ADMIN_PASSWORD: platform-dev-password-0000
       CREDENTIALS_KEK: dev-credentials-kek-0000000000
@@ -163,6 +165,9 @@ services:
       SERVICE_CLIENT_SECRET: engagement-dev-secret-0000
       # The redemption saga calls payments (reserve, commit, release) with a service token.
       PAYMENTS_URL: http://payments:4003
+      # D-30 (F1): the reward API transport refuses internal addresses and, in production, plain
+      # http. The simulator is the one host the engagement stack may reach over http.
+      REWARD_API_ALLOW_HOSTS: casino-sim
       # D-27: the browser opens the realtime socket on engagement's own public URL (web's
       # PUBLIC_REALTIME_URL), so the web origin is allowed to connect cross-origin.
       REALTIME_ALLOWED_ORIGINS: http://localhost:${WEB_PORT:-3000}

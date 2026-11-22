@@ -14,10 +14,14 @@ afterEach(() => {
 describe('Wheel only animates results that arrive while it is mounted', () => {
   it('mounted with a result already in hand: no animation, no onSpinEnd (the old re-credit bug)', () => {
     const onSpinEnd = vi.fn();
-    const { container } = render(<Wheel segments={segments} spin={{ id: 'spin-1', index: 2 }} onSpinEnd={onSpinEnd} />);
+    const { container } = render(
+      <Wheel segments={segments} spin={{ id: 'spin-1', index: 2 }} onSpinEnd={onSpinEnd} />,
+    );
     act(() => void vi.advanceTimersByTime(10_000));
     expect(onSpinEnd).not.toHaveBeenCalled();
-    expect(container.querySelector('svg[viewBox="-104 -104 208 208"]')!.getAttribute('style') ?? '').not.toMatch(/transition: transform/);
+    expect(
+      container.querySelector('svg[viewBox="-104 -104 208 208"]')!.getAttribute('style') ?? '',
+    ).not.toMatch(/transition: transform/);
   });
 
   it('a new spin id animates and reports the end once', () => {
@@ -46,7 +50,11 @@ describe('Wheel only animates results that arrive while it is mounted', () => {
     };
     const { container, rerender } = render(<Wheel segments={segments} spin={null} />);
     upright(container);
-    for (const [id, index] of [['a', 1], ['b', 3], ['c', 0]] as const) {
+    for (const [id, index] of [
+      ['a', 1],
+      ['b', 3],
+      ['c', 0],
+    ] as const) {
       rerender(<Wheel segments={segments} spin={{ id, index }} />);
       act(() => void vi.advanceTimersByTime(10_000));
       upright(container);

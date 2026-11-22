@@ -17,9 +17,9 @@ const answer = (status: number, body: unknown = {}) =>
 
 describe('IdentityTicketRedeemer', () => {
   it('posts the ticket alone with the service token and returns the principal', async () => {
-    const fetchImpl = answer(200, { sub: U, tid: T, roles: ['player'] });
+    const fetchImpl = answer(200, { sub: U, tid: T, roles: ['player'], sandbox: false });
     const r = new IdentityTicketRedeemer('http://identity.test/', tokens, { fetchImpl });
-    expect(await r.redeem('tkt')).toEqual({ sub: U, tid: T, roles: ['player'] });
+    expect(await r.redeem('tkt')).toEqual({ sub: U, tid: T, roles: ['player'], sandbox: false });
     const [url, init] = (fetchImpl as unknown as jest.Mock).mock.calls[0] as [string, RequestInit];
     expect(url).toBe(`http://identity.test${INTERNAL_ROUTES.realtimeTicketRedeem}`);
     expect(init.method).toBe('POST');

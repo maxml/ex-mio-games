@@ -64,6 +64,21 @@ export class CredentialsService {
   ): Promise<RewardApiSummary> {
     const tenantId = effectiveTenant(subject);
     await this.access.authorize(subject, 'credentials.rotate', { tenant_id: tenantId });
+    // D-30 (F1): a production reward API is https. Plain http is for hosts listed in
+    // REWARD_API_ALLOW_HOSTS (compose: casino-sim) and for the sandbox endpoint.
+    if (input.environment === 'production') {
+      const url = new URL(input.base_url);
+      const allowed = (process.env.REWARD_API_ALLOW_HOSTS ?? '')
+        .split(',')
+        .map((h) => h.trim().toLowerCase())
+        .filter((h) => h !== '');
+      if (url.protocol !== 'https:' && !allowed.includes(url.hostname.toLowerCase())) {
+        throw new IdentityError(
+          'VALIDATION_FAILED',
+          'a production reward API must use https (http only for hosts in REWARD_API_ALLOW_HOSTS)',
+        );
+      }
+    }
     const row: RewardApiRow = {
       tenant_id: tenantId,
       platform: casino,
@@ -131,13 +146,9 @@ export class CredentialsService {
   async issue(
     tenantId: string,
     platform: string,
-    options: { environment?: IntegrationEnvironment; subject?: Subject } = {},
+    options: { environment: IntegrationEnvironment; subject?: Subject },
   ): Promise<CredentialIssued> {
-    const { row, issued } = await this.create(
-      tenantId,
-      platform,
-      options.environment ?? 'production',
-    );
+    const { row, issued } = await this.create(tenantId, platform, options.environment);
     await this.uow.run(tenantId, (tx) => this.repos.credentials.insert(tx, row));
     this.announceIssued(tenantId, row.environment, false, options.subject);
     return issued;
@@ -147,7 +158,7 @@ export class CredentialsService {
   async issueFor(
     subject: Subject,
     platform: string,
-    environment: IntegrationEnvironment = 'production',
+    environment: IntegrationEnvironment,
   ): Promise<CredentialIssued> {
     const tenantId = effectiveTenant(subject);
     await this.access.authorize(subject, 'credentials.rotate', { tenant_id: tenantId });
@@ -219,8 +230,16 @@ export class CredentialsService {
           principalId: subject.userId,
           roles: subject.roles,
           acting: subject.acting,
+          sandbox: environment === 'sandbox', // the environment of the key, not of the operator
         }
-      : { mode: 'service', tenantId, principalId: 'identity', roles: [], service: 'identity' };
+      : {
+          mode: 'service',
+          tenantId,
+          principalId: 'identity',
+          roles: [],
+          service: 'identity',
+          sandbox: environment === 'sandbox',
+        };
     emitProductEventAs(auth, {
       event: 'identity.credential_issued',
       tenant_id: tenantId,

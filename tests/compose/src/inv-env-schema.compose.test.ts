@@ -41,8 +41,10 @@ type Classes = {
 };
 
 const BUS = {
-  outbox: 'bus outbox; keyed by the producer-minted event id; the environment rides on the envelope (D-13)',
-  inbox: 'bus inbox; (consumer, event_id) where event ids are producer-minted UUIDs, never external',
+  outbox:
+    'bus outbox; keyed by the producer-minted event id; the environment rides on the envelope (D-13)',
+  inbox:
+    'bus inbox; (consumer, event_id) where event ids are producer-minted UUIDs, never external',
   migrations: 'TypeORM migration ledger',
   audit_intents: 'audit intents keyed by a minted event id (D-21); audit is not environment data',
 };
@@ -52,7 +54,8 @@ const CLASSES: Record<Service, Classes> = {
     REQUIRES: {
       // The casino signs the launch token and chooses its jti. A sandbox launch and a production
       // launch of the same tenant share (tenant_id, jti): a sandbox jti burns the production one.
-      launch_jti: 'single-use launch jti chosen by the casino, from a sandbox OR a production credential',
+      launch_jti:
+        'single-use launch jti chosen by the casino, from a sandbox OR a production credential',
     },
     INHERITS: {},
     GLOBAL: {
@@ -72,7 +75,8 @@ const CLASSES: Record<Service, Classes> = {
       // rc review R2, measured on the stack: a sandbox webhook swallows the production deposit.
       inbound_events: 'deposit dedupe on the casino event id; sandbox and production webhooks (F5)',
       // A sandbox redemption takes the player's production per-player limit slot (same user, X-3).
-      item_player_usage: 'per-player redemption limit counter, consumed by sandbox and production orders',
+      item_player_usage:
+        'per-player redemption limit counter, consumed by sandbox and production orders',
     },
     INHERITS: {
       // A spin of a sandbox credit is a sandbox spin; but its key holds the client's Idempotency-Key.
@@ -130,7 +134,10 @@ const SURROGATE_KEYS: Record<string, string> = {
   'spin_credits(tenant_id,id)': 'uuidv7 minted by engagement',
   'spin_credits(tenant_id,source_event_id,rule_id,seq)':
     'source_event_id is inbound_events.id, a uuidv7 minted by engagement, never the casino id',
-  'spins(tenant_id,id)': 'uuidv7 minted by engagement',
+  // Final review: since EnvScopedKeys this is NOT minted. The id is a hash of
+  // scopedKey('spin', tenant, sandbox, [user, Idempotency-Key]): the spin dedupe key, with the
+  // environment inside the derivation. Pinned by SPIN-DEDUPE-1..3 (review-final-spin-dedupe.test.ts).
+  'spins(tenant_id,id)': 'uuid derived from the environment-scoped spin key (D-26)',
   'redemptions(tenant_id,id)': 'uuidv7 minted by engagement',
   'redemption_history(tenant_id,id)': 'identity sequence',
   'redemption_work_queue(tenant_id,redemption_id)': 'the order id, minted by engagement',

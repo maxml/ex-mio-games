@@ -236,14 +236,14 @@ describe('engagement.spin_completed', () => {
     const failing = await build({ failInsert: true });
     await expect(
       runWithTenant({ tenantId: T, principalId: PLAYER }, () =>
-        failing.spin({ idempotencyKey: 'k2' }),
+        failing.spin({ idempotencyKey: 'k2', sandbox: false }),
       ),
     ).rejects.toThrow('db down');
     expect(cap.events()).toEqual([]);
 
     const replay = await build({ existing: true });
     await runWithTenant({ tenantId: T, principalId: PLAYER }, () =>
-      replay.spin({ idempotencyKey: 'k2' }),
+      replay.spin({ idempotencyKey: 'k2', sandbox: false }),
     );
     expect(cap.events()).toEqual([]);
   });
@@ -256,7 +256,7 @@ describe('engagement.spin_completed', () => {
     const control = t;
     db.tenantTx = async (fn: (tx: never) => Promise<unknown>) => fn(control.tx as never);
     await runWithTenant({ tenantId: T, principalId: PLAYER }, () =>
-      service.spin({ idempotencyKey: 'k3' }),
+      service.spin({ idempotencyKey: 'k3', sandbox: false }),
     );
     expect(cap.events()).toEqual([]);
     await control.commit();

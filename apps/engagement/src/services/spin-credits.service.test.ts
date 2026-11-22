@@ -55,7 +55,7 @@ const depositEvent = (amount = 5000, sandbox = false) =>
   createEvent({
     type: 'engagement.deposit.confirmed',
     tenantId: T,
-    ...(sandbox ? { sandbox: true } : {}),
+    sandbox,
     payload: {
       inbound_event_id: INBOUND,
       source: 'casino-a',

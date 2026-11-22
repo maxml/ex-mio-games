@@ -37,6 +37,18 @@ const MAX_LENGTH = 512;
 const escapePart = (part: string): string =>
   part.replace(/[%:|]/g, (c) => `%${c.charCodeAt(0).toString(16).toUpperCase().padStart(2, '0')}`);
 
+/**
+ * F4: the one scopedKey failure that client input can cause (escaping triples `:`, `|` and `%`, so a
+ * 200-character Idempotency-Key can exceed the bound). A caller that passes client text maps it to
+ * a 4xx; every other scopedKey error is a programming error.
+ */
+export class ScopedKeyTooLong extends Error {
+  constructor() {
+    super('scopedKey: the key is too long');
+    this.name = 'ScopedKeyTooLong';
+  }
+}
+
 export function scopedKey(input: ScopedKeyInput): string {
   const { kind, tenantId, sandbox, parts } = input;
   if (!(SCOPED_KEY_KINDS as readonly string[]).includes(kind)) {
@@ -62,6 +74,6 @@ export function scopedKey(input: ScopedKeyInput): string {
     sandbox ? 'sbx' : 'prd',
     ...parts.map(escapePart),
   ].join(':');
-  if (key.length > MAX_LENGTH) throw new Error('scopedKey: the key is too long');
+  if (key.length > MAX_LENGTH) throw new ScopedKeyTooLong();
   return key;
 }

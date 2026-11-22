@@ -221,6 +221,7 @@ const tenantCreated = (tenant: string) =>
   createEvent({
     type: 'identity.tenant.created',
     tenantId: tenant,
+    sandbox: false,
     payload: { name: 'n', slug: 's' },
   });
 

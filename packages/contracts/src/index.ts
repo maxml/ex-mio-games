@@ -5,6 +5,7 @@ export * from './http';
 export * from './identity';
 export * from './ids';
 export * from './ingest';
+export * from './ip-guard';
 export * from './payments';
 export * from './realtime';
 export * from './scoped-key';

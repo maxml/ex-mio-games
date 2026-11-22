@@ -930,7 +930,7 @@ describe('I-SANDBOX: sandbox redemptions stay in the sandbox and out of metering
   // Mutation: choose the adapter from anything but the server-side sandbox flag of the order.
   it('I-SANDBOX-1 a sandbox order is issued only to the sandbox adapter; a production order never to it', async () => {
     const { w, item } = setup();
-    w.payments.credit(S1, 100, true);
+    w.payments.creditIn(S1, 100, true);
     const s = await order(w, item.id, S1, 'ks', true);
     const p = await order(w, item.id, P1, 'kp', false);
     await w.settle();
@@ -946,7 +946,7 @@ describe('I-SANDBOX: sandbox redemptions stay in the sandbox and out of metering
   // redemption, or put the flag back into a payload (two places for one flag is how they drift).
   it('I-SANDBOX-2 every event of a redemption carries its sandbox flag on the ENVELOPE, true only for sandbox, never in the payload', async () => {
     const { w, item } = setup();
-    w.payments.credit(S1, 100, true);
+    w.payments.creditIn(S1, 100, true);
     const s = await order(w, item.id, S1, 'ks', true);
     const p = await order(w, item.id, P1, 'kp', false);
     await w.settle();
@@ -967,11 +967,11 @@ describe('I-SANDBOX: sandbox redemptions stay in the sandbox and out of metering
     });
     expect(w.payments.bal(P1)).toEqual({ available: 100, held: 0, captured: 0 });
     expect(w.payments.callsOf('reserve').map((c) => c.sandbox)).toEqual([true]);
-    w.payments.credit(S1, 100, true); // sandbox coins only
+    w.payments.creditIn(S1, 100, true); // sandbox coins only
     await expect(order(w, item.id, S1, 'kp', false)).rejects.toMatchObject({
       code: 'insufficient_funds',
     });
-    expect(w.payments.bal(S1, true)).toEqual({ available: 100, held: 0, captured: 0 });
+    expect(w.payments.balIn(S1, true)).toEqual({ available: 100, held: 0, captured: 0 });
   });
 });
 
@@ -1005,7 +1005,7 @@ describe('I-PORT: the saga uses the registry and the request builder of the casi
     'I-PORT-2 no adapter for the order environment (sandbox=%s) -> NEEDS_REVIEW no_adapter, coins held, the casino never called',
     async (sandbox) => {
       const { w, item } = setup();
-      w.payments.credit(S1, 100, true);
+      w.payments.creditIn(S1, 100, true);
       w.noAdapter.add(sandbox);
       const r = await order(w, item.id, sandbox ? S1 : P1, 'k1', sandbox);
       await w.settle();
@@ -1015,7 +1015,7 @@ describe('I-PORT: the saga uses the registry and the request builder of the casi
       expect(w.casino.issueCalls).toHaveLength(0);
       expect(w.sandboxCasino.issueCalls).toHaveLength(0);
       expect(w.payments.callsOf('release')).toHaveLength(0);
-      expect(w.payments.bal(sandbox ? S1 : P1, sandbox).held).toBe(10);
+      expect(w.payments.balIn(sandbox ? S1 : P1, sandbox).held).toBe(10);
     },
   );
 

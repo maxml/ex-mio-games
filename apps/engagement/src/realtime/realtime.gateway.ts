@@ -104,7 +104,7 @@ export class RealtimeGateway implements OnApplicationBootstrap, OnApplicationShu
     if (!push || !this.ns) return;
     try {
       this.ns
-        .to(roomName(push.tenantId, 'player', push.playerId))
+        .to(roomName(push.tenantId, push.sandbox, 'player', push.playerId))
         .emit(REALTIME_EVENTS.notification, push.frame);
     } catch (err) {
       this.log.warn(`realtime push failed: ${(err as Error).message}`);

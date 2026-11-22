@@ -108,7 +108,7 @@ export async function newTenant(opts: { platform?: string } = {}): Promise<TestT
   });
   const issued = await call('POST', urls.identity, '/v1/credentials', {
     headers: { authorization: `Bearer ${login.json.access_token as string}` },
-    body: { platform },
+    body: { platform, environment: 'production' },
   });
   if (issued.status !== 201) throw new Error(`credential issue failed: ${issued.status}`);
   const key = CredentialIssued.parse(issued.json);

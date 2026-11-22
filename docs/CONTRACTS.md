@@ -39,9 +39,15 @@ version, never an edit. HTTP shapes change additively; a removal waits until no 
 - **provider:** `packages/contracts` (`src/events.ts`) · **consumers:** every service that publishes or
   consumes events
 - **spec:** `{ event_id (uuidv7), type, version, tenant_id, occurred_at, correlation_id, causation_id,
-sandbox?, payload }`; `tenant_id` is mandatory; the payload schema is registered per (type, version); an
-  unknown type or version is rejected. `sandbox` (D-13) is optional, absent means production, and
-  `createEvent` writes it only when `true`. Only the producing service sets it, from server-side state (the
+sandbox, payload }`; `tenant_id` is mandatory; the payload schema is registered per (type, version); an
+  unknown type or version is rejected. `sandbox` (D-13, D-29 INV-ENV-INPUT) is a required boolean: `createEvent`
+  takes it as a required argument and always writes it (`false` for production, never absent), and an envelope
+  without it fails `parseEvent` (a consumer sends it to the dead-letter path, never treats it as production).
+  Nothing in a schema, controller or service defaults an environment: no `.default()` and no `??`/`||`
+  fallback for `environment`, `sandbox` or `sbx` (a scan test pins it). The auth context's `sandbox` is always a
+  defined boolean, set from the verified token's `sbx` claim; the realtime ticket keeps it (D-30), and the ticket
+  redeem answer carries `sandbox`. Where an operator names an environment (issue a credential, register a reward
+  API, the internal balance read) it is a required request field. Only the producing service sets it, from server-side state (the
   verified integration credential, token claim `sbx`), never from client input or a payload field. Metering
   and billing read the envelope flag and nothing else. `audit.acting_request` is the one cross-service event
   name that does not follow `<owning-service>.<aggregate>.<past-tense-verb>`, because every service writes it.
@@ -104,6 +110,18 @@ sandbox?, payload }`; `tenant_id` is mandatory; the payload schema is registered
   integration credential (X-3, D-13).
   A duplicate returns 200 with the first body. Money is an integer in minor units. Each adapter declares a
   recovery mode (`native_lookup` or `idempotent_replay`) so a lost reward reply is recoverable by our key.
+  **Reward API URL (D-30, F1).** `PutRewardApiRequest.base_url` refuses credentials and literal loopback,
+  private, link-local, unspecified and metadata addresses (`packages/contracts/src/ip-guard.ts`). The
+  engagement transport (`fetchTransport`) resolves the host at call time, connects only to an address that
+  passed the same check, never follows a redirect (any 3xx is an unknown outcome), and requires `https`
+  when `NODE_ENV=production`. Identity's PUT service also refuses a plain-http `base_url` for the
+  `production` environment (`VALIDATION_FAILED`); the sandbox endpoint may be http. Hosts in the
+  `REWARD_API_ALLOW_HOSTS` env var (comma separated; read by both identity and engagement; compose:
+  `casino-sim`) are exempt from the https rule, and engagement's transport also exempts them from the
+  address rule. The casino's rejection reason is truncated to 64 characters and limited to
+  `[A-Za-z0-9_.:-]` (anything else becomes `_`) before it is stored.
+  **Spin Idempotency-Key.** `scopedKey` throws `ScopedKeyTooLong` when escaping pushes a key past 512
+  characters; the spin service maps it to 422, never 500.
 - **pinned:** `packages/contracts/src/ingest.contracts.test.ts`,
   `apps/engagement/src/integrations/adapters.contract.test.ts`,
   `apps/engagement/src/controllers/ingest.controller.test.ts`,
@@ -142,7 +160,33 @@ sandbox?, payload }`; `tenant_id` is mandatory; the payload schema is registered
   deploy plane
 - **spec:** `node dist/migrate.js` applies pending migrations and exits 0, or exits 1 on failure with the
   reason on stderr. The runtime image has no pnpm and no TypeORM CLI. The app never migrates on boot.
-- **pinned:** `packages/service-kit/src/postgres.test.ts` (options), compose start (`migrate && start`)
+  It also exits 1 when the image ships NO migrations (a missing `dist/model/migrations`) and when any
+  shipped migration is still pending after the run: the applied set must equal the shipped set, and the
+  shipped set must not be empty. Each service Dockerfile fails the build if `dist/model/migrations/*.js`
+  or `dist/migrate.js` is absent.
+- **deploy:** Deckhand runs `migrations.run` with `/bin/sh -lc` in a runtime container with no checkout, so
+  `.deckhand/deploy.yml` runs `docker run <prefix>/<service>:<tag> node dist/migrate.js` inline per service
+  (identity, engagement, payments), never a repo script.
+- **pinned:** `packages/service-kit/src/postgres.test.ts` (options), `review-final-starter.test.ts`
+  (STARTER-7, STARTER-8a/b/c), compose start (`migrate && start`)
+
+## Realtime reconnect resync
+
+- **provider:** `apps/web` `WSProvider` · **consumers:** every page that shows pushed state
+- **spec:** connection-state recovery is off on the server and there is no `(epoch, id)` replay cursor
+  (D-10), so pushes sent while the socket was down are lost. After a reconnect (every `connect` after the
+  first) the client invalidates and refetches all active queries over REST. The first connect does not.
+- **pinned:** `apps/web/src/layers/app/providers/review-final-resync.test.tsx` (RESYNC-1)
+
+## Log and product-event redaction
+
+- **provider:** `packages/logger` (`redact.ts`), `packages/contracts` (`ProductEventProps`) · **consumers:**
+  every service
+- **spec:** allow-lists. A log key outside the list keeps its name and loses its value (nested leaves are
+  censored as `[redacted]`); strings that pass are scrubbed for bearer tokens, `key: value` secrets, URL
+  query/fragment, JWTs and emails. Product-event prop text must use a closed character set. See
+  `docs/observability/redaction.md` and `docs/analytics.md`.
+- **pinned:** `packages/logger/src/review-final-redaction.test.ts` (REDACT-_, PROPS-_)
 
 ## Identity token and tenant claim
 
