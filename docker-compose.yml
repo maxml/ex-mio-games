@@ -7,6 +7,12 @@
 # engagement 4002, payments 4003, casino-sim 4004. The infrastructure ports are
 # not the defaults on purpose, so a database already running on the host does not
 # collide. All credentials below are local-development values.
+#
+# Several stacks at once: `scripts/stack-up.sh` gives each worktree a slot N and writes every
+# port variable (slot 0 = the defaults above, slot N = default + 10*N) to `.env.stack`.
+# THE TRAP: `--env-file` is read only when passed, so bring a slot up and down through the
+# scripts, which build the one argument list. The two host URLs baked into service config
+# (PUBLIC_REALTIME_URL, REALTIME_ALLOWED_ORIGINS) are derived from the same variables below.
 
 x-node-health: &node-health
   interval: 5s

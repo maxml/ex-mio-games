@@ -17,6 +17,8 @@ vitest.config.*.timestamp*
 .env
 .env.local
 .env.*.local
+# Per-worktree compose slot written by scripts/stack-up.sh
+.env.stack
 
 *.log
 *.tsbuildinfo

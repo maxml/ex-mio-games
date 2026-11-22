@@ -72,6 +72,20 @@ for p in 4001 4002 4003 4004; do curl -s localhost:$p/healthz/ready; echo; done
 
 Stop and delete the data with `docker compose down -v`.
 
+### Several stacks at once
+
+Each worktree can run its own stack. `scripts/stack-up.sh [--slot N]` takes the lowest free slot from a ledger
+shared by all worktrees of the clone, writes `.env.stack` (project `mio-sN`, every host port shifted by `10*N`;
+slot 0 is the defaults above), checks each port with a real bind and refuses, naming the holder, if another
+program has one. Then it runs `docker compose up -d --wait`. To aim tests and the demo at the slot:
+
+```sh
+scripts/stack-up.sh
+set -a; . ./.env.stack; set +a
+pnpm test:compose && scripts/demo.sh
+scripts/stack-down.sh            # down -v, frees the slot, removes .env.stack
+```
+
 ### Try the 8-step workflow
 
 The first two steps by hand. The tenant comes from the `Host` header (`<slug>.mio.localhost`), never from the

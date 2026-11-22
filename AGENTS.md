@@ -40,6 +40,10 @@ pnpm test:compose                   # tests against the running stack
 docker compose down -v
 ```
 
+Agents: run `scripts/stack-up.sh` in your own worktree instead of a bare `docker compose up`, and
+`scripts/stack-down.sh` when done. Every worktree gets its own slot (own ports, own project `mio-sN`), so the
+compose lock is per slot, not global. Run tests with `set -a; . ./.env.stack; set +a` first.
+
 ## Rules that are enforced, not advisory
 
 - Layering and package boundaries fail `lint`. Do not disable the rule to pass.
