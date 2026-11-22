@@ -53,14 +53,14 @@ busy_ports() {
 has_containers() { [ -n "$(docker ps -aq --filter "label=com.docker.compose.project=mio-s$1" 2>/dev/null)" ]; }
 
 # Drops ledger rows that no longer describe a live stack: the worktree is gone, or the project has
-# no containers and the claim is older than 10 minutes (a younger one may be mid-startup).
+# no containers and the claim is older than 90 minutes (a younger one may be mid-build or mid-startup).
 recover_stale() {
   local d n wt
   for d in "$LEDGER"/*/; do
     [ -d "$d" ] || continue
     n="$(basename "$d")"
     wt="$(cat "$d/worktree" 2>/dev/null || true)"
-    if [ ! -d "$wt" ] || { ! has_containers "$n" && [ -n "$(find "$d" -maxdepth 0 -mmin +10)" ]; }; then
+    if [ ! -d "$wt" ] || { ! has_containers "$n" && [ -n "$(find "$d" -maxdepth 0 -mmin +90)" ]; }; then
       echo "stack: recovered stale slot $n (owner: ${wt:-unknown})" >&2
       rm -rf "$d"
     fi
