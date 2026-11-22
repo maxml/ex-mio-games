@@ -189,8 +189,14 @@ describe('bonus store (engagement) against real Postgres', () => {
   it('I-ISO-2 the service role itself reads no store rows without a tenant', async () => {
     const db = await pgAs('engagement_app');
     try {
-      // (`redemption_work_queue` is intentionally RLS-free: ids and times only.)
-      for (const table of ['store_items', 'redemptions', 'redemption_history']) {
+      // rc review: `redemption_work_queue` is no longer RLS-free (D-24, FORCE RLS since int/all-fix);
+      // without a tenant and without the sweeper's read flag it shows nothing either.
+      for (const table of [
+        'store_items',
+        'redemptions',
+        'redemption_history',
+        'redemption_work_queue',
+      ]) {
         const { rows } = await db.query(`SELECT count(*)::int AS n FROM ${table}`);
         expect(rows[0].n).toBe(0);
       }
