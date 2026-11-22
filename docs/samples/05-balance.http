@@ -6,17 +6,17 @@
 GET {{payments}}/v1/me/balance
 Authorization: Bearer {{player_token}}
 
-# Response: expected, to be replaced with captured output
+# Response (captured from scripts/demo.sh, after a 200-coin spin):
 # HTTP/1.1 200 OK
-# { "wallet_id": "0190...-wallet", "available": 50, "held": 0, "currency": "COIN" }
+# {"wallet_id":"01a2012d-4b5f-7089-bb44-30ea714130c2","available":200,"held":0,"currency":"COIN"}
 
 ### Operator reads one player's balance (own tenant only)
 GET {{payments}}/v1/players/{{player_id}}/balance
 Authorization: Bearer {{operator_token}}
 
-# Response: expected, to be replaced with captured output
+# Response (captured from scripts/demo.sh, later in the run: 50 coins are held by an order that could not be issued):
 # HTTP/1.1 200 OK
-# { "wallet_id": "0190...-wallet", "available": 50, "held": 0, "currency": "COIN" }
+# {"wallet_id":"01a2012d-4b5f-7089-bb44-30ea714130c2","available":150,"held":50,"currency":"COIN"}
 
 ### There is no route that credits coins. This must not exist.
 POST {{payments}}/v1/credits

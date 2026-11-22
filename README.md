@@ -26,9 +26,36 @@ There is no `.env` file to create: every variable has a local-development defaul
 The `tools/archify` submodule is only the diagram renderer; `docker compose` does not need it, so a plain clone
 is enough (use `git clone --recurse-submodules` only to re-render the diagrams).
 
-<!-- OUTPUT: `docker compose up -d --wait` (build time, and the final list of nine healthy containers) -->
+Captured on a clean machine state (project name `demo`, images built beforehand). The image builds took
+about 4 to 5 minutes per group of services here, and are mostly the one `pnpm install`; `up --wait` itself took 1 minute:
 
-<!-- OUTPUT: `docker compose ps` (service, status, ports) -->
+```text
+$ docker compose up -d --wait
+ Container demo-rabbitmq-1 Healthy
+ Container demo-redis-1 Healthy
+ Container demo-firebase-auth-1 Healthy
+ Container demo-casino-sim-1 Healthy
+ Container demo-payments-1 Healthy
+ Container demo-identity-1 Healthy
+ Container demo-postgres-1 Healthy
+ Container demo-engagement-1 Healthy
+ Container demo-web-1 Healthy
+real    1m1.7s
+```
+
+```text
+$ docker compose ps
+SERVICE         STATUS                    PORTS
+casino-sim      Up 56 seconds (healthy)   0.0.0.0:4004->4004/tcp
+engagement      Up 48 seconds (healthy)   0.0.0.0:4002->4002/tcp
+firebase-auth   Up 57 seconds (healthy)   0.0.0.0:9099->9099/tcp
+identity        Up 18 seconds (healthy)   0.0.0.0:4001->4001/tcp
+payments        Up 48 seconds (healthy)   0.0.0.0:4003->4003/tcp
+postgres        Up 58 seconds (healthy)   0.0.0.0:54329->5432/tcp
+rabbitmq        Up 57 seconds (healthy)   5672/tcp, 15672/tcp (management)
+redis           Up 59 seconds (healthy)   0.0.0.0:56379->6379/tcp
+web             Up 6 seconds (healthy)    0.0.0.0:3000->3000/tcp
+```
 
 Check that every service answers (liveness, then readiness, which also checks its dependencies):
 
@@ -36,7 +63,12 @@ Check that every service answers (liveness, then readiness, which also checks it
 for p in 4001 4002 4003 4004; do curl -s localhost:$p/healthz/ready; echo; done
 ```
 
-<!-- OUTPUT: the four readiness responses -->
+```json
+{"status":"ok","uptime":13.67,"version":"0.0.1","checks":{"db":{"status":"ok","latencyMs":1},"amqp":{"status":"ok","latencyMs":0}}}
+{"status":"ok","uptime":42.15,"version":"0.0.1","checks":{"db":{"status":"ok","latencyMs":1},"amqp":{"status":"ok","latencyMs":0},"redis":{"status":"ok","latencyMs":1}}}
+{"status":"ok","uptime":42.46,"version":"0.0.1","checks":{"db":{"status":"ok","latencyMs":1},"amqp":{"status":"ok","latencyMs":0}}}
+{"status":"ok","uptime":56.09,"version":"0.1.0","checks":{}}
+```
 
 Stop and delete the data with `docker compose down -v`.
 
@@ -62,15 +94,120 @@ curl -s localhost:4002/v1/tenant-projection -H 'authorization: Bearer <access_to
 
 The rest of the workflow (a signed deposit from casino A and from casino B, the spin, the balance, the Bonus
 Store, the redemption and its final status, then the idempotent replay, the bad-signature and the cross-tenant
-cases) is one request per file in [`docs/samples/`](docs/samples/), in the `.http` format. The responses in
-those files are expected shapes from the contracts, not recorded output. The recorded output of one full run
-goes here:
+cases) is one request per file in [`docs/samples/`](docs/samples/), in the `.http` format, with responses
+captured from a real run. The whole story, including every Part C case, runs as one script that needs only
+`bash`, `curl`, `jq` and `openssl`:
 
-<!-- OUTPUT: workflow step 1-3, deposit from casino A (request and response) -->
-<!-- OUTPUT: workflow step 1-3, deposit from casino B (request and response) -->
-<!-- OUTPUT: workflow step 4-5, spin and balance -->
-<!-- OUTPUT: workflow step 6-8, redemption and its final status (ISSUED, then COMPLETED) -->
-<!-- OUTPUT: Part C cases: duplicate deposit, bad signature 401, cross-tenant 404 -->
+```sh
+docker compose up -d --wait
+scripts/demo.sh            # prints each request and the trimmed response, asserts it, exits non-zero on a mismatch
+```
+
+Recorded output of that script on a clean stack (secrets and tokens shown as `<redacted>`, bodies trimmed).
+The first run of 37 steps made 133 assertions pass and recorded 13 failures, all from two product gaps listed
+under "Known gaps from the recorded run" below.
+
+Workflow steps 1-3, a signed deposit from casino A (schema A, HMAC over `timestamp.body`) and from casino B
+(schema B, signature inside the body). The casino simulator builds and signs the webhook:
+
+```text
+> POST 4004/casino-a/__deposit  body={"target_url":"http://engagement:4002/v1/integrations/demo-a-16018/events","secret":"<redacted>","player_id":"A-PLAYER-77","amount_minor":5000,"currency":"EUR","event_id":"evt-a-16018-1"}
+< 200 {"delivered":[200]}
+> POST 4004/casino-b/__deposit  body={"target_url":"http://engagement:4002/v1/integrations/demo-b-16018/events","secret":"<redacted>","player_id":"B-PLAYER-12","amount_minor":5000,"currency":"EUR","event_id":"evt-b-16018-1"}
+< 200 {"delivered":[200]}
+> GET 4002/v1/me/spins [authorization: Bearer <redacted>]        (player A, after the rules engine ran over the bus)
+< 200 {"available":1}
+```
+
+Workflow steps 4-5, the spin and the balance. The same Idempotency-Key replays the same spin:
+
+```text
+> GET 4002/v1/wheel
+< 200 {"wheel_id":"0190a1b2-c3d4-4e5f-8a6b-2000000000a1","segments":[{"label":"200 coins"},{"label":"300 coins"},{"label":"500 coins"}]}
+> POST 4002/v1/spins [idempotency-key: spin-a-16018-1] body={}
+< 201 {"spin_id":"01a2012d-49ac-7223-b6b6-7b6c69073dd5","segment_index":0,"segment_label":"200 coins","reward_coins":200}
+> POST 4002/v1/spins [idempotency-key: spin-a-16018-1] body={}
+< 201 {"spin_id":"01a2012d-49ac-7223-b6b6-7b6c69073dd5","segment_index":0,"segment_label":"200 coins","reward_coins":200}
+> GET 4003/v1/me/balance
+< 200 {"wallet_id":"01a2012d-4b5f-7089-bb44-30ea714130c2","available":200,"held":0,"currency":"COIN"}
+```
+
+Workflow steps 6-8, the redemption and its final status. This is where the recorded run stops short of the
+goal: the order reserves the coins and then lands in `NEEDS_REVIEW` with `failure_reason: no_adapter` and the
+casino simulator receives nothing, so the status never becomes `ISSUED` or `COMPLETED` (see the known gaps):
+
+```text
+> POST 4002/v1/redemptions [idempotency-key: redeem-b-16018-1] body={"item_id":"01a2012c-ed93-7bf6-aec8-941f3f7d1de4"}
+< 202 {"id":"01a2012e-5537-7aa0-90e5-4f20e0475a3e","price":50,"status":"pending","state":"RESERVED","attempts":0,"casino_reference":null,...}
+> GET 4002/v1/operator/redemptions/01a2012e-5537-7aa0-90e5-4f20e0475a3e
+< 200 {"status":"pending","state":"NEEDS_REVIEW","failure_reason":"no_adapter","history":[{"from":null,"to":"REQUESTED","cause":"order_placed"},{"from":"REQUESTED","to":"RESERVED","cause":"reserved"},...]}
+> GET 4004/__issued?casino=b
+< 200 []
+```
+
+Part C cases from the same run:
+
+```text
+# duplicate deposit: the casino delivers one webhook three times, the player gets one spin
+> POST 4004/__faults body={"casino":"a","kind":"duplicateDelivery","times":1,"copies":3}
+> POST 4004/casino-a/__deposit body={...,"event_id":"evt-a-16018-dup"}
+< 200 {"delivered":[200,200,200]}
+> GET 4002/v1/me/spins
+< 200 {"available":1}
+
+# concurrent spins: 10 parallel requests with distinct keys against one credit
+< 1 x 201; 9 x 409          then GET /v1/me/spins -> {"available":0}
+
+# duplicate redemption: the same Idempotency-Key 5 times in parallel
+< 1 x 202; 4 x 409      one redemption id, coins debited once (available 450 -> 400)
+> POST 4002/v1/redemptions (same key again)
+< 202 + header Idempotent-Replayed: true, same id
+
+# unsigned, wrongly signed, and other-tenant-signed events
+> POST 4002/v1/integrations/demo-a-16018/events                       (no signature)
+< 401 {"message":"signature check failed","code":"signature_missing"}
+> POST ... x-a-signature: 0000...0000
+< 401 {"message":"signature check failed","code":"signature_invalid"}
+> POST ... x-a-signature: <valid HMAC with casino B's secret>
+< 401 {"message":"signature check failed","code":"signature_invalid"}
+> POST 4002/v1/spins   (no token)
+< 401 {"code":"TENANT_REQUIRED","message":"authentication required"}
+
+# a player with no coins redeems: no negative balance
+< 409 {"message":"not enough coins","code":"insufficient_funds"}
+
+# tenant isolation: casino B reads casino A's redemption
+> GET 4002/v1/operator/redemptions/<casino A redemption id>   (casino B operator token)
+< 404 {"message":"redemption not found","code":"redemption_not_found"}
+> GET 4002/v1/redemptions/<casino A redemption id>            (casino B player token)
+< 404 {"message":"redemption not found","code":"redemption_not_found"}
+```
+
+Realtime through the web origin (one Socket.IO client, namespace `/rt`, one-time ticket from
+`POST /v1/auth/realtime-ticket`). The pushed frames arrived on the direct engagement origin:
+
+```text
+< 42/rt,["notification",{"type":"spin.result","payload":{"spin_id":"01a20116-df48-...","reward_coins":200,"table_version":1},...}]
+< 42/rt,["notification",{"type":"balance.changed","payload":{"reason":"credited","amount":200},...}]
+```
+
+### Known gaps from the recorded run
+
+These are product behaviours the demo script exposed. They are recorded, not hidden, and the script exits
+non-zero while they exist.
+
+- **Socket.IO through the web origin does not connect.** `GET /socket.io/?EIO=4` on port 3000 answers `308`
+  to `/socket.io?EIO=4`, and the Next rewrite then proxies that path (no trailing slash) to engagement, which
+  answers `404 Cannot GET /socket.io`. Long-polling therefore fails through the web origin, and so does the
+  websocket upgrade (no `101`). On engagement's own port both work (`101 Switching Protocols`, packets flow),
+  and the pushed `spin.result` and `balance.changed` frames arrive there.
+- **Redemption cannot reach the casino on a fresh stack.** Identity does not serve a `reward_api` for a tenant
+  integration (no route or credential field sets one), so engagement has no reward port, and every order ends
+  as `NEEDS_REVIEW` / `no_adapter` with the coins held. The issuance, the final status, and the timeout and
+  recovery case therefore do not complete in the recorded run.
+- **A new tenant has no deposit rule and no wheel.** There is no admin route for them, so the script inserts
+  them into engagement's tables (marked `SETUP-DB-1` in the script). The fake payment provider's own
+  subscription id, which its webhook carries, is read from payments' table the same way (`SETUP-DB-2`).
 
 ## Service map, ports and environment
 
@@ -152,10 +289,29 @@ can be run for one project with `pnpm nx run <project>:<target>`.
 | Frontend layering                      | `pnpm lint:fsd`                                                 | nothing running             |
 | Design system in a browser             | `pnpm storybook` (port 6006)                                    | nothing running             |
 
-<!-- OUTPUT: `pnpm test` (per-project pass counts) -->
+`pnpm test` (`nx run-many -t test`, one project at a time) on this commit. Twelve of the thirteen projects pass:
+
+```text
+@ex-mio/contracts     102 passed        @ex-mio/engagement    323 passed
+@ex-mio/tenancy        19 passed        @ex-mio/payments      174 passed
+@ex-mio/logger         49 passed        @ex-mio/identity      244 passed
+@ex-mio/bus            16 passed        @ex-mio/casino-sim     25 passed
+@ex-mio/idempotency     6 passed        @ex-mio/ui             89 passed
+@ex-mio/service-kit   127 passed        @ex-mio/web           163 passed, 1 failed (164)
+```
+
+The one failure is a web timing test that ran on a machine at load average 30:
+`player-widget-money.test.tsx` "says the result is unknown, re-queries, and shows the result when the re-query
+succeeds" did not find the text `Result unknown` within its wait. It was not re-run in isolation, so it is not
+yet shown to be a flake.
 <!-- OUTPUT: `pnpm --filter @ex-mio/payments test:db` and `pnpm --filter @ex-mio/engagement test:pg` -->
 <!-- OUTPUT: `pnpm test:compose` (suite and test counts against the running stack) -->
-<!-- OUTPUT: `pnpm lint` and `pnpm typecheck` -->
+```text
+$ pnpm lint
+ NX   Successfully ran target lint for 13 projects
+$ pnpm typecheck
+ NX   Successfully ran target typecheck for 13 projects and 6 tasks they depend on
+```
 
 Money paths are tested with concurrency (parallel spins and reservations, parallel same-key requests), with a
 kill at each durable step of the redemption, and with a one-million-spin distribution check. The map from each

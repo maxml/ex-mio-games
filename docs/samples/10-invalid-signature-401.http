@@ -10,9 +10,9 @@ x-a-signature: 0000000000000000000000000000000000000000000000000000000000000000
 
 {"eventId":"evt-a-0100","playerId":"A-PLAYER-77","amount":{"value":999999,"currency":"EUR"},"status":"SUCCESS","ts":1790000000}
 
-# Response: expected, to be replaced with captured output
+# Response (captured from scripts/demo.sh):
 # HTTP/1.1 401 Unauthorized
-# { "message": "...", "code": "signature_invalid" }
+# {"message":"signature check failed","code":"signature_invalid"}
 # Nothing is stored and nothing is published.
 
 ### Missing signature header
@@ -21,9 +21,9 @@ Content-Type: application/json
 
 {"eventId":"evt-a-0101","playerId":"A-PLAYER-77","amount":{"value":5000,"currency":"EUR"},"status":"SUCCESS","ts":1790000000}
 
-# Response: expected, to be replaced with captured output
+# Response (captured from scripts/demo.sh):
 # HTTP/1.1 401 Unauthorized
-# { "message": "...", "code": "signature_missing" }
+# {"message":"signature check failed","code":"signature_missing"}
 
 ### Valid MAC, timestamp outside the +-300 s window (replay of an old capture)
 POST {{engagement}}/v1/integrations/casino-a-demo/events
@@ -46,9 +46,11 @@ x-a-signature: {{casino_a_signature}}
 
 {"eventId":"evt-a-0001","playerId":"A-PLAYER-77","amount":{"value":5000,"currency":"EUR"},"status":"SUCCESS","ts":1790000000}
 
-# Response: expected, to be replaced with captured output
+# Response (captured from scripts/demo.sh): casino A's headers on tenant B's URL give signature_missing,
+# because tenant B is a casino-b adapter tenant and carries its signature inside the body. A casino B secret
+# on tenant A's URL gives "signature_invalid" instead.
 # HTTP/1.1 401 Unauthorized
-# { "message": "...", "code": "signature_invalid" }
+# {"message":"signature check failed","code":"signature_missing"}
 
 ### Float amount (valid signature, bad schema)
 # HTTP/1.1 422 Unprocessable Entity  { "code": "schema_invalid", "message": "..." }
@@ -60,8 +62,9 @@ Content-Type: application/json
 
 {}
 
-# Response: expected, to be replaced with captured output
+# Response (captured from scripts/demo.sh):
 # HTTP/1.1 401 Unauthorized
+# {"code":"TENANT_REQUIRED","message":"authentication required"}
 
 ### A forged x-tenant-id header is ignored; only the verified token names the tenant
 GET {{engagement}}/v1/me/spins

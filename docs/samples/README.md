@@ -2,7 +2,7 @@
 
 One `.http` file per flow of the 8-step workflow. Open them in any REST client that reads the `.http` format (VS Code REST Client, JetBrains HTTP Client) or copy the requests into `curl`.
 
-Every response block is marked `expected, to be replaced with captured output`: the shapes come from the service contracts in `packages/contracts`, not from a recorded run. The recorded output of one full run is placed in the root README. There is no demo script; these files are the flow.
+Response blocks marked `captured from scripts/demo.sh` are real output of one clean run (ids are real, tokens and secrets are never shown). A block still marked `expected, to be replaced with captured output` is a shape from the contracts that the run did not capture: the redemption, final status and timeout flows (files 07, 08 and part of 09, which the run could not complete, see the root README known gaps), the deposit acknowledgement bodies (02, 03: the simulator reports only `{"delivered":[200]}`), the operator signup and plan flow (01, whose output is in the script transcript) and a few single cases of 10 and 11. `scripts/demo.sh` runs the whole story and prints each exchange.
 
 | File | Flow | Workflow step |
 | --- | --- | --- |

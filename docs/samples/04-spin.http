@@ -11,22 +11,17 @@ Content-Type: application/json
 
 {}
 
-# Response: expected, to be replaced with captured output
+# Response (captured from scripts/demo.sh; the same Idempotency-Key sent twice returns the same body):
 # HTTP/1.1 201 Created
-# {
-#   "spin_id": "0190...-spin",
-#   "segment_index": 3,
-#   "segment_label": "50 coins",
-#   "reward_coins": 50
-# }
+# {"spin_id":"01a2012d-49ac-7223-b6b6-7b6c69073dd5","segment_index":0,"segment_label":"200 coins","reward_coins":200}
 
 ### Public wheel view: labels and order only, never the weights
 GET {{engagement}}/v1/wheel/{{wheel_id}}
 Authorization: Bearer {{player_token}}
 
-# Response: expected, to be replaced with captured output
+# Response (captured from scripts/demo.sh, via GET /v1/wheel):
 # HTTP/1.1 200 OK
-# { "id": "0190...-wheel", "segments": [ { "label": "10 coins" }, { "label": "Nothing" }, "..." ] }
+# {"wheel_id":"0190a1b2-c3d4-4e5f-8a6b-2000000000a1","segments":[{"label":"200 coins"},{"label":"300 coins"},{"label":"500 coins"}]}
 
 ### No credit left: the client stops
 POST {{engagement}}/v1/spins
