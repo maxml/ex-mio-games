@@ -32,6 +32,7 @@ the guard and its test goes red.
 | MIO-152 | Rate limiting on ingest, spin and redeem | guard |
 | MIO-153 | `docs/reliability.md`: each case, its test, how to run it | none |
 | MIO-154 | Same-tenant hostile player cannot touch another player's spins, coins or rewards | ownership |
+| MIO-205 | Investigate a payments readiness 503 and an unmarked outbox row after a broker disconnect | concurrency |
 
 ## How tests are written here
 

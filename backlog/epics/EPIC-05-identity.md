@@ -24,6 +24,7 @@ replaced quickly. Locally the Firebase Auth Emulator is used, so a clean clone n
 | MIO-044 | Player identity mapping: casino launch token to player session | P0 |
 | MIO-045 | Roles and permissions (`can(subject, action, object)`) in our database | P0 |
 | MIO-046 | Service-to-service authentication | P0 |
+| MIO-200 | Service-mode auth context carries no environment, so no handler can read a default one | P2 |
 
 ## One-way doors
 

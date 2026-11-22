@@ -97,32 +97,32 @@ Planning conversion used in `docs/scaling/README.md` (Part E): 6 productive hour
 
 | Scope | Tasks | Base hours | Hours with 20% buffer |
 |---|---|---|---|
-| EPIC-01 Foundations and local development | 9 | 96 | 121 |
+| EPIC-01 Foundations and local development | 10 | 102 | 129 |
 | EPIC-02 Architecture and decisions | 8 | 89 | 110 |
 | EPIC-03 Diagrams as code with archify | 8 | 64 | 81 |
 | EPIC-04 Tenancy | 5 | 88 | 107 |
-| EPIC-05 Identity | 7 | 152 | 185 |
-| EPIC-06 Casino integrations | 8 | 128 | 156 |
-| EPIC-07 Engagement | 11 | 176 | 215 |
-| EPIC-08 Coin ledger | 7 | 118 | 144 |
+| EPIC-05 Identity | 8 | 160 | 195 |
+| EPIC-06 Casino integrations | 9 | 136 | 166 |
+| EPIC-07 Engagement | 14 | 202 | 248 |
+| EPIC-08 Coin ledger | 8 | 121 | 148 |
 | EPIC-09 Monetization | 10 | 180 | 219 |
-| EPIC-10 Product analytics | 9 | 90 | 112 |
+| EPIC-10 Product analytics | 10 | 96 | 120 |
 | EPIC-11 Realtime websocket | 4 | 70 | 85 |
 | EPIC-12 Design and design system | 6 | 126 | 154 |
-| EPIC-13 Web | 6 | 168 | 203 |
-| EPIC-14 Reliability and security tests | 15 | 238 | 290 |
-| EPIC-15 Observability, audit, deploy | 6 | 70 | 86 |
+| EPIC-13 Web | 8 | 212 | 256 |
+| EPIC-14 Reliability and security tests | 16 | 254 | 310 |
+| EPIC-15 Observability, audit, deploy | 7 | 82 | 101 |
 | EPIC-16 AI-native development | 10 | 104 | 131 |
 | EPIC-17 Submission documents | 13 | 91 | 116 |
 | EPIC-18 Performance, capacity and load testing | 5 | 80 | 99 |
 | P0 (the first sellable slice) | 49 | 988 | 1,200 |
-| P1 | 73 | 913 | 1,128 |
-| P2 | 19 | 157 | 199 |
+| P1 | 80 | 982 | 1,214 |
+| P2 | 24 | 217 | 274 |
 | P3 | 6 | 70 | 87 |
-| **Grand total** | **147** | **2,128** | **2,614** |
+| **Grand total** | **159** | **2,257** | **2,775** |
 
 The P0 row is the first sellable slice: MIO-005, MIO-121 and everything they depend on. With the buffer it
-is 1,200 hours, 200 person-days, 9.5 person-months. P0 and P1 together are 2,328 hours.
+is 1,200 hours, 200 person-days, 9.5 person-months. P0 and P1 together are 2,414 hours.
 
 Reproduce every figure above with this read-only command, run from the repository root (the epic and
 priority rows come from the same pass; P0 is the `P0` row):
@@ -132,7 +132,7 @@ awk 'FNR==1{fm=0} /^---$/{fm++; if(fm==2){N[e]++;B[e]+=b;H[e]+=h;PN[p]++;PB[p]+=
 ```
 
 Each output row is `kind name tasks base_hours buffered_hours`. A second read-only check confirms the buffer
-rule on every task (it prints nothing when all 147 tasks agree):
+rule on every task (it prints nothing when all 159 tasks agree):
 
 ```sh
 awk '/^estimate_hours_base:/{b=$2} /^estimate_hours:/{if($2!=int((b*12+9)/10))print FILENAME}' backlog/tasks/*.md
@@ -221,25 +221,25 @@ is accepted. P3 prompt work stays deferred.
 
 | Epic | Title | Priority | Tasks | P0 | P1 | P2 | P3 |
 |---|---|---|---|---|---|---|---|
-| [EPIC-01](epics/EPIC-01-foundations-local-dev.md) | Foundations and local development | P0 | 9 | 3 | 6 | 0 | 0 |
+| [EPIC-01](epics/EPIC-01-foundations-local-dev.md) | Foundations and local development | P0 | 10 | 3 | 7 | 0 | 0 |
 | [EPIC-02](epics/EPIC-02-architecture-decisions.md) | Architecture and decisions (Part A) | P1 | 8 | 2 | 6 | 0 | 0 |
 | [EPIC-03](epics/EPIC-03-archify-diagrams.md) | Diagrams as code with archify (needs owner review) | P2 | 8 | 0 | 0 | 8 | 0 |
 | [EPIC-04](epics/EPIC-04-tenancy.md) | Tenancy | P0 | 5 | 3 | 2 | 0 | 0 |
-| [EPIC-05](epics/EPIC-05-identity.md) | Identity | P0 | 7 | 6 | 0 | 1 | 0 |
-| [EPIC-06](epics/EPIC-06-integrations.md) | Casino integrations module and event ingestion | P0 | 8 | 6 | 2 | 0 | 0 |
-| [EPIC-07](epics/EPIC-07-engagement.md) | Engagement: rules, wheel, bonus store, redemption | P0 | 11 | 8 | 3 | 0 | 0 |
-| [EPIC-08](epics/EPIC-08-ledger-payments.md) | Coin ledger in the payments service | P0 | 7 | 5 | 2 | 0 | 0 |
+| [EPIC-05](epics/EPIC-05-identity.md) | Identity | P0 | 8 | 6 | 0 | 2 | 0 |
+| [EPIC-06](epics/EPIC-06-integrations.md) | Casino integrations module and event ingestion | P0 | 9 | 6 | 3 | 0 | 0 |
+| [EPIC-07](epics/EPIC-07-engagement.md) | Engagement: rules, wheel, bonus store, redemption | P0 | 14 | 8 | 4 | 2 | 0 |
+| [EPIC-08](epics/EPIC-08-ledger-payments.md) | Coin ledger in the payments service | P0 | 8 | 5 | 3 | 0 | 0 |
 | [EPIC-09](epics/EPIC-09-monetization.md) | Monetization: operator billing, plans, metering, entitlements | P0 | 10 | 5 | 5 | 0 | 0 |
-| [EPIC-10](epics/EPIC-10-analytics.md) | Product analytics through Varta | P0 | 9 | 4 | 4 | 0 | 1 |
+| [EPIC-10](epics/EPIC-10-analytics.md) | Product analytics through Varta | P0 | 10 | 4 | 4 | 1 | 1 |
 | [EPIC-11](epics/EPIC-11-realtime.md) | Realtime websocket | P1 | 4 | 0 | 3 | 1 | 0 |
 | [EPIC-12](epics/EPIC-12-design.md) | Design and design system | P0 | 6 | 3 | 2 | 1 | 0 |
-| [EPIC-13](epics/EPIC-13-web.md) | Web: player widget, operator console, platform admin console | P0 | 6 | 4 | 2 | 0 | 0 |
-| [EPIC-14](epics/EPIC-14-reliability-security.md) | Reliability and security test suite (Part C) | P1 | 15 | 0 | 14 | 1 | 0 |
-| [EPIC-15](epics/EPIC-15-observability-audit-deploy.md) | Observability, audit, security baseline, deploy | P1 | 6 | 0 | 3 | 3 | 0 |
+| [EPIC-13](epics/EPIC-13-web.md) | Web: player widget, operator console, platform admin console | P0 | 8 | 4 | 3 | 1 | 0 |
+| [EPIC-14](epics/EPIC-14-reliability-security.md) | Reliability and security test suite (Part C) | P1 | 16 | 0 | 15 | 1 | 0 |
+| [EPIC-15](epics/EPIC-15-observability-audit-deploy.md) | Observability, audit, security baseline, deploy | P1 | 7 | 0 | 4 | 3 | 0 |
 | [EPIC-16](epics/EPIC-16-ai-native-development.md) | AI-native development and AI-readiness (Part D) | P1 | 10 | 0 | 4 | 1 | 5 |
 | [EPIC-17](epics/EPIC-17-submission-docs.md) | Submission documents, scaling plan, publication gate (Deliverables, Part E) | P1 | 13 | 0 | 11 | 2 | 0 |
 | [EPIC-18](epics/EPIC-18-performance-capacity.md) | Performance, capacity and load testing | P1 | 5 | 0 | 4 | 1 | 0 |
-| **Total** | | | **147** | **49** | **73** | **19** | **6** |
+| **Total** | | | **159** | **49** | **80** | **24** | **6** |
 
 ## Waiting on someone
 

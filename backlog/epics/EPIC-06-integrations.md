@@ -25,6 +25,7 @@ module inside the engagement service, not a separate service.
 | MIO-055 | Event deduplication in the same transaction as the effect | P0 |
 | MIO-056 | `DepositConfirmed` published through the outbox to RabbitMQ | P0 |
 | MIO-057 | Shared adapter contract test suite (written before the first adapter) | P0 |
+| MIO-209 | In-process test that each real casino adapter talks to the simulator's server | P1 |
 
 ## Covers
 

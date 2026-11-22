@@ -22,3 +22,4 @@ inventing anything new.
 | MIO-163 | Deckhand deploy manifest for all services | P2 |
 | MIO-164 | Alerts: DLQ not empty, reconciliation drift, issuance failure rate | P2 |
 | MIO-165 | Security baseline: SECURITY.md, dependency review, static analysis | P2 |
+| MIO-201 | Structured log and security metric for ordinary authorization refusals | P1 |

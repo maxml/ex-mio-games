@@ -26,6 +26,7 @@ structured log lines under Varta's telemetry contract; it has no runtime depende
 | MIO-106 | One analytics panel in Varta, with a reader test | P1 |
 | MIO-107 | Privacy: PII rules, consent, delete-by-actor runbook | P1 |
 | MIO-108 | Experiment exposure event | P3 |
+| MIO-199 | Product events take the environment from one source, not a required field nobody reads | P2 |
 
 ## One-way doors
 

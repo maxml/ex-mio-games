@@ -28,3 +28,5 @@ backend demo never depends on it.
 | MIO-133 | BFF with HttpOnly cookie sessions for the consoles | P0 |
 | MIO-134 | Embedding: launch the widget from a casino page with a launch token, proven across two origins | P0 |
 | MIO-135 | Decision: widget embedding path (iframe or signed-token SDK) and its player session | P0 |
+| MIO-202 | Service routes for the sandbox check and go-live, and the console switched to them | P1 |
+| MIO-203 | Routes for coin history, cross-tenant admin tables and the usage chart, with the consoles live | P2 |
