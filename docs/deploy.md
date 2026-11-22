@@ -51,6 +51,19 @@ groups, so it cannot read the `root:root` `0640` secrets file: the manifest ther
 the `db` service as inline `env:` entries (like `POSTGRES_PASSWORD`; accepted validator warnings, visible to
 `docker inspect`). Local compose keeps the stock `postgres` image, mounts the script and passes its development values explicitly.
 
+The `db` service has a healthcheck that passes only after `init.sh` has finished: the postgres entrypoint runs the
+init scripts on a temporary server that listens on the unix socket only, so the probe connects over TCP
+(`-h 127.0.0.1`) and queries the `payments` database, the last one the script creates. Deckhand's `up --wait` (and so the
+pre-migration backup) therefore cannot run while the databases and roles are still being created.
+`docker-compose.yml` uses the same probe.
+
+## First deploy: edge site
+
+This is a multi-service, single-host project (`domains.single_host: true`, only `web` public, path `/*`), so the
+first deploy on a server needs the engine-rendered edge route installed once:
+`deckhand edge site --from-manifest .deckhand/deploy.yml` (see Deckhand `docs/operations/onboarding.md`, "Edge").
+Without it the shared edge has no route to the project.
+
 ## Migrations and backup
 
 `migrations.run` starts one container per service from `DECKHAND_IMAGE_<NAME>` on the network `ex-mio_backend`, with the

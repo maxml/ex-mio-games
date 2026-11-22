@@ -90,6 +90,9 @@ services:
       SERVICE_CLIENT_SECRET: '${ENGAGEMENT_SERVICE_CLIENT_SECRET}'
       IDENTITY_URL: 'http://identity:4001'
       PAYMENTS_URL: '${PAYMENTS_URL}'
+      # Same as identity and docker-compose.yml: production refuses http reward APIs unless the
+      # host is allowed; without it reward issuance to casino-sim was blocked.
+      REWARD_API_ALLOW_HOSTS: 'casino-sim'
     resources: { cpu: '0.5', memory: '512M' }
     depends_on: [db, rabbitmq]
   payments:
@@ -171,6 +174,12 @@ services:
       ENGAGEMENT_APP_DB_PASSWORD: '${ENGAGEMENT_APP_DB_PASSWORD}'
       PAYMENTS_OWNER_DB_PASSWORD: '${PAYMENTS_OWNER_DB_PASSWORD}'
       PAYMENTS_APP_DB_PASSWORD: '${PAYMENTS_APP_DB_PASSWORD}'
+    # Ready only AFTER init.sh finished: the entrypoint runs init scripts on a temporary server
+    # that listens on the unix socket only, so a TCP probe (-h 127.0.0.1) cannot pass during the
+    # init; the `payments` query (the last database init.sh creates) double-checks that. Without
+    # this, `up --wait` returned mid-init and the pre-migration backup raced the init script.
+    healthcheck:
+      test: 'pg_isready -h 127.0.0.1 -U "$POSTGRES_USER" -q && psql -h 127.0.0.1 -U "$POSTGRES_USER" -d payments -tAc "select 1" >/dev/null'
     resources: { cpu: '1', memory: '1G' }
   rabbitmq:
     image: rabbitmq:3.13
