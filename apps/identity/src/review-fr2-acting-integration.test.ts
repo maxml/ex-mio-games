@@ -15,8 +15,10 @@ import { createTestApp } from './testing/app';
  * FR2-ACT-2 (RED at 6298275, owner decision): an acting session still ISSUES a casino integration
  *   credential (`POST /v1/credentials`, the same `credentials.rotate` permission as the reward-API
  *   PUT) and receives its api key and HMAC secret, audited `allowed`. With them the holder can sign
- *   launch tokens and ingest events as that casino. It is an integration write under D-31's "all",
- *   but not one of the three named routes, so it stays an owner question (FOLLOW-UP).
+ *   launch tokens and ingest events as that casino. D-32 classifies this CORE: issue AND rotate are
+ *   refused for acting staff, audited `refused`, and nothing is written (no new key, the live key
+ *   stays active). Mutation once fixed: remove the acting refusal from issueFor / rotate -> red.
+ *   Store-item writes by acting staff are pinned on the engagement side (FR2-ACT-3).
  */
 
 const PW = 'correct horse battery';
@@ -90,25 +92,47 @@ describe('fix round 2: acting staff and integration writes in identity (D-31)', 
     }
   });
 
-  it('FR2-ACT-2 an acting session cannot issue a casino integration credential (owner decision)', async () => {
-    const w = await world();
-    try {
-      const res = await w.app.inject({
-        method: 'POST',
-        url: '/v1/credentials',
-        headers: { authorization: `Bearer ${w.token}` },
-        payload: { platform: 'sim-casino', environment: 'production' },
+  // D-32 (coordinator, F2 CORE): issue AND rotate. The rotate case also checks the casino's live key
+  // was not revoked: with grace 0 an acting rotate cuts the casino off at once.
+  it.each(['issue', 'rotate'] as const)(
+    'FR2-ACT-2 an acting session cannot %s a casino integration credential (D-32)',
+    async (op) => {
+      const w = await world();
+      const live = await w.k.credentials.issue(w.a.tenant.id, 'sim-casino', {
+        environment: 'production',
       });
-      expect({
-        status: res.statusCode,
-        secretReturned: 'hmac_secret' in (res.json() as object),
-      }).toEqual({
-        status: 403,
-        secretReturned: false,
-      });
-      expect(await finalAudit(w, 'POST /v1/credentials')).toMatchObject({ decision: 'refused' });
-    } finally {
-      await w.app.close();
-    }
-  });
+      try {
+        const res =
+          op === 'issue'
+            ? await w.app.inject({
+                method: 'POST',
+                url: '/v1/credentials',
+                headers: { authorization: `Bearer ${w.token}` },
+                payload: { platform: 'sim-casino', environment: 'production' },
+              })
+            : await w.app.inject({
+                method: 'POST',
+                url: `/v1/credentials/${live.key_id}/rotate`,
+                headers: { authorization: `Bearer ${w.token}` },
+                payload: { grace_seconds: 0 },
+              });
+        expect({
+          status: res.statusCode,
+          secretReturned: 'hmac_secret' in (res.json() as object),
+        }).toEqual({
+          status: 403,
+          secretReturned: false,
+        });
+        const route =
+          op === 'issue' ? 'POST /v1/credentials' : 'POST /v1/credentials/:keyId/rotate';
+        expect(await finalAudit(w, route)).toMatchObject({ decision: 'refused', status: 403 });
+        const rows = await w.k.credentials.storedRowsForTest(w.a.tenant.id);
+        expect(rows.map((r) => ({ key: r.key_id === live.key_id, status: r.status }))).toEqual([
+          { key: true, status: 'active' },
+        ]);
+      } finally {
+        await w.app.close();
+      }
+    },
+  );
 });
