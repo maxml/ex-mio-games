@@ -15,6 +15,7 @@ import { Db, type Tx } from '@ex-mio/service-kit';
 import { currentTenant, runWithTenant } from '@ex-mio/tenancy';
 import { BillingRepository } from '../model/billing.repository';
 import { LEDGER_FAULTS, type LedgerFaults } from '../model/ledger.faults';
+import { emitAfterCommit } from './analytics';
 import { LedgerError } from './ledger.errors';
 import {
   CardNotAcceptedError,
@@ -218,6 +219,22 @@ export class BillingService {
         periodStart: new Date(snapshot.periodStart),
         periodEnd: new Date(snapshot.periodEnd),
       });
+      emitAfterCommit(tx, tenantId, {
+        event: 'payments.payment_succeeded',
+        props: { plan_code: plan.code, amount_minor: plan.price_minor, currency: plan.currency },
+      });
+    } else if (applied && snapshot.status === 'past_due') {
+      const plan = await this.repo.planById(tx, sub.plan_id);
+      if (!plan) throw new Error(`subscription ${sub.id} has no plan row`);
+      emitAfterCommit(tx, tenantId, {
+        event: 'payments.payment_failed',
+        props: {
+          plan_code: plan.code,
+          amount_minor: plan.price_minor,
+          currency: plan.currency,
+          reason: 'past_due',
+        },
+      });
     }
     await this.faults.hit('webhook_apply', tx);
     return { outcome: applied ? 'applied' : 'superseded' };
@@ -259,7 +276,20 @@ export class BillingService {
       periodStart: now,
       periodEnd: now,
     });
+    emitAfterCommit(tx, tenantId, {
+      event: 'payments.plan_selected',
+      props: { plan_code: plan.code, amount_minor: plan.price_minor, currency: plan.currency },
+    });
     if (declined) {
+      emitAfterCommit(tx, tenantId, {
+        event: 'payments.payment_failed',
+        props: {
+          plan_code: plan.code,
+          amount_minor: plan.price_minor,
+          currency: plan.currency,
+          reason: 'declined',
+        },
+      });
       // The audit trail of a refused checkout: a failed invoice, nothing paid.
       await this.repo.insertInvoice(tx, {
         tenantId,

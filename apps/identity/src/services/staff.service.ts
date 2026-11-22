@@ -7,6 +7,7 @@ import {
   type Role,
   type TenantView,
 } from '@ex-mio/contracts';
+import { emitProductEvent } from '@ex-mio/logger';
 import { IdentityError, ProviderError, UniqueViolationError } from '../errors';
 import type { Repos, UnitOfWork } from '../model/ports';
 import { AccessService, effectiveTenant, type Subject } from './access.service';
@@ -83,6 +84,14 @@ export class StaffService {
           provider_uid: uid,
         });
         return row;
+      });
+      // after the commit: the funnel's first step. The actor is the new admin (an internal id).
+      emitProductEvent({
+        event: 'identity.operator_signed_up',
+        tenant_id: tenantId,
+        actor_type: 'operator',
+        actor_id: userId,
+        props: { role: 'operator_admin' },
       });
       return {
         tenant: toTenantView(tenant),

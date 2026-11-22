@@ -10,6 +10,7 @@ import {
   type LaunchRequest,
   type LaunchResponse,
 } from '@ex-mio/contracts';
+import { emitProductEvent } from '@ex-mio/logger';
 import { IdentityError, UniqueViolationError } from '../errors';
 import type { Clock, Repos, UnitOfWork } from '../model/ports';
 import { safeEqual } from './crypto';
@@ -99,7 +100,11 @@ export class LaunchService {
       throw err;
     }
 
-    const { user_id } = await this.players.resolveOrCreate(tenantId, key.row.platform, claims.pid);
+    const { user_id, created } = await this.players.resolveOrCreate(
+      tenantId,
+      key.row.platform,
+      claims.pid,
+    );
     // D-21: a player has no identity-provider account, so there is no provider call and no
     // provider link here. The session is our own JWT, valid for every audience the player needs.
     const token = this.sessions.issueUserToken({
@@ -109,6 +114,15 @@ export class LaunchService {
       aud: PLAYER_SESSION_AUDIENCES,
       // X-3: the environment is the credential's, so a client can never ask for (or avoid) sandbox
       ...(key.row.environment === 'sandbox' ? { sbx: true as const } : {}),
+    });
+    // The launch token is the only proof of the player, so there is no AuthContext yet: the actor
+    // is the player's internal id. The casino-side player id is never an event field.
+    emitProductEvent({
+      event: 'identity.player_launched',
+      tenant_id: tenantId,
+      actor_type: 'player',
+      actor_id: user_id,
+      props: { sandbox: key.row.environment === 'sandbox', new_player: created },
     });
     return { ...token, user_id, tenant_id: tenantId };
   }

@@ -24,6 +24,7 @@ import {
   type SeedProvider,
   type SpinRecord,
 } from '../model/repositories';
+import { emitPlayerEventAfterCommit } from './analytics';
 import { selectSegment, toPublicWheel } from './wheel';
 
 const conflict = (body: SpinConflictBody): ConflictException => new ConflictException(body);
@@ -165,6 +166,11 @@ export class SpinService {
         },
       }),
     );
+    // After the commit: the spin happened, with its reward and the environment it ran in.
+    emitPlayerEventAfterCommit(tx, tenantId, userId, {
+      event: 'engagement.spin_completed',
+      props: { reward_coins: rewardCoins, sandbox },
+    });
     return toResponse(record);
   }
 

@@ -31,6 +31,15 @@ import {
 import { WHEEL_REWARDS } from '../mio/engine/data';
 import { createMockApi } from '../mio/mock';
 import { createStore } from '../mio/engine/store';
+import {
+  anonCookie,
+  anonIdFrom,
+  ANON_COOKIE,
+  emitWebEvent,
+  stdoutProductEvents,
+  tenantHintOfLaunchToken,
+  type ProductEventSink,
+} from './analytics';
 import type { BffConfig } from './config';
 import {
   mapAttempt,
@@ -60,6 +69,8 @@ export interface BffDeps {
   sessions: SessionStore;
   fetch?: typeof fetch;
   now?: () => number;
+  /** Where product events go: one JSON line on stdout by default (docs/analytics.md). */
+  productEvents?: ProductEventSink;
 }
 
 interface Ctx {
@@ -98,6 +109,7 @@ export function createBff(deps: BffDeps) {
   const { config, sessions } = deps;
   const now = deps.now ?? Date.now;
   const up: Upstream = createUpstream(config, deps.fetch);
+  const productEvents = deps.productEvents ?? stdoutProductEvents;
 
   const need = (s: Session | null): Session => {
     if (!s) throw new BffError(401, 'unauthenticated', 'Sign in first');
@@ -210,6 +222,38 @@ export function createBff(deps: BffDeps) {
         });
         ctx.setCookie = sessionCookie(session.id, config.secureCookie);
         return { body: { kind: 'player' } };
+      },
+    ],
+    // Product analytics: the widget was opened. Before a launch the visitor is anonymous (`anon_id`, a
+    // session cookie of ours); with a player session the verified player and tenant are used. The body
+    // may carry the launch token only so the unverified tenant hint can be read from its key id.
+    [
+      'POST',
+      /^\/api\/widget\/opened$/,
+      async (ctx) => {
+        const s = ctx.session;
+        if (s && s.kind === 'player') {
+          emitWebEvent(productEvents, {
+            event: 'web.widget_opened',
+            tenant_id: s.tenantId,
+            actor_type: 'player',
+            actor_id: s.userId,
+            props: { launched: true },
+          });
+          return { status: 204 };
+        }
+        const tenant = tenantHintOfLaunchToken(ctx.body.token);
+        if (!tenant) return { status: 204 }; // no tenant to attribute: nothing is written
+        const anon = anonIdFrom(readCookie(ctx.request.headers.get('cookie'), ANON_COOKIE));
+        emitWebEvent(productEvents, {
+          event: 'web.widget_opened',
+          tenant_id: tenant,
+          actor_type: 'visitor',
+          anon_id: anon.id,
+          props: { launched: false },
+        });
+        if (anon.isNew) ctx.setCookie = anonCookie(anon.id, config.secureCookie);
+        return { status: 204 };
       },
     ],
     [

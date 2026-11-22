@@ -5,6 +5,7 @@ import {
   type IntegrationEnvironment,
   type TenantIntegration,
 } from '@ex-mio/contracts';
+import { emitProductEventAs, type ProductAuth } from '@ex-mio/logger';
 import { IdentityError } from '../errors';
 import type { Clock, CredentialRow, Repos, UnitOfWork } from '../model/ports';
 import { AccessService, effectiveTenant, type Subject } from './access.service';
@@ -75,7 +76,7 @@ export class CredentialsService {
   async issue(
     tenantId: string,
     platform: string,
-    options: { environment?: IntegrationEnvironment } = {},
+    options: { environment?: IntegrationEnvironment; subject?: Subject } = {},
   ): Promise<CredentialIssued> {
     const { row, issued } = await this.create(
       tenantId,
@@ -83,6 +84,7 @@ export class CredentialsService {
       options.environment ?? 'production',
     );
     await this.uow.run(tenantId, (tx) => this.repos.credentials.insert(tx, row));
+    this.announceIssued(tenantId, row.environment, false, options.subject);
     return issued;
   }
 
@@ -94,7 +96,7 @@ export class CredentialsService {
   ): Promise<CredentialIssued> {
     const tenantId = effectiveTenant(subject);
     await this.access.authorize(subject, 'credentials.rotate', { tenant_id: tenantId });
-    return this.issue(tenantId, platform, { environment });
+    return this.issue(tenantId, platform, { environment, subject });
   }
 
   async list(subject: Subject): Promise<CredentialSummary[]> {
@@ -131,16 +133,43 @@ export class CredentialsService {
     await this.access.authorize(subject, 'credentials.rotate', { tenant_id: tenantId });
     const grace = Math.max(0, Math.floor(options.graceSeconds ?? 0));
     const now = this.clock.now();
-    return this.uow.run(tenantId, async (tx) => {
+    const { issued, environment } = await this.uow.run(tenantId, async (tx) => {
       const old = await this.repos.credentials.findByKeyId(tx, tenantId, keyId);
       if (!old) throw new IdentityError('NOT_FOUND', 'key not found');
-      const { row, issued } = await this.create(tenantId, old.platform, old.environment);
-      await this.repos.credentials.insert(tx, row);
+      const made = await this.create(tenantId, old.platform, old.environment);
+      await this.repos.credentials.insert(tx, made.row);
       await this.repos.credentials.update(tx, tenantId, keyId, {
         status: grace > 0 ? 'retiring' : 'revoked',
         retiring_until: grace > 0 ? now + grace : null,
       });
-      return issued;
+      return { issued: made.issued, environment: made.row.environment };
+    });
+    this.announceIssued(tenantId, environment, true, subject);
+    return issued;
+  }
+
+  /** After the commit: a key was issued (or rotated). The key id and secret never go in the event. */
+  private announceIssued(
+    tenantId: string,
+    environment: IntegrationEnvironment,
+    rotated: boolean,
+    subject?: Subject,
+  ): void {
+    // The actor is the verified subject of the request (the same data as the AuthContext); a key
+    // issued by the service itself (no subject) is attributed to the identity service.
+    const auth: ProductAuth = subject
+      ? {
+          mode: 'user',
+          tenantId: subject.tenantId,
+          principalId: subject.userId,
+          roles: subject.roles,
+          acting: subject.acting,
+        }
+      : { mode: 'service', tenantId, principalId: 'identity', roles: [], service: 'identity' };
+    emitProductEventAs(auth, {
+      event: 'identity.credential_issued',
+      tenant_id: tenantId,
+      props: { environment, rotated },
     });
   }
 

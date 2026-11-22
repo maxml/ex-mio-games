@@ -1,12 +1,13 @@
 import 'reflect-metadata';
 import { NestFactory } from '@nestjs/core';
 import { FastifyAdapter, type NestFastifyApplication } from '@nestjs/platform-fastify';
-import { createLogger } from '@ex-mio/logger';
+import { createLogger, setProductEventLogger } from '@ex-mio/logger';
 import { failBootstrap, ReportingExceptionFilter } from '@ex-mio/service-kit';
 import { createAppModule } from './app.module';
 import { loadConfig } from './config';
 
 const logger = createLogger({ name: 'payments' });
+setProductEventLogger(logger); // product events carry service=payments
 
 async function main(): Promise<void> {
   const config = loadConfig();

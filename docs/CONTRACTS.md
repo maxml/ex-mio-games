@@ -165,9 +165,13 @@ sandbox?, payload }`; `tenant_id` is mandatory; the payload schema is registered
 ## Product analytics line
 
 - **provider:** `packages/logger` (`logProductEvent`) · **consumers:** the log collector that tails stdout
-- **spec:** one JSON object per line with `kind: "product_event"`, a snake_case `event`, and a mandatory
-  `tenant_id`. Secrets are redacted.
-- **pinned:** `packages/logger/src/product-event.test.ts`
+- **spec:** one JSON object per line with `kind: "product_event"`, in Varta's closed envelope (D-19):
+  `event` as `domain.object_action`, `event_v`, a UUIDv7 `event_id`, a mandatory `tenant_id`, exactly one
+  of `actor_id` and `anon_id`, `consent`, flat scalar `props` with no PII-shaped key, at most 8 KiB.
+  The schema is vendored at `packages/contracts/schemas/varta-product-event.schema.json` (source commit
+  beside it). The catalogue and the funnels are in `docs/analytics.md`.
+- **pinned:** `packages/logger/src/product-event.test.ts` (ajv against the vendored schema), and one
+  `analytics.test.ts` per emitting service (identity, payments, engagement, web BFF)
 
 ## Coin commands, balance read and coin events
 
