@@ -680,20 +680,42 @@ describe('INV-O2 erasing the identity link keeps the stable account', () => {
 // reserve's own wallet.
 describe('INV-SBX sandbox effects use separate sandbox wallets', () => {
   // Mutation: pick the wallet by (tenant, player) alone, or ignore envelope.sandbox on the credit.
+  // Mutation (metering): meter every applied spin, sandbox included (drop the D-13 sandbox skip in
+  // the usage step) -> the sandbox spin's usage_events row appears and the meter moves (red).
+  // "Nothing is metered" is scoped to THIS tenant and to the sandbox spin itself, never to a calendar
+  // date: the production fund() above is a metered spin of the same tenant (D-13), so it is the
+  // baseline, read after it and compared after the sandbox spin.
   it('INV-SBX-1 a sandbox spin credits the SANDBOX wallet; the production balance is unchanged and nothing is metered', async () => {
     const t = newTenant();
     const p = newPlayer();
     await h.fund(t, p, 10); // production
-    const d = await h.consume(spinCompletedIn(true, t, p, 7, { at: '2026-11-05T10:00:00.000Z' }));
+    const metering = async () => ({
+      events: (
+        await h.admin.query(
+          `SELECT spin_id::text AS s FROM usage_events WHERE tenant_id = $1 ORDER BY 1`,
+          [t],
+        )
+      ).rows.map((r) => r.s as string),
+      meters: (
+        await h.admin.query(
+          `SELECT period, metric, quantity::text AS q FROM usage_meters WHERE tenant_id = $1 ORDER BY 1, 2`,
+          [t],
+        )
+      ).rows,
+    });
+    const before = await metering();
+    expect(before.events).toHaveLength(1); // the production fund() spin IS metered: the probe works
+    const sandboxSpin = uuidv7();
+    const d = await h.consume(
+      spinCompletedIn(true, t, p, 7, { spinId: sandboxSpin, at: new Date().toISOString() }),
+    );
     expect(d.outcome).toBe('applied');
     expect((await h.dbWallet(t, p)).available).toBe(10);
     expect((await h.dbWalletIn(t, p, true)).available).toBe(7);
     expect(await count('wallets', t)).toBe(2);
-    const { rows } = await h.admin.query(
-      `SELECT count(*)::int AS n FROM usage_events WHERE tenant_id = $1 AND occurred_at >= '2026-11-01'`,
-      [t],
-    );
-    expect(rows[0].n).toBe(0);
+    const after = await metering();
+    expect(after.events).not.toContain(sandboxSpin);
+    expect(after).toEqual(before);
   });
 
   // Mutation: let a sandbox reserve read or debit the production wallet.
