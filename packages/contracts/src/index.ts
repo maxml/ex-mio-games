@@ -8,6 +8,7 @@ export * from './ingest';
 export * from './ip-guard';
 export * from './payments';
 export * from './realtime';
+export * from './reward-api-url';
 export * from './scoped-key';
 export * from './store';
 export * from './telemetry';

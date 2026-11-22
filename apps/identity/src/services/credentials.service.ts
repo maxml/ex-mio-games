@@ -4,10 +4,13 @@ import {
   type CredentialSummary,
   type IntegrationEnvironment,
   type PutRewardApiRequest,
+  REWARD_API_HTTPS_MESSAGE,
+  rewardApiRequiresHttps,
   type RewardApiSummary,
   type TenantIntegration,
 } from '@ex-mio/contracts';
 import { emitProductEventAs, type ProductAuth } from '@ex-mio/logger';
+import { AuthorizationRefused } from '@ex-mio/service-kit';
 import { IdentityError } from '../errors';
 import type { Clock, CredentialRow, Repos, RewardApiRow, UnitOfWork } from '../model/ports';
 import { AccessService, effectiveTenant, type Subject } from './access.service';
@@ -62,22 +65,16 @@ export class CredentialsService {
     casino: string,
     input: PutRewardApiRequest,
   ): Promise<RewardApiSummary> {
+    // D-31: acting staff never change an integration. Refused before `authorize`, which would write
+    // an `allowed` acting-audit row for a request that is then refused; audited `refused`.
+    if (subject.acting) throw new AuthorizationRefused({ code: 'ACTING_FORBIDDEN' });
     const tenantId = effectiveTenant(subject);
     await this.access.authorize(subject, 'credentials.rotate', { tenant_id: tenantId });
-    // D-30 (F1): a production reward API is https. Plain http is for hosts listed in
-    // REWARD_API_ALLOW_HOSTS (compose: casino-sim) and for the sandbox endpoint.
-    if (input.environment === 'production') {
-      const url = new URL(input.base_url);
-      const allowed = (process.env.REWARD_API_ALLOW_HOSTS ?? '')
-        .split(',')
-        .map((h) => h.trim().toLowerCase())
-        .filter((h) => h !== '');
-      if (url.protocol !== 'https:' && !allowed.includes(url.hostname.toLowerCase())) {
-        throw new IdentityError(
-          'VALIDATION_FAILED',
-          'a production reward API must use https (http only for hosts in REWARD_API_ALLOW_HOSTS)',
-        );
-      }
+    // D-30 (F1), D-31 R4: the one shared rule, the same one engagement applies at call time. In a
+    // production deployment (NODE_ENV=production) every reward API, sandbox or production, is https
+    // unless its host is listed in REWARD_API_ALLOW_HOSTS (compose: casino-sim).
+    if (rewardApiRequiresHttps(new URL(input.base_url))) {
+      throw new IdentityError('VALIDATION_FAILED', REWARD_API_HTTPS_MESSAGE);
     }
     const row: RewardApiRow = {
       tenant_id: tenantId,

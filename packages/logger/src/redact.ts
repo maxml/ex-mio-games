@@ -4,7 +4,33 @@
 // every other key stays visible (so an operator sees that something was logged) with the value
 // replaced by the censor. Strings that do pass are scrubbed for credential and PII shapes.
 
+import { looksLikePhoneNumber, ProductEventProps } from '@ex-mio/contracts';
+
 export const REDACT_CENSOR = '[redacted]';
+
+/**
+ * `props` keys a plain log line may carry (R3). A product event goes through the contracts schema
+ * and keeps its keys; anything else that says `props` is an unvalidated map, so only these known
+ * keys keep their value and every other key is censored.
+ */
+const ALLOWED_LOG_PROP_KEYS: ReadonlySet<string> = new Set([
+  'sandbox',
+  'environment',
+  'source',
+  'status',
+  'role',
+  'reason',
+  'currency',
+  'casino',
+  'plan_code',
+  'amount_minor',
+  'coins',
+  'reward_coins',
+  'price_coins',
+  'new_player',
+  'launched',
+  'rotated',
+]);
 
 /** Top-level keys whose value is written (after string scrubbing). Everything else is censored. */
 const ALLOWED_TOP = new Set([
@@ -58,6 +84,14 @@ const SECRET_PAIR =
 // Anything after `?` or `#` in a URL: query values and fragments carry tokens and emails.
 const URL_TAIL = /(\b[a-z][a-z0-9+.-]*:\/\/[^\s?#"'`]*)[?#][^\s"'`]*/gi;
 const EMAIL = /[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}\b/g;
+// Prefixed API secrets (`sk_live_...`, `whsec_...`) and long opaque tokens (32+ letters and digits).
+const API_SECRET = /\b(?:sk|pk|rk|whsec|ghp|gho|xox[abprs])_[A-Za-z0-9_-]{8,}/gi;
+const OPAQUE_TOKEN = /\b(?=[A-Za-z0-9]*[0-9])(?=[A-Za-z0-9]*[A-Za-z])[A-Za-z0-9]{32,}\b/g;
+// Phones: `+` and 8 or more digits (spaces, dashes and brackets inside), a bare run of 9 or more
+// digits, or the US `(555) 123-4567` shape. Not preceded or followed by a word character or `-`, so
+// a UUID group or an ISO date is left alone.
+const PHONE =
+  /(?<![\w-])(?:\+\d[\d ()-]{7,}\d|\d{9,}|\(?\d{3}\)?[ -]\d{3}[ -]\d{2,4}(?:[ -]\d{2})?)(?![\w-])/g;
 
 /** Scrub credential and PII shapes out of a string that is allowed to be written. */
 export function scrubString(value: string): string {
@@ -67,7 +101,16 @@ export function scrubString(value: string): string {
     .replace(BEARER, `$1 ${REDACT_CENSOR}`)
     .replace(SECRET_PAIR, `$1${REDACT_CENSOR}`)
     .replace(JWT, REDACT_CENSOR)
-    .replace(EMAIL, REDACT_CENSOR);
+    .replace(API_SECRET, REDACT_CENSOR)
+    .replace(OPAQUE_TOKEN, REDACT_CENSOR)
+    .replace(EMAIL, REDACT_CENSOR)
+    .replace(PHONE, REDACT_CENSOR);
+}
+
+/** A `props` value: scalars only, strings scrubbed, a phone-length number censored. */
+function scrubPropValue(value: unknown): unknown {
+  if (typeof value === 'number' && looksLikePhoneNumber(value)) return REDACT_CENSOR;
+  return scrubScalar(value);
 }
 
 function scrubScalar(value: unknown): unknown {
@@ -103,7 +146,7 @@ function censorDeep(value: unknown, depth = 0): unknown {
   return out;
 }
 
-function scrubChild(parent: string, value: unknown): unknown {
+function scrubChild(parent: string, value: unknown, validatedProps = false): unknown {
   if (parent === 'err' && isErrorLike(value)) return errorShape(value);
   if (value === null || typeof value !== 'object' || Array.isArray(value)) {
     return parent === 'err' ? scrubScalar(value) : REDACT_CENSOR;
@@ -111,8 +154,13 @@ function scrubChild(parent: string, value: unknown): unknown {
   const allowed = ALLOWED_CHILD[parent];
   const out: Record<string, unknown> = {};
   for (const [key, v] of Object.entries(value as Record<string, unknown>)) {
-    // `props`: any key, scalar values only. The contracts schema already refused unknown shapes.
-    out[key] = parent === 'props' || allowed?.has(key) ? scrubScalar(v) : REDACT_CENSOR;
+    if (parent === 'props') {
+      // Validated product-event props keep their keys; any other `props` is an unvalidated map.
+      out[key] =
+        validatedProps || ALLOWED_LOG_PROP_KEYS.has(key) ? scrubPropValue(v) : REDACT_CENSOR;
+    } else {
+      out[key] = allowed?.has(key) ? scrubScalar(v) : REDACT_CENSOR;
+    }
   }
   return out;
 }
@@ -127,8 +175,17 @@ export function sanitizeLogObject(obj: Record<string, unknown>): Record<string, 
     if (value === undefined) continue; // JSON drops it anyway
     if (!ALLOWED_TOP.has(key)) {
       out[key] = censorDeep(value);
-    } else if (key in ALLOWED_CHILD || key === 'props') {
+    } else if (key === 'props') {
+      const validated =
+        obj['kind'] === 'product_event' && ProductEventProps.safeParse(value).success;
+      out[key] = scrubChild(key, value, validated);
+    } else if (key in ALLOWED_CHILD) {
       out[key] = scrubChild(key, value);
+    } else if (
+      (key === 'trace_id' && typeof value === 'string' && /^[0-9a-f]{32}$/.test(value)) ||
+      (key === 'span_id' && typeof value === 'string' && /^[0-9a-f]{16}$/.test(value))
+    ) {
+      out[key] = value; // OpenTelemetry ids: hex, not a credential, and the join key to the trace
     } else {
       out[key] = scrubScalar(value);
     }

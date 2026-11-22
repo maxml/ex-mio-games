@@ -1,16 +1,19 @@
-import { Body, Controller, Headers, Put, UseFilters } from '@nestjs/common';
+import { Body, Controller, Headers, Put, UseFilters, UseGuards } from '@nestjs/common';
 import { PutRuleRequest, PutWheelRequest, type PublishedVersion } from '@ex-mio/contracts';
 import { parseInput } from '@ex-mio/service-kit';
 import { OperatorConfigService } from '../services/operator-config.service';
+import { ActingBanGuard } from './acting-ban.guard';
 import { readPrincipal, requireRole } from './principal';
 import { StoreErrorFilter } from './store-error.filter';
 
 /**
  * The operator's wheel and deposit rules (D-27). `operator_admin` only (identity's `wheel.manage`
  * and `rules.manage`); the role is checked before the body is read. The tenant is the verified
- * token's, and the principal is recorded on every published version.
+ * token's, and the principal is recorded on every published version. D-31: an acting session
+ * (support acting as an operator) is refused on every configuration write, audited `refused`.
  */
 @Controller('v1/operator')
+@UseGuards(ActingBanGuard)
 @UseFilters(StoreErrorFilter)
 export class OperatorConfigController {
   constructor(private readonly config: OperatorConfigService) {}

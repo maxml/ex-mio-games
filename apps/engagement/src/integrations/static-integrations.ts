@@ -6,6 +6,8 @@ import { z } from 'zod';
 import {
   isInternalAddress,
   isInternalHostLiteral,
+  rewardApiAllowedHosts,
+  rewardApiRequiresHttps,
   TenantIntegration as TenantIntegrationSchema,
 } from '@ex-mio/contracts';
 import type { Transport } from './adapter';
@@ -34,13 +36,7 @@ const MAX_RESPONSE_BYTES = 256 * 1024;
 const SOCKET_TIMEOUT_MS = 15_000;
 
 /** Hosts (comma separated `REWARD_API_ALLOW_HOSTS`, read per call) exempt from the address and https rules. */
-const allowedHosts = (): Set<string> =>
-  new Set(
-    (process.env.REWARD_API_ALLOW_HOSTS ?? '')
-      .split(',')
-      .map((h) => h.trim().toLowerCase())
-      .filter((h) => h !== ''),
-  );
+const allowedHosts = (): Set<string> => rewardApiAllowedHosts();
 
 /**
  * F1: the address check runs HERE, on the addresses the name resolves to at call time, and the
@@ -83,7 +79,7 @@ export const fetchTransport: Transport = (req) =>
     if (url.username !== '' || url.password !== '') {
       return reject(new Error('reward API URL must not carry credentials'));
     }
-    if (url.protocol === 'http:' && process.env.NODE_ENV === 'production' && !allowed) {
+    if (rewardApiRequiresHttps(url)) {
       return reject(new Error('reward API must use https in production'));
     }
     if (!allowed && isInternalHostLiteral(url.hostname)) {

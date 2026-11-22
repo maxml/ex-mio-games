@@ -70,7 +70,25 @@ const EMAIL_TEXT = /^[ \t\n\r\f\v]*[^ \t\n\r\f\v@]+@[^ \t\n\r\f\v@]+\.[A-Za-z]{2
 // schema on purpose: a stricter producer still conforms (D-19), and a refused key is dropped
 // with its event, never rewritten.
 const SAFE_PROP_TEXT = /^[A-Za-z0-9 _.:/[\]()-]{0,256}$/;
-const LONG_DIGITS = /[0-9]{9,}/;
+// Re-review R3: a local phone has 7 digits, so a text digit run is refused from 7 (it was 9).
+const LONG_DIGITS = /[0-9]{7,}/;
+// A number value is a phone too (`380501234567`). Integers of 10 or more digits are refused;
+// money in minor units and counters stay far below that.
+const PHONE_LENGTH_NUMBER = 1e9;
+// Credential shapes that every character of SAFE_PROP_TEXT lets through: a bearer or basic
+// credential, a JWT, a prefixed API secret (`sk_live_...`, `whsec_...`) and a long opaque token.
+const SECRET_TEXT: readonly RegExp[] = [
+  /\b(?:bearer|basic)[ \t]+[^ \t]/i,
+  /\beyJ[A-Za-z0-9_-]{5,}\.[A-Za-z0-9_-]{2,}/,
+  /\b(?:sk|pk|rk|whsec|ghp|gho|xox[abprs])_[A-Za-z0-9_-]{8,}/i,
+  /\b(?=[A-Za-z0-9]*[0-9])(?=[A-Za-z0-9]*[A-Za-z])[A-Za-z0-9]{32,}\b/,
+];
+
+/** True when a text carries a credential shape (shared with the log scrubber's tests and callers). */
+export const looksLikeSecret = (text: string): boolean => SECRET_TEXT.some((re) => re.test(text));
+/** True when a number is as long as a phone number or longer. */
+export const looksLikePhoneNumber = (n: number): boolean =>
+  Number.isFinite(n) && Math.abs(Math.trunc(n)) >= PHONE_LENGTH_NUMBER;
 
 /**
  * The props map: flat scalars, snake_case keys, no `varta_` prefix, no PII-shaped key, and text
@@ -100,7 +118,13 @@ export const ProductEventProps = z
       } else if (typeof value === 'string' && LONG_DIGITS.test(value.replace(/[ ()._/:-]/g, ''))) {
         bad('props text must not carry a phone-, card- or id-length digit run');
       }
+      if (typeof value === 'string' && looksLikeSecret(value)) {
+        bad('props text must not carry a bearer token, JWT or API secret');
+      }
       if (typeof value === 'number' && !Number.isFinite(value)) bad('props number must be finite');
+      if (typeof value === 'number' && looksLikePhoneNumber(value)) {
+        bad('props number must not be as long as a phone number');
+      }
     }
   });
 export type ProductEventProps = z.infer<typeof ProductEventProps>;

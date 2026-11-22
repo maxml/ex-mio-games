@@ -37,11 +37,11 @@ export async function runMigrationsCli(
     await lockConnection.query('SELECT pg_advisory_lock($1)', [MIGRATION_LOCK_ID]);
     // Pre-condition: the image ships migrations. A missing `dist/model/migrations` makes the data
     // source glob match nothing, and "nothing to apply" would then be a green deploy of an empty schema.
-    // A real DataSource always has `migrations` and `showMigrations`; they are read as optional only
-    // so the minimal double of the lock-order test (ops.test.ts) keeps working. An empty list fails.
+    // A real DataSource always has a `migrations` array. An absent or empty list fails closed
+    // (D-31 R5): the guard must not depend on the shape of a test double.
     const source = ds as Partial<Pick<DataSource, 'migrations' | 'showMigrations'>>;
     const shipped = source.migrations?.length;
-    if (shipped === 0) {
+    if (!shipped) {
       throw new Error(
         'no migrations are shipped in this image (is dist/model/migrations missing?)',
       );

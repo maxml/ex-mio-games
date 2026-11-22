@@ -110,6 +110,8 @@ export function buildLoggerOptions(options: LoggerOptions = {}): pino.LoggerOpti
     // trace|debug|info|warn|error|fatal already matches the LogLevel enum (§3.1).
     formatters: {
       level: (label) => ({ level: label }),
+      // `child({...})` bindings never pass through `log`; the same allow-list applies to them.
+      bindings: (bindings) => sanitizeLogObject(bindings),
       // The allow-list choke point: every key of every line passes through here.
       log: sanitizeLogObject,
     },
@@ -162,7 +164,16 @@ export function createLogger(
   destination?: pino.DestinationStream,
 ): pino.Logger {
   const opts = buildLoggerOptions(options);
-  return destination ? pino(opts, destination) : pino(opts);
+  const root = destination ? pino(opts, destination) : pino(opts);
+  // pino resets `formatters.bindings` to the identity for every child, so a child's bindings would
+  // be written raw (D-31 R3). `child` is wrapped here: the bindings pass the allow-list first. The
+  // wrapper is inherited by every child, and it calls pino's own `child` on `this`, so chains keep
+  // their bindings.
+  const pinoChild = root.child as (this: pino.Logger, b: pino.Bindings, o?: object) => pino.Logger;
+  root.child = function child(this: pino.Logger, bindings: pino.Bindings, childOptions?: object) {
+    return pinoChild.call(this, sanitizeLogObject(bindings), childOptions);
+  } as typeof root.child;
+  return root;
 }
 
 /**

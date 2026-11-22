@@ -15,7 +15,7 @@ export class ActingBanGuard implements CanActivate {
     const auth = authOf(context.switchToHttp().getRequest<object>());
     if (auth?.acting)
       throw new HttpException(
-        { code: 'ACTING_FORBIDDEN', message: 'an acting session cannot resolve a redemption' },
+        { code: 'ACTING_FORBIDDEN', message: 'an acting session cannot do this' },
         403,
       );
     return true;

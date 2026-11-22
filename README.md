@@ -257,8 +257,9 @@ from that first run.
   The URL is checked twice (D-30). The PUT refuses credentials in the URL and literal loopback, private,
   link-local (cloud metadata) and unspecified addresses. Engagement's transport resolves the host at call
   time and refuses the same ranges, never follows a redirect (a 3xx counts as "outcome unknown"), and in
-  production requires `https`; identity's PUT likewise refuses a plain-http URL for the `production`
-  environment (the sandbox endpoint may be http). `REWARD_API_ALLOW_HOSTS` (comma separated host names,
+  production requires `https`; identity's PUT applies the same shared rule (D-31): in a production
+  deployment (`NODE_ENV=production`) a plain-http URL is refused for every reward API, sandbox or production.
+  `REWARD_API_ALLOW_HOSTS` (comma separated host names,
   read by identity and engagement) exempts listed hosts from the https rule, and from the address rule in
   engagement's transport; compose sets it to `casino-sim` on both services. The casino's rejection
   reason is cut to 64 characters of `[A-Za-z0-9_.:-]` before it is stored or shown.
@@ -472,6 +473,20 @@ Checked against the code. The full table with the reasons is section 14 of
 
 The full list, with the web calls that no service answers yet, is in
 [`docs/submission/known-gaps.md`](docs/submission/known-gaps.md).
+
+## Upgrading
+
+- **No orders may be in flight across the upgrade to the environment-scoped wire keys (D-26, D-30 F2).**
+  The keys that name a redemption order, a coin hold, a spin credit or a deposit changed from
+  `<kind>:<id>` to `<kind>:<tenant>:<sbx|prd>:<id>` (for example `redeem:<tenant>:prd:<order id>`). The
+  casino sees that key in its issue call, and engagement, payments and identity use it to dedupe. A redemption that
+  was started before the upgrade and is retried or resolved after it is looked up under the new key, is not
+  found, and can be issued or released a second time. Before deploying: let every redemption reach a final
+  state (no `Pending`, `Held` or `Unknown` rows), or drain the queue; then roll all three services together.
+  The key format is pinned in `packages/contracts/src/scoped-key.ts`.
+- **Migrations are forward only.** An applied migration is never edited: a change to a shipped table goes
+  into a new migration (the `inbound_events` key and the `audit_intents` tenant isolation shipped that way).
+  `node dist/migrate.js` exits 1 when the image ships no migrations.
 
 ## Operations
 
