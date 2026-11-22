@@ -162,17 +162,19 @@ describe('rc review: afterCommit on a real TypeORM transaction (pushes and produ
     expect(published).toEqual([]);
   });
 
-  it('AC-6 a COMMIT that fails (deferred constraint) sends nothing', async () => {
+  it('AC-6 a COMMIT that fails (the server ended the transaction) sends nothing', async () => {
     const { gw, published } = gateway();
+    // The push is queued FIRST, and the failure must happen AT COMMIT. The first version used a
+    // deferred unique check on a temp table; `engagement_app` may not create temp tables, so it
+    // failed before `queue()` and was green with the effect run inline (vacuous). Now the server
+    // ends the idle transaction, so the COMMIT is what fails.
     await expect(
       ds.transaction(async (m) => {
-        await m.query(
-          `CREATE TEMP TABLE rc_review_deferred (id int UNIQUE DEFERRABLE INITIALLY DEFERRED) ON COMMIT DROP`,
-        );
-        await m.query('INSERT INTO rc_review_deferred VALUES (1), (1)');
         gw.queue(m, event());
+        await m.query(`SET LOCAL idle_in_transaction_session_timeout = '200ms'`);
+        await new Promise((r) => setTimeout(r, 1500));
       }),
-    ).rejects.toThrow();
+    ).rejects.toThrow(/idle|terminat|Connection|already released/i); // TypeORM releases the runner on the dropped connection; COMMIT then throws
     await settle();
     expect(published).toEqual([]);
   });
