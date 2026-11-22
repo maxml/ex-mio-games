@@ -6,6 +6,7 @@ import {
   SpinConflictBody,
   SpinResponse,
   parseEvent,
+  scopedKey,
   type EventEnvelope,
 } from '@ex-mio/contracts';
 import { Db } from '@ex-mio/service-kit';
@@ -95,6 +96,9 @@ const T = '0190a1b2-c3d4-4e5f-8a6b-000000000001';
 const A = '0190a1b2-c3d4-4e5f-8a6b-0000000000a1'; // the player making the request
 const B = '0190a1b2-c3d4-4e5f-8a6b-0000000000b2'; // another player of the same tenant
 const WHEEL = '0190a1b2-c3d4-4e5f-8a6b-7c8d9e0f1a2c';
+/** The stored operation id of player A's production request with this Idempotency-Key (D-26). */
+const op = (key: string): string =>
+  scopedKey({ kind: 'spin', tenantId: T, sandbox: false, parts: [A, key] });
 const credit = (n: number) => `0190a1b2-c3d4-4e5f-8a6b-00000000c${String(n).padStart(3, '0')}`;
 
 const TABLE: RewardTableVersion = {
@@ -456,13 +460,13 @@ describe('SpinService', () => {
     seedStore.drop(T, 2); // the store holds v1 only: current = 1
     addCredit(credit(1), A);
     const old = await asPlayer(A, () => service.spin({ idempotencyKey: 'old' }));
-    const stored = spins.get(`${A}|old`)!;
+    const stored = spins.get(`${A}|${op('old')}`)!;
     expect(stored.seedVersion).toBe(1);
     seedStore.add(T, 2, SEED_BY_VERSION[2]!); // rotation: a new version in the store
     addCredit(credit(2), A);
     const fresh = await asPlayer(A, () => service.spin({ idempotencyKey: 'new' }));
-    expect(spins.get(`${A}|new`)!.seedVersion).toBe(2);
-    expect(spins.get(`${A}|old`)).toEqual(stored); // the old record is untouched by the rotation
+    expect(spins.get(`${A}|${op('new')}`)!.seedVersion).toBe(2);
+    expect(spins.get(`${A}|${op('old')}`)).toEqual(stored); // the old record is untouched by the rotation
 
     // R2-3: `seeds` is the REAL provider (model/seeds.ts) over the versioned store, not test-owned
     // arithmetic. A provider whose seed(tenant, v) returns the current seed fails the next line.
@@ -483,7 +487,7 @@ describe('SpinService', () => {
       table: TABLE,
     });
     expect(withCurrent.hmac).not.toBe(stored.hmac); // the current seed would NOT reproduce it
-    expect(spins.get(`${A}|new`)!.hmac).toBe(
+    expect(spins.get(`${A}|${op('new')}`)!.hmac).toBe(
       selectSegment({
         seed: SEED_BY_VERSION[2]!,
         seedVersion: 2,

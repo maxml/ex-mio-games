@@ -20,8 +20,15 @@ import type {
   Scope,
   StateChange,
 } from '../ports';
+import { scopedKey } from '@ex-mio/contracts';
 import { TestClock } from './clock';
 import { MemoryStore } from './memory-store';
+
+/** The idempotency key of one phase of an order (D-26: tenant and environment are in the key). */
+export const okey = (
+  kind: 'redeem' | 'hold' | 'capture' | 'release' | 'refund',
+  r: { id: string; tenantId: string; sandbox: boolean },
+): string => scopedKey({ kind, tenantId: r.tenantId, sandbox: r.sandbox, parts: [r.id] });
 
 export { TestClock };
 
