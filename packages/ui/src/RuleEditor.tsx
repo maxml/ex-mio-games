@@ -18,16 +18,26 @@ export interface RuleEditorProps {
 const num = (v: string) => (v === '' ? NaN : Number(v));
 const show = (n: number) => (Number.isNaN(n) ? '' : n);
 
+/** A rule field is a whole number, at least 1 (the same check the server applies). */
+export const ruleError = (n: number): string | undefined =>
+  Number.isInteger(n) && n >= 1 ? undefined : 'Enter a whole number, at least 1.';
+
+/** True when every numeric field passes `ruleError`. */
+export const rulesValid = (v: RuleValues): boolean =>
+  [v.min, v.spins, v.cap].every((n) => ruleError(n) === undefined);
+
 /** Spin rules form: when does a deposit earn spins. NaN means "field emptied"; the caller validates. */
 export function RuleEditor({ value, onChange, preview }: RuleEditorProps) {
   const set = (p: Partial<RuleValues>) => onChange({ ...value, ...p });
   return (
     <div>
       <div className="grid max-w-md gap-4">
-        <Field label="Minimum deposit (EUR)">
-          {({ id }) => (
+        <Field label="Minimum deposit (EUR)" error={ruleError(value.min)}>
+          {({ id, invalid, describedBy }) => (
             <Input
               id={id}
+              invalid={invalid}
+              aria-describedby={describedBy}
               type="number"
               min={1}
               value={show(value.min)}
@@ -35,10 +45,12 @@ export function RuleEditor({ value, onChange, preview }: RuleEditorProps) {
             />
           )}
         </Field>
-        <Field label="Spins granted">
-          {({ id }) => (
+        <Field label="Spins granted" error={ruleError(value.spins)}>
+          {({ id, invalid, describedBy }) => (
             <Input
               id={id}
+              invalid={invalid}
+              aria-describedby={describedBy}
               type="number"
               min={1}
               value={show(value.spins)}
@@ -51,10 +63,12 @@ export function RuleEditor({ value, onChange, preview }: RuleEditorProps) {
           checked={value.per}
           onChange={(e) => set({ per: e.target.checked })}
         />
-        <Field label="Daily spin cap per player">
-          {({ id }) => (
+        <Field label="Daily spin cap per player" error={ruleError(value.cap)}>
+          {({ id, invalid, describedBy }) => (
             <Input
               id={id}
+              invalid={invalid}
+              aria-describedby={describedBy}
               type="number"
               min={1}
               value={show(value.cap)}

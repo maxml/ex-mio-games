@@ -75,6 +75,11 @@ jobs:
 
       - run: pnpm nx run-many -t typecheck --parallel=2
 
+      # The ui package's `test` target also runs every Storybook story (and its play function) in
+      # headless Chromium through the Vitest addon, so the browser has to be installed first.
+      - name: Install Chromium for the Storybook interaction tests
+        run: pnpm --filter @ex-mio/ui exec playwright install --with-deps chromium
+
       - run: pnpm nx run-many -t test --parallel=2
 
   stack:

@@ -11,6 +11,7 @@ type Story = StoryObj;
 const ALL: Status[] = [
   'pending',
   'issuing',
+  'needs_review',
   'issued',
   'failed',
   'refunded',
