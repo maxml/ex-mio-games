@@ -54,6 +54,7 @@
     ],
     "moduleNameMapper": {
       "^@ex-mio/contracts$": "<rootDir>/../../packages/contracts/src",
+      "^@ex-mio/logger/testing$": "<rootDir>/../../packages/logger/src/testing/product-events",
       "^@ex-mio/logger$": "<rootDir>/../../packages/logger/src",
       "^@ex-mio/tenancy$": "<rootDir>/../../packages/tenancy/src",
       "^@ex-mio/bus$": "<rootDir>/../../packages/bus/src",

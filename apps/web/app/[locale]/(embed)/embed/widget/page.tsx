@@ -6,10 +6,15 @@ import { EmbeddedPlayerWidget } from '@/layers/views/player-widget';
 // The theme comes from the query string, so the page is rendered per request, not prerendered.
 export const dynamic = 'force-dynamic';
 
-export default function EmbedWidgetPage({ searchParams }: { searchParams: { theme?: string } }) {
+export default function EmbedWidgetPage({
+  searchParams,
+}: {
+  searchParams: { theme?: string; token?: string };
+}) {
   return (
     <EmbeddedPlayerWidget
       themeId={typeof searchParams.theme === 'string' ? searchParams.theme : undefined}
+      launchToken={typeof searchParams.token === 'string' ? searchParams.token : undefined}
     />
   );
 }

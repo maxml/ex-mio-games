@@ -11,6 +11,7 @@ import {
 import type { IdempotentOutcome } from '@ex-mio/idempotency';
 import { Db, type Tx } from '@ex-mio/service-kit';
 import { currentTenant } from '@ex-mio/tenancy';
+import { afterCommit, emitProductEvent } from '@ex-mio/logger';
 import { LEDGER_FAULTS, type LedgerFaults } from '../model/ledger.faults';
 import {
   LedgerRepository,
@@ -205,6 +206,17 @@ export class LedgerService {
       }),
     );
     await this.faults.hit('after_outbox', tx);
+    // After the inbox consumer's commit: the player's coins exist. The actor is the player (an
+    // internal id); an inbox message has no AuthContext. No amount of money, only coins.
+    afterCommit(tx, () =>
+      emitProductEvent({
+        event: 'payments.coins_credited',
+        tenant_id: tenantId,
+        actor_type: 'player',
+        actor_id: playerId,
+        props: { source: 'spin', coins: amount, sandbox },
+      }),
+    );
     return { transactionId, created: true };
   }
 

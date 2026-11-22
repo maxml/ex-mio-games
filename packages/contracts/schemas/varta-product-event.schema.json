@@ -1,0 +1,66 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://varta.invalid/schemas/product-event.schema.json",
+  "title": "Varta product event (one stdout line)",
+  "description": "api/TELEMETRY_CONTRACT.md section 11. Closed top-level key list: the envelope plus the logger fields. Not expressible here and enforced elsewhere: the 8 KiB line limit; that actor_id is unique within tenant_id + actor_type; that a string prop is not JSON text (the pattern below is a conservative approximation of 'parses as an object or array', see isJsonContainerText in src/product-events.ts). Every pattern is RE2-safe (no lookaround, no backreference).",
+  "type": "object",
+  "additionalProperties": false,
+  "propertyNames": { "not": { "pattern": "^varta_" } },
+  "required": ["ts", "level", "kind", "event", "event_v", "event_id", "tenant_id", "actor_type", "consent"],
+  "anyOf": [{ "required": ["actor_id"] }, { "required": ["anon_id"] }],
+  "not": { "required": ["actor_id", "anon_id"] },
+  "properties": {
+    "ts": { "type": "string", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\\.[0-9]{3}Z$" },
+    "level": { "enum": ["trace", "debug", "info", "warn", "error", "fatal"] },
+    "service": { "type": "string", "minLength": 1, "maxLength": 128 },
+    "env": { "type": "string", "minLength": 1, "maxLength": 64 },
+    "version": { "type": "string", "minLength": 1, "maxLength": 128 },
+    "trace_id": { "type": "string", "pattern": "^[0-9a-f]{32}$" },
+    "span_id": { "type": "string", "pattern": "^[0-9a-f]{16}$" },
+    "pid": { "type": "integer" },
+    "hostname": { "type": "string", "maxLength": 255 },
+    "time": { "type": ["integer", "string"] },
+    "msg": { "type": "string", "maxLength": 1024 },
+    "kind": { "const": "product_event" },
+    "event": { "type": "string", "pattern": "^[a-z][a-z0-9_]*\\.[a-z][a-z0-9_]*$", "maxLength": 128 },
+    "event_v": { "type": "integer", "minimum": 1 },
+    "event_id": { "type": "string", "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$" },
+    "tenant_id": { "type": "string", "pattern": "^[A-Za-z0-9._:|/+=~-]+$", "minLength": 1, "maxLength": 48 },
+    "actor_type": { "type": "string", "pattern": "^[a-z][a-z0-9_]*$", "minLength": 1, "maxLength": 32 },
+    "actor_id": { "type": "string", "pattern": "^[A-Za-z0-9._:|/+=~-]+$", "minLength": 1, "maxLength": 96, "not": { "pattern": "^[Aa][Nn][Oo][Nn]:" } },
+    "anon_id": { "type": "string", "pattern": "^[A-Za-z0-9._:|/+=~-]+$", "minLength": 1, "maxLength": 91 },
+    "session_id": { "type": "string", "minLength": 1, "maxLength": 128 },
+    "consent": { "enum": ["analytics", "essential"] },
+    "actor_since": { "type": "string", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$" },
+    "props": {
+      "type": "object",
+      "propertyNames": {
+        "pattern": "^[a-z][a-z0-9_]*$",
+        "maxLength": 64,
+        "not": {
+          "anyOf": [
+            { "pattern": "^varta_" },
+            { "pattern": "^(email|emails|e_mail|mail|user_mail|useremail|phone|phones|phone_number|mobile|msisdn|ip|ips|ip_address|ipv4|ipv6|remote_addr|client_ip|wallet|wallet_address|address|street_address|home_address|card|card_number|cc_number|ccnum|pan|cvv|cvc|iban|password|passwd|pwd|token|access_token|refresh_token|api_key|apikey|secret|client_secret|ssn|tax_id|passport|first_name|last_name|full_name|date_of_birth|dob|birthdate|email_address|billing_address|shipping_address|mobile_number|username|user_name|display_name|birthday|ip_addr|phone_no|passport_number|national_id|private_key|seed_phrase|mnemonic|jwt)$" }
+          ]
+        },
+        "anyOf": [
+          { "not": { "pattern": "_(email|phone|ip|ip_address|password|token|secret|card_number|address|phone_number|iban|cvv|first_name|last_name)$" } },
+          { "pattern": "^(has|is|uses|show|verified|confirmed)_" }
+        ]
+      },
+      "patternProperties": {
+        "^(has|is|uses|show|verified|confirmed)(_[a-z0-9_]*)?_(email|phone|ip|ip_address|password|token|secret|card_number|address|phone_number|iban|cvv|first_name|last_name)$": { "type": "boolean" }
+      },
+      "additionalProperties": {
+        "type": ["string", "number", "boolean"],
+        "not": {
+          "type": "string",
+          "anyOf": [
+            { "pattern": "^[ \\t\\n\\r]*(\\{(?:[ \\t\\n\\r]|[^ \\t\\n\\r])*\\}|\\[(?:[ \\t\\n\\r]|[^ \\t\\n\\r])*\\])[ \\t\\n\\r]*$" },
+            { "pattern": "^[ \\t\\n\\r\\f\\v]*[^ \\t\\n\\r\\f\\v@]+@[^ \\t\\n\\r\\f\\v@]+\\.[A-Za-z]{2,}[ \\t\\n\\r\\f\\v]*$" }
+          ]
+        }
+      }
+    }
+  }
+}

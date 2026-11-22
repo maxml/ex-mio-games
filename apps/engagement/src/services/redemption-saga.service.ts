@@ -19,6 +19,7 @@ import {
   type StateChange,
 } from '../redemptions/ports';
 import { SagaError } from '../redemptions/saga-error';
+import { emitPlayerEvent } from './analytics';
 import {
   backoffDelayMs,
   ISSUING_LEASE_MS,
@@ -32,6 +33,14 @@ import {
 export const SAGA_CONSUMER = 'engagement.redemption-saga';
 
 const keyOf = (id: string): string => `redeem:${id}`;
+
+/** End states of an order: the reward was issued, or the coins are back, or were never held. */
+const RESOLVED_STATES: ReadonlySet<string> = new Set([
+  'COMPLETED',
+  'RELEASED',
+  'REFUNDED',
+  'REJECTED_FUNDS',
+]);
 
 /** History causes of an ISSUING entry that was followed by a casino call (see `wasAsked`). */
 const ISSUE_ATTEMPT = 'issue_attempt';
@@ -74,6 +83,11 @@ export class RedemptionSagaService implements RedemptionSaga {
         throw new StoreRejection('insufficient_funds');
       return placed;
     }
+    // `placeOrder` has committed (the store owns its transaction): the order exists.
+    emitPlayerEvent(scope.tenantId, scope.playerId, {
+      event: 'engagement.redemption_requested',
+      props: { price_coins: placed.redemption.price, sandbox: scope.sandbox },
+    });
     const redemption = await this.reserve(placed.redemption, true);
     return { redemption, created: true };
   }
@@ -695,8 +709,24 @@ export class RedemptionSagaService implements RedemptionSaga {
     return { tenantId: r.tenantId, playerId: r.playerId, sandbox: r.sandbox, reserveId: r.id };
   }
 
-  private apply(r: RedemptionRecord, change: StateChange): Promise<ApplyResult> {
-    return this.deps.store.apply(r.tenantId, r.id, change);
+  /**
+   * Every state change is a committed `store.apply`. A change that really applied and reached an
+   * end state of the order (the casino paid, the coins came back, the coins were never held) is
+   * the funnel's "resolved" step; a lost race or a refused move (`applied: false`, or a throw) is not.
+   */
+  private async apply(r: RedemptionRecord, change: StateChange): Promise<ApplyResult> {
+    const res = await this.deps.store.apply(r.tenantId, r.id, change);
+    if (res.applied && RESOLVED_STATES.has(change.to)) {
+      emitPlayerEvent(r.tenantId, r.playerId, {
+        event: 'engagement.redemption_resolved',
+        props: {
+          status: change.to.toLowerCase(),
+          price_coins: r.price,
+          sandbox: r.sandbox,
+        },
+      });
+    }
+    return res;
   }
 
   private toReview(

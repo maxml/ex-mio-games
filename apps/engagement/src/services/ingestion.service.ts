@@ -26,6 +26,8 @@ import {
   type TenantIntegrationPort,
 } from '../integrations/ports';
 
+import { emitPlayerEventAfterCommit } from './analytics';
+
 const reject = (code: IngestErrorCode, message: string): HttpException =>
   new HttpException({ message, code }, INGEST_HTTP_STATUS[code]);
 
@@ -126,6 +128,17 @@ export class IngestionService {
           occurredAt: e.occurred_at,
         });
         if (inserted) {
+          // After the commit: one deposit, once (a duplicate delivery inserts nothing). The player
+          // is the internal id and the casino is the platform name; no raw casino player id.
+          emitPlayerEventAfterCommit(tx, tenantId, playerId, {
+            event: 'engagement.deposit_ingested',
+            props: {
+              casino: e.source,
+              sandbox,
+              amount_minor: e.amount_minor,
+              currency: e.currency,
+            },
+          });
           await this.db.publish(
             tx,
             createEvent({
