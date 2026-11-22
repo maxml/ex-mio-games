@@ -44,7 +44,7 @@ Good:
 Bad (the cost we accept):
 
 - No cross-service transaction. A redemption spans two databases and needs a saga with compensation (ADR 0006).
-- Every cross-service fact travels by event, with outbox and inbox on both sides (ADR 0003). That is more code and more failure modes than function calls.
+- Cross-service facts travel by event with outbox and inbox (ADR 0003); commands that need an immediate answer (the saga's reserve, capture, release, refund; identity lookups) are synchronous service-token calls, each idempotent on its own key. That is more code and more failure modes than function calls. (Corrected 2026-11-23: the first text said every cross-service fact travels by event; the saga's coin commands and all identity lookups are synchronous HTTP.)
 - Local setup needs more containers; clean-clone start time rises.
 - Debugging needs correlation ids and traces end to end.
 - Contract drift between services needs shared, versioned schemas (`packages/contracts`) and contract tests.

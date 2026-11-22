@@ -33,6 +33,8 @@ Option 3.
 - `tools/archify-render.sh` re-renders and validates all IR files. CI runs it and fails on a validation error.
 - The IR and the Mermaid copy are written by hand and must agree; a reviewer compares them when either changes.
 
+Status note (2026-11-23): CI does not run the renderer and skips the archify submodule. `tools/archify-render.sh --check` validates all IR files and is run by hand; CI does not fetch the archify submodule.
+
 ### Consequences
 
 Good: validated, layout-checked interactive diagrams, plus a fallback that renders anywhere.

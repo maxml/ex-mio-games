@@ -36,6 +36,8 @@ Option 3, with a materialised balance as a cache of the journal.
 - A reconciliation job (periodic in the payments worker, and a CLI) checks that entries sum to the materialised balance and that conservation holds across accounts. A mismatch is recorded and reported, with exit code 1 from the CLI; it is never auto-repaired. There is no pager integration (Partial).
 - Redemption uses reserves: a reserve holds coins, capture finalises, release returns them, refund reverses a captured amount (ADR 0006). The reserve is a synchronous internal API, idempotent by the state of the reserve id.
 
+Status note (2026-11-23): credits are not keyed `spin:<spin_id>` in the ledger. Payments credits a spin under the ledger key `(operation_type 'spin_award', operation_id <spin_id>)` with `UNIQUE (tenant_id, operation_type, operation_id)`. `spin:` is engagement's scoped-key kind for the spin operation, a different thing. Reserve, capture, release and refund are synchronous HTTP calls from engagement.
+
 ### Consequences
 
 Good: every coin has a source and a destination; invariants live in the database, so they hold even if application code is wrong; reconciliation is a query.

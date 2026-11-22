@@ -4,7 +4,7 @@ Diagram: section [2](../../docs/architecture/README.md#2-sequence-the-8-step-wor
 
 Area spec for `apps/payments`. Backlog: MIO-080..086 (ledger), MIO-090, 091, 093, 095, 098 (billing,
 metering), MIO-150 rows 01, 02, 04..10, 12..20, 28. Contracts live in `packages/contracts`
-(`src/payments.ts`, `src/events.ts`). Status: spec + red tests (stage A, fix round); no implementation yet.
+(`src/payments.ts`, `src/events.ts`). Status: implemented (Stage B merged); this spec is the contract the tests pin.
 Coordinator decisions that bind this area: D-1 (spin coins by event), D-5 (acting tenant), D-9
 (idempotency per reserve state, contract ownership, balances from Postgres, inbox retries, exact grants).
 
@@ -28,8 +28,8 @@ Payments is the only service that changes a coin balance. Everyone else reads a 
   is synchronous, so insufficient funds is an immediate 409 `insufficient_funds` (D-8).
 - **Command paths read Postgres, never the cache (D-9).** A command, and the spin credit, never read,
   write or invalidate Redis and work while it is down.
-- **Read.** `GET /v1/me/balance` (player), `GET /v1/players/:player_id/balance` (operator). A Redis
-  projection (`tenantCacheKey(tenant, 'balance', walletId)`) serves reads; it is eventually consistent,
+- **Read.** `GET /v1/me/balance` (player), `GET /v1/players/:player_id/balance` (operator). An optional Redis
+  projection (`tenantCacheKey(tenant, 'balance', walletId)`) serves reads when `REDIS_URL` is set (off in compose and in the deployment; otherwise reads go to Postgres); it is eventually consistent,
   refreshed by `onCoinEvent`, and falls back to the database when Redis is down.
 - **Events** (outbox, same transaction): `payments.coins.credited`, `.reserved`, `.captured`,
   `.released`, `.refunded`. Payments owns these names and the rejection codes (section 3); L4 adopts them.

@@ -1,7 +1,7 @@
 # 0013. Frontend architecture: Feature-Sliced Design on the Next App Router
 
-- Status: accepted (the FSD skeleton, module boundaries, state stack and reference slices are in the baseline
-  `apps/web` with passing tests)
+- Status: accepted (layers, boundaries, TanStack Query, Zustand, next-intl and the WS client ship in
+  `apps/web` with passing tests; `features` and `entities` are empty and react-hook-form is a dependency not yet used)
 - Deciders: maintainers
 - Date: 2026-06-30 (carried over from the monorepo starter; updated 2026-11-21)
 - Confidence: HIGH. The structure below is what `apps/web` actually ships
@@ -34,18 +34,20 @@ monorepo baseline; this ADR is about _architecture_, not version policy.
 
 Option 4, pragmatic Feature-Sliced Design, because it is the only option that keeps the structure disciplined as features are added and has linters that fail the build when a boundary is crossed. From Clean Architecture it keeps only the dependency rule and a thin `model` segment. Atomic Design is used inside `shared/ui` only. The cost is the highest onboarding curve of the options, which the linters and a short ramp-up offset.
 
+Status note (2026-11-23): ESLint `import/no-restricted-paths` fails the CI build when an import crosses a layer. Steiger (`pnpm lint:fsd`) is not in the CI workflow; it runs only in the Deckhand pipeline and by hand. The reference slices named in the confidence line are not in the baseline: `src/layers/features` and `src/layers/entities` hold only `.gitkeep`, and `react-hook-form` is a dependency that no code imports. The shared schemas are in `packages/contracts`; there is no `packages/shared-types`.
+
 ## 2. Decision (TL;DR)
 
-| Aspect                       | Decision                                                                        | Section |
-| ---------------------------- | ------------------------------------------------------------------------------- | ------- |
-| Organizing architecture      | **Feature-Sliced Design (FSD)**, pragmatic                                      | §3      |
+| Aspect                      | Decision                                                                        | Section |
+| --------------------------- | ------------------------------------------------------------------------------- | ------- |
+| Organizing architecture     | **Feature-Sliced Design (FSD)**, pragmatic                                      | §3      |
 | FSD ↔ Next `app/` collision | **Variant A**: `app/**` = Next routes only; FSD lives under `src/layers`        | §3.1    |
-| Render strategy              | **Server Components by default**; `"use client"` islands only where interactive | §4.1    |
-| Server-state                 | **TanStack Query** (interactive/authed/WS-synced data)                          | §4.2    |
-| Client/UI-state              | **Zustand** (modals, filters, presence, connection status)                      | §4.2    |
-| Forms / validation           | **react-hook-form + Zod** (schemas from the shared-types package)               | §4.2    |
-| Real-time                    | WebSocket-first; see the realtime ADR/dimension                                 | §5      |
-| Layer boundaries             | Enforced: ESLint `import/no-restricted-paths` + Steiger                         | §3, §7  |
+| Render strategy             | **Server Components by default**; `"use client"` islands only where interactive | §4.1    |
+| Server-state                | **TanStack Query** (interactive/authed/WS-synced data)                          | §4.2    |
+| Client/UI-state             | **Zustand** (modals, filters, presence, connection status)                      | §4.2    |
+| Forms / validation          | **react-hook-form + Zod** (schemas from `packages/contracts`)                   | §4.2    |
+| Real-time                   | WebSocket-first; see the realtime ADR/dimension                                 | §5      |
+| Layer boundaries            | Enforced: ESLint `import/no-restricted-paths` + Steiger                         | §3, §7  |
 
 ## 3. Organizing architecture — Feature-Sliced Design
 
@@ -104,7 +106,7 @@ Next features stay available: private folders (`_folder`), route groups
 - **Redux Toolkit is not the default** — consider it only if a feature needs
   replay/undo/action-log.
 - **Forms → react-hook-form + Zod**, with schemas shared from the
-  `packages/shared-types` package so web and api validate the same shapes.
+  `packages/contracts` package so web and api validate the same shapes (there is no `packages/shared-types`; react-hook-form is a dependency but no form imports it yet).
 
 ## 5. Real-time
 
@@ -148,7 +150,7 @@ apps/web/
         ui/                  #     atomic-ish design system (Tailwind)
         api/ http/           #     typed fetch wrapper + error envelope
             ws/              #     singleton WS client + reconnect/backoff
-        config/ lib/ types/  #     types/ ← the shared-types package (Zod)
+        config/ lib/ types/  #     types/ ← schemas from packages/contracts (Zod)
   .eslintrc.cjs              # import/no-restricted-paths (layer boundaries)
   tsconfig.json              # paths: "@/*" → "src/*"
 ```
@@ -171,7 +173,7 @@ without changing the skeleton:
   reference widget.
 - **HTTP client** — `shared/api/http` with a unified error envelope.
 - **WS client** — `shared/api/ws` singleton behind the provider.
-- **Forms + Zod** — a reference `create-*` feature (react-hook-form + Zod).
+- **Forms + Zod** — Next, not built: a reference `create-*` feature (react-hook-form + Zod). `features/` and `entities/` hold only `.gitkeep`.
 - **Test minimum** — Vitest + MSW, Playwright e2e smoke, Storybook.
 - **Design-system seed** — Tailwind tokens + base components in `shared/ui`
   (token values are a seed until a project supplies its own).

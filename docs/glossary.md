@@ -18,8 +18,8 @@ One plain sentence per term, in the order a reader meets them.
 - **Tenant isolation**: one tenant cannot read or change another tenant's data, enforced in the database as well as in the services.
 - **Outbox**: a table where a service writes an event in the same transaction as its data, so the event is published once the transaction commits.
 - **Message broker**: the RabbitMQ server that carries events between services.
-- **Varta**: an observability and analytics platform that collects logs, metrics and product events in one panel; optional and off in the local run.
-- **Deckhand**: a deploy tool that releases new versions without downtime (blue-green); optional, and no deploy was run for this repository.
+- **Varta**: an observability and analytics platform that collects logs, metrics and product events in one panel; optional and off in the local run; it collected MIO's events on pre-prod.
+- **Deckhand**: a deploy tool that releases new versions without downtime (blue-green); used for the pre-production deployment, off in the local run.
 - **The monorepo starter**: the project skeleton this repository was built from, with Nx, shared packages and the service layout.
 - **Firebase Auth Emulator**: a local stand-in for Firebase sign-in, so the stack runs without an account.
 - **Fake payment provider**: a built-in stand-in for a payment service that confirms payments locally; a Stripe adapter is a stub behind the same interface, and the fake provider is what runs.

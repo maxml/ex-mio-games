@@ -213,7 +213,7 @@ consumes none of the events (the HTTP answer is the result) and registers none. 
 through identity (`player-session.ts`); there is no credit route. Payments keeps separate sandbox wallets (X-2): the
 saga sends the order's flag in the reserve body, and the test fake keys wallets by (player, sandbox).
 
-## 5. Data (engagement database, migration `Store1732300000000`, all tenant tables `ENABLE`+`FORCE` RLS)
+## 5. Data (engagement database, migration `Store1732300000000`, all tenant tables `ENABLE`+`FORCE` RLS; `redemption_work_queue` has the tenant policy plus a read-only `app.platform_scan` branch for the sweeper (D-24))
 
 - `store_items(id uuid pk, tenant_id, version int, name, description, image_url, price int check > 0, reward jsonb, stock int null check >= 0, per_player_limit int null, active bool)`.
 - `item_player_usage(tenant_id, item_id, player_id, used int check >= 0, pk(tenant_id,item_id,player_id))`: the per-player counter.

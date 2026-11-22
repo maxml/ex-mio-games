@@ -1,7 +1,7 @@
 # Spec: environment input (INV-ENV-INPUT)
 
-Status: Stage A (spec only; the reviewer writes the red tests, the coder makes them green). Base: the integration branch
-8ddf0b1. Binding decisions: D-13 (sandbox on the envelope, server-side only), D-26 (INV-ENV schema level),
+Status: closed (D-29); the inventory below is the state at 8ddf0b1, before the fix, so its **VIOLATES** rows are history.
+Base: the integration branch 8ddf0b1. Binding decisions: D-13 (sandbox on the envelope, server-side only), D-26 (INV-ENV schema level),
 D-28 (the environment comes from the credential or launch token, never from the user), D-29 (this rule), D-30
 (F12 supersedes the earlier "default to production"; realtime tickets are per environment).
 Findings closed together: F3, F7, F8, F9, F12 of the early review.

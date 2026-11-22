@@ -35,6 +35,8 @@ Option 2.
 - The module stays inside `engagement` (owner decision) behind an Nx boundary, so rules and wheel import only the canonical types.
 - New features (missions, PvP) consume canonical events and never call an adapter directly.
 
+Status note (2026-11-23): the canonical event is `CanonicalDepositEvent = {tenant_id, source, external_event_id, type: 'deposit.succeeded', external_player_id, amount_minor, currency, occurred_at}` (`packages/contracts/src/ingest.ts`), not the field list in the first bullet. The environment of the event comes from the secret that verified the signature (a production integration may carry a sandbox key set). The spin credit is granted by engagement's own consumer of `engagement.deposit.confirmed`, not in the ingest transaction.
+
 ### Consequences
 
 Good: two schemas, one logic; a new casino is a new adapter and a contract-suite run.

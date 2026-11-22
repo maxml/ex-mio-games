@@ -36,6 +36,8 @@ exactly the moments that matter.
   balance changes (from payments events) and redemption status, after the handler's transaction commits.
   The web app proxies `/socket.io/*` to engagement. A Redis adapter for more than one engagement instance is next.
 
+Status note (2026-11-23): two server-side details differ from the text above. Rooms are `t:{tenant}:{sbx|prd}:{kind}:{id}` (realtime is per environment). The browser opens the socket on engagement's public URL (`realtimeUrl` from the web `/config`, `PUBLIC_REALTIME_URL`, CORS by `REALTIME_ALLOWED_ORIGINS`); the web app's `/socket.io/*` rewrite to engagement stays as a fallback (D-27).
+
 ## Consequences
 
 - **Good:** a dropped connection heals itself without a reload; one socket keeps server load flat.

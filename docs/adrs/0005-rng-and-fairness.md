@@ -37,6 +37,8 @@ Option 2.
 - The reward coins are credited by `payments`, not by the spin endpoint: engagement writes `spin.completed` to its outbox in the spin's transaction and payments credits with the key `spin:<spin_id>` from its inbox, so a retry cannot pay twice.
 - Spin credits are scoped to an environment (sandbox or production); a sandbox token cannot consume a production credit.
 
+Status note (2026-11-23): payments credits with the ledger key `(operation_type 'spin_award', operation_id <spin_id>)`, not `spin:<spin_id>`. The retry still cannot pay twice (`UNIQUE (tenant_id, operation_type, operation_id)`).
+
 ### Consequences
 
 Good: results are reproducible, the player has no input, concurrency is settled by a single conditional update.

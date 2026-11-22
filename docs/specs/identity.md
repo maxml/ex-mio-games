@@ -2,7 +2,7 @@
 
 Diagram: section [1](../../docs/architecture/README.md#1-context-and-containers), [2](../../docs/architecture/README.md#2-sequence-the-8-step-workflow), [4](../../docs/architecture/README.md#4-erd-tenancy-and-ledger) of the diagram hub (why each diagram exists: [table](../../docs/architecture/README.md#why-each-diagram-exists)).
 
-Status: Stage A (spec and red tests, no implementation). Base: `foundation` (30f4290). Implementation is Stage B and must not edit the
+Status: implemented (Stage B merged); this spec is the contract the tests pin. Base: `foundation` (30f4290). Implementation is Stage B and must not edit the
 frozen tests listed in section 4. Backlog: MIO-030, 031, 032 (identity part), 034, 040, 042, 043, 044, 045, 046 (service-to-service,
 taken by this area, coordinator decision D-4).
 Contracts: `packages/contracts/src/identity.ts` (zod schemas, constants, error codes).
@@ -242,7 +242,10 @@ Protected (bearer, audience `identity`): `POST /v1/auth/acting` (`acting.start`)
 `GET /v1/staff` (`staff.list`), `GET /v1/players/:userId` (`players.read`), `GET /v1/tenants/:id` (`tenant.read`),
 `POST /v1/tenants/:id/suspend` (`tenant.suspend`), `GET /v1/credentials` (`credentials.read`),
 `POST /v1/credentials/:keyId/rotate` (`credentials.rotate`), `POST /v1/credentials` (`credentials.rotate`),
-`GET /v1/audit` (`audit.read`). Bodies and responses are the schemas in `packages/contracts/src/identity.ts`.
+`GET /v1/audit` (`audit.read`), `POST /v1/auth/realtime-ticket` (the caller's own session, bearer `aud=identity`), and
+`PUT /v1/operator/integrations/:casino/reward-api` (`credentials.rotate`, `operator_admin`). One more internal route:
+`POST /internal/v1/realtime-tickets/redeem` (service token, engagement only, tenant-less: the tenant is the ticket's own `tid`).
+Bodies and responses are the schemas in `packages/contracts/src/identity.ts`.
 Error body: `{code, message, issues?}` (`IdentityErrorBody`).
 
 Events: `identity.tenant.created` v1 (existing); `audit.acting_request` v1 and `audit.service_call` v1 (new, contracts, written by

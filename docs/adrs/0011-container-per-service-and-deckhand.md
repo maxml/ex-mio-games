@@ -34,12 +34,12 @@ Option 2.
 
 ### Consequences
 
-Good: independent restart and failure testing; the local stack mirrors the deployed one.
+Good: independent restart and failure testing; the local stack runs the same images; the deployment drops Redis and exposes only `web`. (Corrected 2026-11-23: the first text said the local stack mirrors the deployed one.)
 
 Bad: a larger stack to start; one Postgres instance for several databases is a local convenience and a shared failure domain; the deployment-level secret model is a known limit.
 
 ## Built vs designed
 
 - Built: container per service, compose stack, health checks, a Deckhand manifest (`.deckhand/deploy.yml`) and a migration script.
-- Described, not run here: a blue-green deploy through Deckhand, and the Varta wiring.
+- Built on pre-prod: a blue-green deploy through Deckhand and Varta ingestion (demo 40 steps, 194 checks passed there; Varta received 57 events of 10 kinds); not production, there is no production deployment.
 - Next: per-service deploy secrets, production sizing, multi-host topology.

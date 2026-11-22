@@ -38,6 +38,12 @@ Option 2.
 - Uniqueness checks include the tenant (RLS does not enforce uniqueness across rows it hides).
 - Tests: a generated isolation suite for every repository (foreign tenant gets 404; no context gets an error), DB-role tests, and a mutation that removes each guard and must turn a test red.
 
+Status note (2026-11-23): the decision above is kept as written. The code differs in these ways.
+
+- "Every table carries `tenant_id`" holds for every tenant data table, with composite keys. The listed exceptions are the bus tables (`outbox` has primary key `event_id`, `inbox` has `(consumer, event_id)`; neither has RLS, both work across tenants), the platform tables (`signing_keys`, `billing_plans`, `reconciliation_tenants`, no RLS) and `tenants` (RLS enabled but not `FORCE`d; a call with no tenant set sees every tenant). `redemption_work_queue` and `audit_intents` are `FORCE`d with a narrow platform-read branch. The table-by-table list is in `docs/architecture/overview.md` section 3; the bus-table gap is S-27 in the known gaps.
+- Acting is not an `acting_tenant` field. It is an acting session: `POST /v1/auth/acting` (reason 8-500 characters) returns a token with an `act: {tenant_id, reason}` claim, and every request under it is audited.
+- There is no generated isolation suite. Tests are hand-written isolation tests per service (in-process and compose), RLS-catalog tests that fail on any tenant table without ENABLE+FORCE, DB-role tests, and a mutation per guard.
+
 ### Consequences
 
 Good: one schema to migrate per service; cheap onboarding of a tenant (a row, not a database); the failure mode of a forgotten filter is an error, not a leak.
@@ -51,5 +57,5 @@ Bad: noisy-neighbour risk in a shared database; per-tenant restore and per-tenan
 
 ## Built vs designed
 
-- Built: option 2, the isolation suite, DB-role tests, the platform tenant, composite keys.
+- Built: option 2, hand-written isolation tests per service, RLS-catalog tests, DB-role tests, the platform tenant, composite keys on tenant data tables.
 - Designed only: moving a large tenant to a dedicated database; per-tenant restore.

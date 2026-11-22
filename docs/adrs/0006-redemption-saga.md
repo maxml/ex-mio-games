@@ -38,6 +38,8 @@ Option 2.
 - Late success and late rejection after a terminal state move the row to `NEEDS_REVIEW` and never move coins by themselves.
 - **Operator resolution moves coins only on evidence.** `issued` captures only after a status lookup by our key returns `issued`; `not_issued` after coins were released needs a `not_found` lookup past the issue deadline. A replay from review to `UNKNOWN` is allowed only for a review entered from `UNKNOWN`.
 
+Status note (2026-11-23): the idempotency text above differs from the code. Per-phase keys are `hold:`, `capture:`, `release:`, `refund:`, `redeem:` followed by `<tenant>:<sbx|prd>:<id>`. The client's `Idempotency-Key` names one order per tenant, player and environment (an advisory lock and a unique row). There is no canonical request hash: the same key with another item is 422 `idempotency_key_reused`. The hash lives in `packages/idempotency`, which only payments uses. Capture, release and refund are synchronous calls to payments, like the reserve.
+
 ### Consequences
 
 Good: no distributed lock, every transition is retry-safe, and ambiguity has a named state rather than a guess.

@@ -33,6 +33,8 @@ Option 1, TypeORM, because the owner chose it, it integrates with NestJS first c
 - Money paths use explicit queries (`UPDATE ... WHERE balance >= :amount`) rather than read-modify-write.
 - The architecture is independent of the ORM: isolation, ledger and idempotency are tested against Postgres, so replacing the ORM does not change the guarantees.
 
+Status note (2026-11-23): the model layer is repositories with hand-written SQL through `QueryRunner`. TypeORM supplies the data source, transactions and migrations; one entity is used in the whole repo (`apps/engagement/src/model/tenant-projection.entity.ts`).
+
 ### Consequences
 
 Good: no new decision, familiar to most NestJS developers, good enough migrations.

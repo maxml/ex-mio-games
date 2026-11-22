@@ -49,8 +49,16 @@ sandbox, payload }`; `tenant_id` is mandatory; the payload schema is registered 
   redeem answer carries `sandbox`. Where an operator names an environment (issue a credential, register a reward
   API, the internal balance read) it is a required request field. Only the producing service sets it, from server-side state (the
   verified integration credential, token claim `sbx`), never from client input or a payload field. Metering
-  and billing read the envelope flag and nothing else. `audit.acting_request` is the one cross-service event
-  name that does not follow `<owning-service>.<aggregate>.<past-tense-verb>`, because every service writes it.
+  and billing read the envelope flag and nothing else. `audit.acting_request` and `audit.service_call` are the two
+  event names that do not follow `<owning-service>.<aggregate>.<past-tense-verb>`, because every service writes them.
+  17 types are registered. 15 are published; `identity.player.registered` and `engagement.redemption.requested`
+  have schemas but no publisher (reserved, not emitted). Producers and consumers:
+  `identity.tenant.created` (identity; consumed by engagement), `engagement.deposit.confirmed` (engagement; consumed by
+  engagement), `engagement.spin.granted` (engagement; none yet), `engagement.spin.completed` (engagement; payments and
+  engagement realtime), `engagement.redemption.status_changed` (engagement; engagement realtime),
+  `engagement.redemption.issued`, `.rejected` and `.needs_review` (engagement; none yet), `payments.coins.credited`,
+  `.reserved`, `.captured`, `.released`, `.refunded` (payments; payments usage and engagement realtime), `audit.*`
+  (every service; identity). The same table is in `docs/architecture/overview.md` section 15.
 - **pinned:** `packages/contracts/src/events.contracts.test.ts`
 
 ## Error body and code casing
@@ -199,7 +207,7 @@ sandbox, payload }`; `tenant_id` is mandatory; the payload schema is registered 
 
 - **provider:** `identity` (issues), `packages/service-kit` (`auth.ts`, verifies), `packages/tenancy`
   (`jwtTenantResolver`) · **consumers:** every service, `web`
-- **spec:** `docs/specs/identity.md`; claims in `packages/contracts/src/identity.ts`. RS256, `aud` is one service,
+- **spec:** `docs/specs/identity.md`; claims in `packages/contracts/src/identity.ts`. RS256, `aud` is one service, except a player session, whose `aud` is the array of player-session audiences (never `realtime`),
   TTL at most 900 s, keys at `/.well-known/jwks.json`. The tenant of a request is the verified `tid` (or
   `act.tenant_id` on a platform admin acting session) and nothing else.
 - **pinned:** `packages/service-kit/src/auth.test.ts`, `apps/identity/src/identity.*.test.ts`,

@@ -72,7 +72,7 @@ The principles behind the design, each linked to where the repo does it:
 The seven deliverables of the task, in the order the task lists them:
 
 1. Working code: `apps/` (identity, engagement, payments, web, casino-sim), `packages/` (contracts, tenancy, bus,
-   idempotency, service-kit, ui), `tests/compose/`, `docker-compose.yml`. The service map is [below](#service-map-ports-and-environment).
+   idempotency, logger, service-kit, ui), `tests/compose/`, `docker-compose.yml`. The service map is [below](#service-map-ports-and-environment).
 2. README with setup and assumptions: [Run it from a clean clone](#run-it-from-a-clean-clone), [Assumptions](#assumptions),
    and `scripts/setup.sh`, which checks the tools the demo needs.
 3. Architecture diagrams: [`docs/architecture/`](docs/architecture/README.md) and the
@@ -122,14 +122,20 @@ flowchart LR
 
   web -->|login, launch| identity
   web -->|REST, websocket /rt| engagement
-  engagement -->|sync coin reserve| payments
+  web -->|BFF| payments
+  engagement -->|reserve, capture, release, refund| payments
+  engagement -->|service token, secrets, player resolve, ticket redeem| identity
+  payments -->|tenant status| identity
   identity --> idb
   engagement --> edb
   payments --> pdb
   identity -.-> rabbit
   engagement -.-> rabbit
+  payments -.-> rabbit
+  rabbit -.-> identity
+  rabbit -.-> engagement
   rabbit -.-> payments
-  payments -.-> redis
+  engagement -.->|health probe; payments projection optional, off in compose| redis
 
   varta[[Varta: observability and analytics]]
   deckhand[[Deckhand: blue-green deploy]]
@@ -169,7 +175,7 @@ Both casinos go through the same rules, wheel, ledger and store code. Only the a
 - No double rewards. A repeated deposit, a repeated redemption and parallel spins each produce one result.
 - No negative coin balance, including when two redemptions race for the same coins.
 - Tenant isolation. Each casino sees only its own data, enforced in the database with row-level security as
-  well as in the services.
+  well as in the services, on every tenant data table (the bus tables `outbox`/`inbox` and three platform tables are cross-tenant by design, and the sweeper and audit tables have a narrow platform-read branch). The exact list, and the known gap for the bus tables, is in [`docs/architecture/overview.md`](docs/architecture/overview.md) (section 3) and S-27 in the known gaps.
 - Sandbox and production are separate environments. Spin credits, event deduplication and tokens are kept per
   environment, so a sandbox token cannot use a production credit. Production here is a separate environment inside the local
   stack; no production deployment exists.
@@ -194,22 +200,22 @@ a third casino or a reward type.
 
 The 14 architecture decision records in [`docs/adrs/`](docs/adrs/), each as options considered, the one chosen, and why:
 
-| ADR                                                            | Options considered                                                                                      | Chosen                                                     | Why                                                                                                        |
-| -------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
-| [0001](docs/adrs/0001-microservices-and-their-cost.md)         | Modular monolith; three domain services; one service per module                                         | Three services (identity, engagement, payments)            | Money gets one writer and the trust boundary stays apart, without the cost of a service per module.        |
-| [0002](docs/adrs/0002-tenancy-model.md)                        | Database per tenant; shared database with RLS; app-level filtering only                                 | Shared database per service with row-level security        | Isolation is enforced and testable in the database, and the tenant never comes from a client field.        |
-| [0003](docs/adrs/0003-rabbitmq-outbox-inbox.md)                | Kafka; RabbitMQ; direct HTTP                                                                            | RabbitMQ with outbox and inbox                             | Delivery is at least once, so the inbox and outbox make effects exactly once with a small local footprint. |
-| [0004](docs/adrs/0004-virtual-currency-ledger.md)              | Balance column; append-only entries; double-entry journal                                               | Double-entry journal with a cached balance                 | A reviewer can prove that entries sum to the balance, and retries repeat nothing.                          |
-| [0005](docs/adrs/0005-rng-and-fairness.md)                     | `Math.random()`; keyed hash of a server seed; commit-reveal                                             | Keyed hash of a secret seed and the spin id                | The result is reproducible from stored data and the client has no influence.                               |
-| [0006](docs/adrs/0006-redemption-saga.md)                      | Two-phase commit; orchestrated saga; choreographed saga                                                 | Orchestrated saga with compensations                       | A timeout is not a failure, and every step is retryable under its own key.                                 |
-| [0007](docs/adrs/0007-identity-interface-and-emulator.md)      | One provider's SDK; an interface with an emulator; own credential store                                 | Interface with the Firebase Auth Emulator                  | A clean clone needs no accounts, and the provider can change later.                                        |
-| [0008](docs/adrs/0008-integration-adapters-canonical-model.md) | Branch on platform in the logic; per-casino adapter; configuration-only mapping                         | Per-casino adapter and a canonical model                   | Rules, wheel and ledger know no casino format, and a new casino is one adapter.                            |
-| [0009](docs/adrs/0009-analytics-via-varta.md)                  | A separate analytics tool; JSON lines on stdout; push from code                                         | JSON lines on stdout, collected by Varta                   | No runtime dependency on Varta, one panel, and no personal data in events.                                 |
-| [0010](docs/adrs/0010-typeorm.md)                              | TypeORM; Prisma; query builder                                                                          | TypeORM                                                    | NestJS fits it, and raw SQL stays easy for RLS, triggers and conditional updates.                          |
-| [0011](docs/adrs/0011-container-per-service-and-deckhand.md)   | One image with several entry points; one container per deployable; Kubernetes                           | One container per deployable, deployed through Deckhand    | One command starts the stack, and the deploy tool is not reinvented.                                       |
-| [0012](docs/adrs/0012-archify-and-mermaid.md)                  | Mermaid only; archify only; archify with a Mermaid copy                                                 | Archify source plus a Mermaid copy                         | Interactive pages for exploring and readable diagrams on any git host.                                     |
-| [0013](docs/adrs/0013-fsd-frontend-architecture.md)            | Flat Next app; Atomic Design only; Bulletproof React; Feature-Sliced Design; Clean Architecture or MVVM | Feature-Sliced Design with enforced boundaries             | Linters fail the build when a layer boundary is crossed, so the structure holds as features grow.          |
-| [0014](docs/adrs/0014-realtime-websocket-client.md)            | Polling; server-sent events; one socket.io client per tab                                               | Shared socket.io client with backoff and a one-time ticket | Results arrive without a reload and outages heal; missed events are refetched over REST.                   |
+| ADR                                                            | Options considered                                                                                      | Chosen                                                     | Why                                                                                                                                 |
+| -------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
+| [0001](docs/adrs/0001-microservices-and-their-cost.md)         | Modular monolith; three domain services; one service per module                                         | Three services (identity, engagement, payments)            | Money gets one writer and the trust boundary stays apart, without the cost of a service per module.                                 |
+| [0002](docs/adrs/0002-tenancy-model.md)                        | Database per tenant; shared database with RLS; app-level filtering only                                 | Shared database per service with row-level security        | Isolation is enforced and testable in the database, and the tenant never comes from a client field.                                 |
+| [0003](docs/adrs/0003-rabbitmq-outbox-inbox.md)                | Kafka; RabbitMQ; direct HTTP                                                                            | RabbitMQ with outbox and inbox                             | Delivery is at least once, so the inbox and outbox make effects exactly once with a small local footprint.                          |
+| [0004](docs/adrs/0004-virtual-currency-ledger.md)              | Balance column; append-only entries; double-entry journal                                               | Double-entry journal with a cached balance                 | A reviewer can prove that entries sum to the balance, and retries repeat nothing.                                                   |
+| [0005](docs/adrs/0005-rng-and-fairness.md)                     | `Math.random()`; keyed hash of a server seed; commit-reveal                                             | Keyed hash of a secret seed and the spin id                | The result is reproducible from stored data and the client has no influence.                                                        |
+| [0006](docs/adrs/0006-redemption-saga.md)                      | Two-phase commit; orchestrated saga; choreographed saga                                                 | Orchestrated saga with compensations                       | A timeout is not a failure, and every step is retryable under its own key.                                                          |
+| [0007](docs/adrs/0007-identity-interface-and-emulator.md)      | One provider's SDK; an interface with an emulator; own credential store                                 | Interface with the Firebase Auth Emulator                  | A clean clone needs no accounts, and the provider can change later.                                                                 |
+| [0008](docs/adrs/0008-integration-adapters-canonical-model.md) | Branch on platform in the logic; per-casino adapter; configuration-only mapping                         | Per-casino adapter and a canonical model                   | Rules, wheel and ledger know no casino format, and a new casino is one adapter.                                                     |
+| [0009](docs/adrs/0009-analytics-via-varta.md)                  | A separate analytics tool; JSON lines on stdout; push from code                                         | JSON lines on stdout, collected by Varta                   | No runtime dependency on Varta, one panel, and no personal data in events.                                                          |
+| [0010](docs/adrs/0010-typeorm.md)                              | TypeORM; Prisma; query builder                                                                          | TypeORM                                                    | NestJS fits it, and raw SQL stays easy for RLS, triggers and conditional updates.                                                   |
+| [0011](docs/adrs/0011-container-per-service-and-deckhand.md)   | One image with several entry points; one container per deployable; Kubernetes                           | One container per deployable, deployed through Deckhand    | One command starts the stack, and the deploy tool is not reinvented.                                                                |
+| [0012](docs/adrs/0012-archify-and-mermaid.md)                  | Mermaid only; archify only; archify with a Mermaid copy                                                 | Archify source plus a Mermaid copy                         | Interactive pages for exploring and readable diagrams on any git host.                                                              |
+| [0013](docs/adrs/0013-fsd-frontend-architecture.md)            | Flat Next app; Atomic Design only; Bulletproof React; Feature-Sliced Design; Clean Architecture or MVVM | Feature-Sliced Design with enforced boundaries             | ESLint fails the CI build when an import crosses a layer; Steiger runs only in the Deckhand pipeline and by hand (`pnpm lint:fsd`). |
+| [0014](docs/adrs/0014-realtime-websocket-client.md)            | Polling; server-sent events; one socket.io client per tab                                               | Shared socket.io client with backoff and a one-time ticket | Results arrive without a reload and outages heal; missed events are refetched over REST.                                            |
 
 ## What you can try in 5 minutes
 
@@ -616,8 +622,10 @@ or `RELEASED`, and the socket works through the web origin.
 | `firebase-auth` | 9099               | Firebase Auth Emulator, project `demo-ex-mio`                                                                                |
 
 How the services talk: services publish events over RabbitMQ through a transactional outbox and consume them
-through an idempotent inbox. Two calls are synchronous: the coin reserve for a redemption (engagement to
-payments) and service-token and credential lookups (to identity). Every service trusts only tokens identity
+through an idempotent inbox. Synchronous calls: engagement -> payments for every coin command of the saga
+(reserve, capture, release, refund) and the balance read; engagement and payments -> identity for service tokens,
+tenant status, integration secrets, player resolve/link and realtime-ticket redeem; engagement -> the casino reward
+API; the web BFF -> all three services. Everything else is an event. Every service trusts only tokens identity
 signed (RS256, keys at `/.well-known/jwks.json`). The tenant comes from the verified `tid` claim; no header names
 a tenant. Payments has no credit route: coins arrive only from `engagement.spin.completed` events.
 
@@ -795,7 +803,7 @@ Checked against the code. The full table with the reasons is section 14 of
 | Production identity provider, refresh tokens                                                              | Next                                                                                                             |
 | Provably-fair seed commitment, RNG certification                                                          | Next                                                                                                             |
 | Per-service deployment secrets                                                                            | Next, not claimed                                                                                                |
-| Deckhand deploy                                                                                           | Described, not run here                                                                                          |
+| Deckhand deploy                                                                                           | Built: blue-green deploy to a pre-production server, demo passed there (`docs/screens/ops`)                      |
 
 ## Where the answers are
 
@@ -839,9 +847,8 @@ Upgrading: changes that need an action when you upgrade from an earlier tree (de
 ## Known limitations
 
 - The websocket has no missed-event replay; the client resyncs over REST.
-- Stripe exists only as an interface; the production identity provider is not chosen; there are no refresh tokens.
-- The Deckhand deploy is described in `docs/deploy.md`, not run here. The Varta ingest path is verified and conformance-checked against Varta's schema; MIO events reach
-  Varta when deployed with the varta labels.
+- Stripe exists as an interface and a stub that throws on every call; the fake provider is what runs. The production identity provider is not chosen; there are no refresh tokens.
+- The Deckhand deploy ran on a pre-production server (`docs/deploy.md`, `docs/screens/ops/`); Varta received the product events there (57 events of 10 kinds during the demo run). There is no production deployment.
 - There is no rate limiting.
 - The wheel's tenant rule cap (`max_grants_per_player`) is best effort when two deposits of one player are
   processed in parallel; only the sequential case is pinned.
@@ -885,8 +892,8 @@ The slice is complete for the task flow. These are the gaps that matter most:
   cross-tenant admin tables have no service route yet.
 - There is no rate limiting, and performance is not measured: no load test, no latency figures, no SLOs.
 - Realtime events are delivered at most once. A client that was offline resyncs over REST.
-- Stripe is an interface only, the production identity provider is not chosen, and the Deckhand deploy and Varta
-  wiring are described but were not run here.
+- Stripe is an interface and a stub that throws on every call, the production identity provider is not chosen, and
+  the Deckhand deploy and Varta ingestion ran on pre-prod only; there is no production deployment.
 - A few guards have no test that fails when the wiring is cut, and log redaction has known holes.
 
 The full list is [`docs/submission/known-gaps.md`](docs/submission/known-gaps.md), with a summary table at its top.

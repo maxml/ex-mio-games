@@ -13,13 +13,13 @@ against the tests named below and never edits them.
 2. The tenant is resolved from the slug only. The tenant's adapter verifies the casino's OWN signature
    (D-15 Q-1: casino-native, never a MIO `x-mio-*` scheme) and the timestamp window with the tenant's secrets
    (`TenantIntegration.webhook_secrets`, served by identity to `svc:engagement`), then validates the schema.
-   The environment of the integration (`TenantIntegration.environment`, X-3) decides `envelope.sandbox` of
+   The environment of the secret that verified the signature decides `envelope.sandbox` (a production integration may carry a sandbox key set; `TenantIntegration.environment`, X-3) of
    everything this delivery produces; a body or a header can never set it.
 3. **Before the transaction** the casino player is resolved to our internal `player_id` through identity
    (`PLAYER_DIRECTORY.resolveOrCreate`, the only writer of the link; X-1, D-12). If identity is unavailable the
    answer is 503 and nothing is written (no inbound row, no event), so the casino's retry is safe. Then, in
    **one transaction**, the event is inserted into `inbound_events` (UNIQUE
-   `(tenant_id, source, external_event_id)`) and, only if the insert was new, an
+   `(tenant_id, sandbox, source, external_event_id)`) and, only if the insert was new, an
    `engagement.deposit.confirmed` v1 message is written to the outbox. The event carries `player_id` and never
    the raw casino player id (strict schema), so the outbox row is not a durable copy of the raw id. A duplicate
    returns 200 with the first delivery's body.
@@ -34,7 +34,7 @@ against the tests named below and never edits them.
    (`spin_id`, `player_id`, `reward_coins`, required `table_version` (X-16); the tenant and, for a sandbox
    token (`sbx`, X-3), `sandbox: true` are in the envelope, set by this producer, never in the payload) to the outbox
    in the same transaction as the spin row, also for a `nothing` segment (0 coins). Payments consumes it
-   through its inbox and credits coins with the idempotency key `spin:<spin_id>` (the business id is
+   through its inbox and credits coins under the ledger key `(spin_award, <spin_id>)` (the business id is
    `spin_id`) in the same transaction as the inbox row; metering reads the same event in payments.
    Delivery is at least once, the effect happens once. The spin response returns the reward, not the new
    balance; the player sees the balance through the payments read API or the Redis projection
@@ -330,7 +330,7 @@ in their own identity tenants and need identity in the stack,`WHEEL_SEEDS={"1":"
 
 Redemption saga and bonus store (MIO-065..068, the store area; it imports the port from
 `packages/contracts/src/casino-adapter.ts`); the payments side of `spin.completed` (L2: the inbox
-consumer that credits coins with key `spin:<spin_id>`, and MIO-064 criteria such as five redeliveries
+consumer that credits coins under the ledger key `(spin_award, <spin_id>)`, and MIO-064 criteria such as five redeliveries
 credit once and payments down means retry from the outbox; the L2 spec and tests must follow D-1, this
 area only emits the event); the real identity client behind `TENANT_INTEGRATIONS` and
 `PLAYER_DIRECTORY` (L1; the dev static config stands in); operator CRUD APIs for rules and tables, rate

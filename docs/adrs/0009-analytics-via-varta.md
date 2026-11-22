@@ -34,6 +34,8 @@ Option 2.
 - Frontend events go to the product's own API (same origin, session-authenticated, allow-listed names, validated, rate-limited) and are logged server-side.
 - Dashboards live in Varta, one panel. No personal data in events.
 
+Status note (2026-11-23): the outbox route for business events is the chosen target, not what runs. Built now: every product event (all 12) is written to stdout after its business transaction commits (`emitPlayerEventAfterCommit`, `logProductEvent`), so a crash between the commit and the log line loses the event. Frontend events go to the product API (same origin, session-authenticated, allow-listed names, validated); rate limiting is Next, there is none (`web.widget_opened` is written by the BFF with no limiter).
+
 ### Consequences
 
 Good: no coupling to Varta availability, one panel, honest metrics.
@@ -43,5 +45,5 @@ Bad: stdout lines are not a durable queue, so an event can be lost between the l
 ## Built vs designed
 
 - Built: the event contract (`ProductEventLine`, matching Varta's product-event schema, with a conformance test against a vendored copy) and the logger function `logProductEvent`.
-- Built: identity, engagement, payments and the web backend emit 12 product events to stdout (`docs/analytics.md`), and the ingest path is verified and conformance-checked against Varta's schema; the events reach Varta when MIO is deployed with the varta labels (`docs/observability/varta.md`).
-- Next: emission of business events through the outbox, distinct-count reads, and the Varta-side funnel view. The submission writes events to stdout under Varta's contract and does not modify Varta.
+- Built: identity, engagement, payments and the web backend emit 12 product events to stdout (`docs/analytics.md`), and the ingest path is verified and conformance-checked against Varta's schema; on pre-prod Varta received 57 of these events, of 10 kinds (`docs/observability/varta.md`, `docs/screens/ops/`).
+- Next: emission of business events through the outbox and the Varta-side funnel view. Distinct-count reads are used on pre-prod (`count(DISTINCT ...)`). The submission writes events to stdout under Varta's contract and does not modify Varta.

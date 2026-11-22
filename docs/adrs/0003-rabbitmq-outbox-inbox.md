@@ -34,6 +34,8 @@ Option 2.
 - **Failure path.** A transient handler error (connection, timeout, deadlock) is retried with bounded backoff; a permanent error or retry exhaustion goes to a dead-letter queue (`<service>.dlq`), which has a replay command (`node dist/dlq-replay.js`). There is no alerting on the queue yet (Partial). A consumer acks only after its effect is committed.
 - Redis (append-only file persistence on) holds an optional balance projection for read APIs. It is not a source of truth for money or identity. Rate-limit counters and a websocket journal are Next, not built.
 
+Status note (2026-11-23): the envelope in the decision is missing a required field. It is `{event_id, type, version, tenant_id, occurred_at, correlation_id, causation_id, sandbox, payload}` (`sandbox` is a required boolean, `docs/CONTRACTS.md`). The `outbox` and `inbox` tables have no RLS on purpose (the relay and the dedupe check work across tenants); see S-27.
+
 ### Consequences
 
 Good: simple semantics the owner asked for; operational cost is low; effects are exactly once even though delivery is not.
