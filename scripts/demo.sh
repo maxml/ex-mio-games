@@ -11,6 +11,7 @@
 # /v1/operator/integrations/:casino/reward-api.)
 #
 # Usage:   docker compose -p demo up -d --wait && scripts/demo.sh
+#          On a slot: scripts/stack-up.sh, then `set -a; . ./.env.stack; set +a` and scripts/demo.sh.
 # Env:     COMPOSE_PROJECT (default "demo"), *_PORT (same names compose uses), DEMO_SLUG_SUFFIX.
 set -uo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")/.."

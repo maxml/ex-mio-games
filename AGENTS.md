@@ -40,6 +40,12 @@ pnpm test:compose                   # tests against the running stack
 docker compose down -v
 ```
 
+Agents: run `scripts/stack-up.sh` in your own worktree instead of a bare `docker compose up`, and
+`scripts/stack-down.sh` when done. Every worktree gets its own slot (own ports, own project `mio-sN`), so the
+compose lock is per slot, not global. Run tests with `set -a; . ./.env.stack; set +a` first. Images are shared
+between slots (`ex-mio/<service>:<content-hash>`) and built only when missing. After your run, `scripts/stack-down.sh`
+then `scripts/stack-prune.sh --yes` to delete the images nobody uses.
+
 ## Rules that are enforced, not advisory
 
 - Layering and package boundaries fail `lint`. Do not disable the rule to pass.
