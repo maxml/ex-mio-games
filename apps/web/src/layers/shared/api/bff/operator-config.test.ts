@@ -153,14 +153,14 @@ describe('tenant host', () => {
             type: 'operator',
             status: 'active',
           },
-          user: { id: U(9), email: 'a@acme.example', roles: ['operator_admin'] },
+          user: { id: U(9), email: 'a@acme.com', roles: ['operator_admin'] },
         },
       },
     });
     w.loginHosts.length = 0;
     await w.req('POST', '/api/operator/account', {
       companyName: 'Acme Casino',
-      email: 'a@acme.example',
+      email: 'a@acme.com',
       password: 'correct horse',
     });
     expect(w.loginHosts.length).toBeGreaterThan(0);

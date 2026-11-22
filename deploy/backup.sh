@@ -3,7 +3,7 @@
 # engagement, payments). The stock Deckhand template dumps a single $POSTGRES_DB, which MIO
 # does not define, so it would back up the wrong thing.
 #
-# Install as $DATA_DIR/<slug>/backup.sh on the VPS and wire it into the deploy with
+# Install as $DATA_DIR/<slug>/backup.sh on the server and wire it into the deploy with
 #   deckhand deploy ... --backup-cmd "sh $DATA_DIR/<slug>/backup.sh"
 # It runs when migrations.backup_before is true, BEFORE the migrations, inside the Deckhand
 # runtime container (docker socket mounted, $DATA_DIR mounted at the same path). The script

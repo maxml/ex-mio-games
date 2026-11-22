@@ -11,7 +11,7 @@
 #   (DATABASE_URL, SERVICE_CLIENT_SECRET) cannot live in it. Those are mapped per service,
 #   inline, from distinct names: `DATABASE_URL: '${IDENTITY_DATABASE_URL}'` and so on. That is
 #   why the validator warns about secrets in `services.*.env`; the values are visible to
-#   `docker inspect` on the VPS, and that is accepted for these.
+#   `docker inspect` on the server, and that is accepted for these.
 # - web has no dotenv: every variable it reads is inline.
 #
 # Production requirements the services enforce at boot:
@@ -36,7 +36,7 @@ pipeline:
   extra: ['pnpm lint:fsd']
 
 # Images built in CI and pushed to the registry (never built on the prod host).
-# The registry is the VPS-local one; images are <registry>/<slug>/<name>:<sha>.
+# The registry is the server-local one; images are <registry>/<slug>/<name>:<sha>.
 build:
   context: . # monorepo: the build context is the repo root
   registry: 127.0.0.1:5000
@@ -234,7 +234,7 @@ version:
 # service's own image, in turn, joined with && so the first failure stops the deploy.
 # The engine supplies DECKHAND_IMAGE_<NAME> (the image reference of this release); the
 # containers join the project network `<slug>_backend` and read the secrets file
-# through --env-file (the file is on the VPS at the same path inside the engine container;
+# through --env-file (the file is on the server at the same path inside the engine container;
 # its values must be unquoted). Each one maps its own owner-role URL onto
 # MIGRATION_DATABASE_URL. `node dist/migrate.js` exits non-zero when no migrations are
 # shipped or any is still pending afterwards. scripts/migrate-all.sh is the same loop for

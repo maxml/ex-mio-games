@@ -98,7 +98,7 @@ describe('fix round 2: the BFF never lets the browser pick the tenant', () => {
   it('FR2-BFF-1 operator A naming tenant B every way reaches only A, with A tokens', async () => {
     const w = world();
     expect(
-      await w.req('POST', '/api/session/login', { email: 'o@a.example', password: 'pw-correct' }),
+      await w.req('POST', '/api/session/login', { email: 'o@a.test', password: 'pw-correct' }),
     ).toBe(200);
     w.calls.length = 0;
     const hints = { 'x-tenant-id': B, 'x-forwarded-host': B_HOST, host: B_HOST };

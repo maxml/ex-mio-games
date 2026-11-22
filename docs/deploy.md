@@ -20,12 +20,12 @@ The six `services.*.env` secret warnings it prints are the per-service mappings 
 Redis is not deployed (production requires `rediss://`, and engagement only reports it in its health output).
 Local compose still runs it.
 
-Images are `<registry>/ex-mio/<image>:<sha>` with the VPS-local registry (`127.0.0.1:5000`) as `build.registry`;
+Images are `<registry>/ex-mio/<image>:<sha>` with the server-local registry (`127.0.0.1:5000`) as `build.registry`;
 `version.source` is `auto`. The `db` and `firebase-auth` images are built from the repo root.
 
 ## Secrets
 
-Deckhand delivers one secrets file to every service (`env.required`; values live on the VPS, never in the repo).
+Deckhand delivers one secrets file to every service (`env.required`; values live on the server, never in the repo).
 Names shared by several services are mapped per service, inline, from distinct names:
 
 - `DATABASE_URL` of each service from `IDENTITY_DATABASE_URL`, `ENGAGEMENT_DATABASE_URL`, `PAYMENTS_DATABASE_URL`
@@ -67,5 +67,5 @@ stops the deploy.
 
 ## Pre-prod values
 
-The host name, base domain and VPS address are not stored in this repository. They are passed to Deckhand at deploy time
+The host name, base domain and server address are not stored in this repository. They are passed to Deckhand at deploy time
 (`--base-domain <base-domain>`), and the public host is `ex-mio.<base-domain>`.
