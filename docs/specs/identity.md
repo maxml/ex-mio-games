@@ -2,7 +2,7 @@
 
 Status: Stage A (spec and red tests, no implementation). Base: `foundation` (2d8e1f3). Implementation is Stage B and must not edit the
 frozen tests listed in section 4. Backlog: MIO-030, 031, 032 (identity part), 034, 040, 042, 043, 044, 045, 046 (service-to-service,
-taken by this epic, coordinator decision D-4).
+taken by this area, coordinator decision D-4).
 Contracts: `packages/contracts/src/identity.ts` (zod schemas, constants, error codes).
 Binding decisions applied here: D-4 (service tokens, one auth entry point), D-5 (acting never moves coins, enforced in payments),
 D-6 (cached tenant status, 15-minute access TTL without refresh tokens, 30 s skew), D-7 (Firebase emulator multi-tenancy),
@@ -92,7 +92,7 @@ exchange, integration credentials. All other services only verify our tokens.
      resolve: `redemptions.resolve` is in `ACTING_DENIED_ACTIONS` and engagement refuses it for an `act` token, 403
      `ACTING_FORBIDDEN`, before any coin call. The six-action deny list (`coins.credit|reserve|capture|release|refund` plus
      `redemptions.resolve`) is pinned as a literal in `identity.contracts.test.ts` and `identity.access.test.ts`.
-   - **Audit outside identity (D-11).** The audit of acting requests is owned by this epic in the entry point (section 1.5), so
+   - **Audit outside identity (D-11).** The audit of acting requests is owned by this area in the entry point (section 1.5), so
      engagement and payments add no audit code of their own. Identity's `authorize` still writes its permission-level row.
    - **A coin route is guarded everywhere, including child modules (D-14, N3).** The route scan that enumerates every
      registered payments route and asserts the guard is on each one is payments' test (L2), not identity's.
@@ -349,7 +349,7 @@ Refresh tokens and family revocation (MIO-042 tail; deferred for the submission,
 sign-in rate limit and lockout (MIO-043 AC3), `operator.signed_up` analytics event, tenant `trial` status, the broker
 publisher check and per-service broker users (MIO-046 AC3), Cognito or Identity Platform adapters (MIO-041), the
 `firebase-emulator` adapter contract suite beyond `INV-STACK-7`, websocket channel isolation (MIO-033), coin endpoints
-themselves and payments' own RBAC matrix (payments spec, L2; this epic pins only that an operator cannot mint, 1.7), binding the
+themselves and payments' own RBAC matrix (payments spec, L2; this area pins only that an operator cannot mint, 1.7), binding the
 tenant to a service token (token exchange; owner question Q-A, not decided), the engagement-side cache of `user_id`. Stage B may add the provider contract suite for `fake` and the emulator adapter, but the
 frozen tests above do not depend on it.
 

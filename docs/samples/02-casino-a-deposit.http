@@ -1,0 +1,40 @@
+@engagement = http://localhost:4002
+
+### Casino A deposit webhook (workflow steps 1-3)
+# Signature: x-a-signature = hex HMAC-SHA256(secret, "${ts}.${rawBody}"), x-a-timestamp = ts (epoch seconds, +-300 s window).
+# The casino simulator signs this for you; the placeholders below stand for that output.
+# The tenant is resolved from the slug in the path only.
+POST {{engagement}}/v1/integrations/casino-a-demo/events
+Content-Type: application/json
+x-a-timestamp: 1790000000
+x-a-signature: {{casino_a_signature}}
+
+{"eventId":"evt-a-0001","playerId":"A-PLAYER-77","amount":{"value":5000,"currency":"EUR"},"status":"SUCCESS","ts":1790000000}
+
+# Response: expected, to be replaced with captured output
+# HTTP/1.1 200 OK
+# { "status": "accepted", "inbound_event_id": "0190...-inbound" }
+#
+# What happens next (asynchronously, over the event bus):
+#   engagement.deposit.confirmed -> rules engine -> spin credit (available) -> engagement.spin.granted
+# The deposit rule in the demo tenant: deposit >= 2000 minor units grants 1 spin.
+
+### A non-successful status is acknowledged and ignored (no row, no event)
+POST {{engagement}}/v1/integrations/casino-a-demo/events
+Content-Type: application/json
+x-a-timestamp: 1790000001
+x-a-signature: {{casino_a_signature_pending}}
+
+{"eventId":"evt-a-0002","playerId":"A-PLAYER-77","amount":{"value":5000,"currency":"EUR"},"status":"PENDING","ts":1790000001}
+
+# Response: expected, to be replaced with captured output
+# HTTP/1.1 200 OK
+# { "status": "ignored", "inbound_event_id": null }
+
+### How many spins does the player hold? (player token from the launch exchange)
+GET {{engagement}}/v1/me/spins
+Authorization: Bearer {{player_token}}
+
+# Response: expected, to be replaced with captured output
+# HTTP/1.1 200 OK
+# { "available": 1 }

@@ -57,10 +57,10 @@ sandbox?, payload }`; `tenant_id` is mandatory; the payload schema is registered
 
 ## Contract owners (reconciled, D-9 / D-12)
 
-- `events.ts` envelope: foundation. Each epic owns its own registry rows. `identity.ts`,
+- `events.ts` envelope: foundation. Each service owns its own registry rows. `identity.ts`,
   `service-kit/src/testing/*`: identity. `payments.ts` (coin events, reserve API, `COIN_VALUE_ACTIONS`):
   payments. `ingest.ts`, `casino-adapter.ts`, `spin.completed`: engagement ingest. `store.ts`: engagement
-  store (adopts payments' names and codes). `web-api.ts`: web. Other epics import these and never redefine
+  store (adopts payments' names and codes). `web-api.ts`: web. Other services import these and never redefine
   them. `PAYMENTS_INTERNAL_ROUTES` is declared once, in `identity.ts`, next to the service-call allow-list.
 
 ## Tenant context and isolation
@@ -124,7 +124,7 @@ sandbox?, payload }`; `tenant_id` is mandatory; the payload schema is registered
 - **provider:** `apps/engagement` (store module), `docs/specs/engagement-store.md` · **consumers:** `web`
 - **spec:** the saga is a client of two contracts it does not own and does not redefine (X-17): the coin reserve is
   payments' (see "Coin commands, balance read and coin events", L2, routes `PAYMENTS_INTERNAL_ROUTES`, rejection
-  codes `PaymentsErrorCode`), and the casino reward port is the ingest epic's (see "Casino ingestion and the
+  codes `PaymentsErrorCode`), and the casino reward port is the ingest area's (see "Casino ingestion and the
   adapter interface", L3, `casino-adapter.ts`).
 - **pinned:** `packages/contracts/src/store.contracts.test.ts`;
   `apps/engagement/src/services/redemption-saga.test.ts`

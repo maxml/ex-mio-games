@@ -1,0 +1,43 @@
+{
+  "schema_version": 3,
+  "diagram_type": "lifecycle",
+  "meta": {
+    "title": "Redemption lifecycle",
+    "output": "lifecycle.html",
+    "quality_profile": "standard"
+  },
+  "mainPath": ["requested", "reserved", "issuing", "issued", "completed"],
+  "states": [
+    { "id": "requested", "type": "start", "label": "REQUESTED", "sublabel": "stock and limit reserved" },
+    { "id": "reserved", "type": "active", "label": "RESERVED", "sublabel": "coins in payments" },
+    { "id": "issuing", "type": "active", "label": "ISSUING", "sublabel": "casino call in flight" },
+    { "id": "issued", "type": "active", "label": "ISSUED", "sublabel": "casino confirmed" },
+    { "id": "completed", "type": "success", "label": "COMPLETED", "sublabel": "hold captured" },
+    { "id": "rejected_funds", "type": "failure", "label": "REJECTED_FUNDS", "sublabel": "stock returned" },
+    { "id": "unknown", "type": "waiting", "label": "UNKNOWN", "sublabel": "ambiguous casino result" },
+    { "id": "rejected", "type": "failure", "label": "REJECTED", "sublabel": "casino refused for good" },
+    { "id": "released", "type": "failure", "label": "RELEASED", "sublabel": "coins released, stock returned" },
+    { "id": "needs_review", "type": "neutral", "label": "NEEDS_REVIEW", "sublabel": "a person decides" },
+    { "id": "refunded", "type": "neutral", "label": "REFUNDED", "sublabel": "casino revoked the reward" }
+  ],
+  "transitions": [
+    { "id": "t1", "from": "requested", "to": "reserved", "label": "ok" },
+    { "id": "t2", "from": "reserved", "to": "issuing", "label": "issue" },
+    { "id": "t3", "from": "issuing", "to": "issued", "label": "ok" },
+    { "id": "t4", "from": "issued", "to": "completed", "label": "capture" },
+    { "id": "t5", "from": "requested", "to": "rejected_funds", "label": "insufficient coins", "variant": "security" },
+    { "id": "t6", "from": "issuing", "to": "unknown", "label": "timeout or lost reply", "variant": "dashed" },
+    { "id": "t7", "from": "unknown", "to": "issued", "label": "lookup finds reward", "variant": "emphasis" },
+    { "id": "t8", "from": "issuing", "to": "rejected", "label": "final refusal", "variant": "security" },
+    { "id": "t9", "from": "unknown", "to": "needs_review", "label": "maximum age or attempts", "variant": "dashed" },
+    { "id": "t10", "from": "completed", "to": "refunded", "label": "casino revoked", "variant": "dashed" },
+    { "id": "t11", "from": "rejected", "to": "released", "label": "coins released", "variant": "security" },
+    { "id": "t12", "from": "unknown", "to": "rejected", "label": "lookup says rejected", "variant": "security" },
+    { "id": "t13", "from": "needs_review", "to": "issued", "label": "operator, lookup says issued", "variant": "emphasis" }
+  ],
+  "cards": [
+    { "dot": "amber", "title": "No release while unknown", "items": ["UNKNOWN never releases coins automatically", "a sweeper asks the casino by our key, with backoff", "after the maximum age the redemption goes to NEEDS_REVIEW"] },
+    { "dot": "rose", "title": "Compensation", "items": ["REJECTED_FUNDS and RELEASED return stock and limit", "REJECTED moves to RELEASED once the coins are released", "REFUNDED reverses a captured amount"] },
+    { "dot": "cyan", "title": "Late results", "items": ["a late success or late rejection after a terminal state is recorded", "it is reconciled, never applied blindly"] }
+  ]
+}

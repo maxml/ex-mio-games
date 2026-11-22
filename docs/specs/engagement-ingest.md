@@ -1,4 +1,4 @@
-# Spec: engagement ingest, rules and wheel (epic L3)
+# Spec: engagement ingest, rules and wheel (area L3)
 
 Backlog: MIO-050..057, 060..064, 069 (fairness core); Part C cases MIO-140, 141, 147, 151, 154 as far as
 they touch ingest, credits and spins. Service: `apps/engagement` (module `src/integrations/` and the
@@ -36,8 +36,8 @@ against the tests named below and never edits them.
    `spin_id`) in the same transaction as the inbox row; metering reads the same event in payments.
    Delivery is at least once, the effect happens once. The spin response returns the reward, not the new
    balance; the player sees the balance through the payments read API or the Redis projection
-   (eventually consistent). The payments consumer is tested in the payments epic (see section 12);
-   this epic pins the event and that the spin path makes no HTTP call.
+   (eventually consistent). The payments consumer is tested in the payments area (see section 12);
+   this area pins the event and that the spin path makes no HTTP call.
 
 ## 2. State tables
 
@@ -68,7 +68,7 @@ to spin. The web wheel animates to the server's result, so the spin response car
 `segment_index` (an index into the public segment list of `GET /v1/wheel/:wheelId`) beside the label and
 coins; the replay returns the stored index, it is never redrawn.
 
-`GET /v1/me/spins` (coordinator addition for the web epic): answers `MySpinsResponse {available: n}`, the
+`GET /v1/me/spins` (coordinator addition for the web area): answers `MySpinsResponse {available: n}`, the
 count of the caller's `available` credits (`SpinCreditsRepository.countAvailable`, `user_id` = principal,
 `tenant_id` = ambient). It takes no user input (a `user_id` query param is ignored), needs a player token
 (401 without), and parses the service result strictly (a leaking object is a 500). Player A never sees B's
@@ -108,7 +108,7 @@ Header names are lower-case. Amounts are integers in minor units; a float is a s
 (`stale` only when the MAC is valid and the timestamp is outside +-300 s; an invalid MAC wins over stale;
 malformed signatures are `invalid`, never a throw); `parseEvent` is pure and returns
 `deposit | ignored | rejected(malformed_json|schema_invalid)`. The reward side is the ONE casino port of
-decision D-2, defined in `packages/contracts/src/casino-adapter.ts` (owned by this epic; the store epic
+decision D-2, defined in `packages/contracts/src/casino-adapter.ts` (owned by this area; the store area
 imports it and defines no port of its own); `adapter.ts` re-exports its types and `CasinoAdapter extends
 CasinoRewardPort`:
 
@@ -120,7 +120,7 @@ CasinoRewardPort`:
   `rejected{reason}` | `not_found` | `unknown`. It looks up by OUR key (native lookup, or replay of the
   frozen request). It never throws: a lookup that hangs, errors or gets a 5xx is `unknown` and is never
   treated as a failure, never `not_found`, never `rejected`. A casino B ticket still `PENDING` is `pending`.
-- Refund rule for the callers (the store epic): a refund is allowed only after `rejected`, or after
+- Refund rule for the callers (the store area): a refund is allowed only after `rejected`, or after
   `not_found` on a lookup made after the issue deadline. It is never allowed after `unknown`.
 
 Registry entries must declare
@@ -128,8 +128,8 @@ Registry entries must declare
 duplicate type. The contract suite (`adapters.contract.test.ts`) enumerates the registry; an adapter
 without a profile there fails it.
 
-**3.4 What the store epic needs from the port (coordinator decision D-12, review R2-1).** All of it is in
-`packages/contracts/src/casino-adapter.ts`, so the store epic builds against types, not wiring of its own:
+**3.4 What the store area needs from the port (coordinator decision D-12, review R2-1).** All of it is in
+`packages/contracts/src/casino-adapter.ts`, so the store area builds against types, not wiring of its own:
 
 - _Adapter registry per tenant._ `CasinoRewardPorts.forTenant(tenantId, {sandbox}) -> {port, info:
 {recovery_mode, issue_deadline_ms, sandbox}} | undefined`, implemented by `createTenantCasinoPorts({integrations,
@@ -143,10 +143,10 @@ registry, transport})` (`integrations/tenant-ports.ts`). It resolves the adapter
 - _The casino player id comes from the mapping._ `RewardRequestBuilder.build({tenantId, userId, reward,
 sandbox})` (`createRewardRequestBuilder({players})`, `CasinoPlayerPort.externalPlayerId(tenantId, userId)`)
   reads the identity player mapping (the only place the raw id lives, MIO-107); no mapping row (erased) gives
-  `undefined`, never a guess from the user id. The request is frozen on the order by the store epic.
+  `undefined`, never a guess from the user id. The request is frozen on the order by the store area.
 - _Issue deadline._ `info.issue_deadline_ms` is the tenant override, else the adapter type default
   (`AdapterEntry.issueDeadlineMs`). `not_found` from a status lookup is final only that long after the first
-  issue attempt; before it, it can be a casino that has not seen the request, and the store epic must keep
+  issue attempt; before it, it can be a casino that has not seen the request, and the store area must keep
   polling. Refund-after-`not_found` stays the caller's rule (above).
 - _Sandbox flag._ `RewardRequest.sandbox` is mandatory (no default). An adapter instance knows its
   environment (`AdapterConfig.sandbox`) and answers `rejected{reason:'sandbox_mismatch'}` before any I/O for
@@ -326,11 +326,11 @@ in their own identity tenants and need identity in the stack,`WHEEL_SEEDS={"1":"
 
 ## 12. Out of scope here
 
-Redemption saga and bonus store (MIO-065..068, the store epic; it imports the port from
+Redemption saga and bonus store (MIO-065..068, the store area; it imports the port from
 `packages/contracts/src/casino-adapter.ts`); the payments side of `spin.completed` (L2: the inbox
 consumer that credits coins with key `spin:<spin_id>`, and MIO-064 criteria such as five redeliveries
 credit once and payments down means retry from the outbox; the L2 spec and tests must follow D-1, this
-epic only emits the event); the real identity client behind `TENANT_INTEGRATIONS` and
+area only emits the event); the real identity client behind `TENANT_INTEGRATIONS` and
 `PLAYER_DIRECTORY` (L1; the dev static config stands in); operator CRUD APIs for rules and tables, rate
 limiting, seed rotation schedule and the audit script (MIO-069; its prerequisite `SEEDS.seed(version)` is
 in scope), websocket pushes of `spin.granted` (L5/realtime), `docs/integrations/adding-a-casino.md`.
@@ -338,10 +338,10 @@ in scope), websocket pushes of `spin.granted` (L5/realtime), `docs/integrations/
 Deferred with a named reason: MIO-151 "spin with an operator or platform token is 403" waits until L1
 issues a principal kind (foundation tenancy has none). `GET /v1/me/spins` is no longer deferred: it is in
 section 2 and pinned. Authentication of every engagement test: tokens from `@ex-mio/service-kit/testing`
-(taken from identity epic d2c0461 with `packages/contracts/src/identity.ts`) through
+(taken from the identity area with `packages/contracts/src/identity.ts`) through
 `apps/engagement/src/testing/auth.fixture.ts` for in-process tests, and a real identity launch for compose;
 no `x-tenant-id` or `x-principal-id` header is used (R2-2). Not changed here: the foundation test
-`apps/engagement/src/projections.test.ts` still uses `TenancyModule` and a header; identity epic's spec
+`apps/engagement/src/projections.test.ts` still uses `TenancyModule` and a header; the identity spec
 lists it among the files its Stage B rewrites, so editing it here would collide with that. Backlog doc fix, not a test change: MIO-141 line 21 should read "50 parallel requests with the
 same key: one 201, the others 201 with the same spin or 409 `in progress`; a retry after completion returns
 the same spin; one credit consumed."

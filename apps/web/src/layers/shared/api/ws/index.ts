@@ -1,5 +1,5 @@
 // Public API for the `shared/api/ws` segment — the singleton socket.io client
-// (ADR-0002 §5.2): one multiplexed, long-lived connection to the
+// (ADR-0014 §5.2): one multiplexed, long-lived connection to the
 // gateway's `notifications` namespace, typed emit/on narrowed against the shared
 // Zod contracts, and reconnect with exponential backoff + jitter. Instantiate
 // the socket only inside a `useEffect` (the app-layer `WSProvider`); newing it

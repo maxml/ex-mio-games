@@ -1,10 +1,10 @@
-// Unified error envelope for the shared HTTP client (ADR-0001 §7, §8).
+// Unified error envelope for the shared HTTP client (ADR-0013 §7, §8).
 //
 // Design choice: a single thrown `HttpError`, NOT a `Result<T>` union.
 // Every failure mode — an HTTP non-2xx response, a network/`fetch` rejection, a
 // JSON-parse failure, or a schema-validation failure — is normalised into one
 // `HttpError`, so callers only ever catch a single type. This is the shape that
-// lands in TanStack Query's `error` state (ADR-0001 §4): query functions throw, the
+// lands in TanStack Query's `error` state (ADR-0013 §4): query functions throw, the
 // library catches. A `Result<T>` union would force every query function to
 // unwrap-and-rethrow, fighting that integration, so we keep the throw model.
 

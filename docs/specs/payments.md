@@ -1,9 +1,9 @@
 # Payments: coin ledger, balances, billing, usage
 
-Epic spec for `apps/payments`. Backlog: MIO-080..086 (ledger), MIO-090, 091, 093, 095, 098 (billing,
+Area spec for `apps/payments`. Backlog: MIO-080..086 (ledger), MIO-090, 091, 093, 095, 098 (billing,
 metering), MIO-150 rows 01, 02, 04..10, 12..20, 28. Contracts live in `packages/contracts`
 (`src/payments.ts`, `src/events.ts`). Status: spec + red tests (stage A, fix round); no implementation yet.
-Coordinator decisions that bind this epic: D-1 (spin coins by event), D-5 (acting tenant), D-9
+Coordinator decisions that bind this area: D-1 (spin coins by event), D-5 (acting tenant), D-9
 (idempotency per reserve state, contract ownership, balances from Postgres, inbox retries, exact grants).
 
 ## 1. Behaviour
@@ -162,7 +162,7 @@ state = 'processing'`. The fake provider accepts only test numbers (`42424242424
 wallet_id, reserve_id, amount, available_after, held_after }`.
 - **Events consumed:** `engagement.spin.completed` v1 (owned by L3), through the inbox, consumer name
   `payments`. The envelope's `sandbox` flag is set by the producer from its server context.
-- **Contract ownership (D-9).** L3 owns `spin.completed` and `casino-adapter.ts`; L2 (this epic) owns the coin
+- **Contract ownership (D-9).** L3 owns `spin.completed` and `casino-adapter.ts`; L2 (this area) owns the coin
   events, the reserve API and the rejection codes above; L4 imports them. `EventEnvelope.sandbox` is confirmed
   (D-13, FX-1) and lives in the foundation envelope.
 - **Sandbox invariants (X-2):** INV-SBX-1..3 in `services/ledger.service.pgtest.ts`, and the rewritten sandbox case
@@ -248,7 +248,7 @@ every rollback test.
 **Transient inbox errors (D-9).** A transient error (connection, timeout, deadlock, serialization failure,
 SQLSTATE class 08, 40001, 40P01, 57P01) must not lose coins: the foundation `bus` change retries with bounded
 backoff and only a permanent error or retry exhaustion goes to the DLQ, which has a replay command. That change
-lives in `packages/bus` and is folded into the foundation fixes; until it merges, `D1-7` stays red. This epic
+lives in `packages/bus` and is folded into the foundation fixes; until it merges, `D1-7` stays red. This area
 pins the payments side: a transient failure is not dead-lettered and the redelivery applies once.
 
 **Pool.** `makeDataSource({ poolMax?, logger? })` (default `poolMax` from `PG_POOL_MAX`, 10) so the tests can run
@@ -332,7 +332,7 @@ All pgtests need Postgres (section 12); `*.test.ts` run without it.
 | INV-L5 integer amounts, cap, no float columns                                                  | MIO-081 boundaries, MIO-150-08             | CHECKs, column types                                 | same; `contracts/payments.contracts.test.ts`                                                   |
 | INV-L6 RLS on every tenant table, by catalog                                                   | MIO-032                                    | `enableTenantRls`                                    | same                                                                                           |
 | INV-L7 one wallet, one link, one system account per tenant                                     | F7                                         | unique constraints                                   | same                                                                                           |
-| INV-O1/O2/O3 erasure keeps the account; no user id in ledger or usage                          | epic spec                                  | schema; `eraseIdentityLink`                          | same; `ledger.service.pgtest.ts`; `usage.service.pgtest.ts`                                    |
+| INV-O1/O2/O3 erasure keeps the account; no user id in ledger or usage                          | area spec                                  | schema; `eraseIdentityLink`                          | same; `ledger.service.pgtest.ts`; `usage.service.pgtest.ts`                                    |
 | INV-C1 concurrent reserves never overspend (pool >= 10, overlap proven)                        | MIO-082 50 parallel, MIO-150-17            | conditional UPDATE                                   | `services/ledger.service.pgtest.ts`                                                            |
 | INV-C1b same with one connection, caught from the SQL                                          | F14                                        | conditional relative UPDATE                          | same                                                                                           |
 | INV-C2 mixed concurrency conserves                                                             | MIO-082, MIO-150-05                        | conditional UPDATE                                   | same                                                                                           |
@@ -342,7 +342,7 @@ All pgtests need Postgres (section 12); `*.test.ts` run without it.
 | INV-I4 one operation under 10 parallel keys                                                    | F17                                        | unique `operation_id`                                | same                                                                                           |
 | INV-T1 transitions follow `RESERVE_COMMAND_OUTCOMES`, specific codes                           | MIO-082; D-9                               | conditional state UPDATE                             | same; `payments.contracts.test.ts`                                                             |
 | INV-T2 each phase idempotent by reserve state, any key                                         | MIO-066, MIO-150-15; D-9                   | per-phase operation key, state                       | same                                                                                           |
-| INV-T3 explicit reserve id                                                                     | epic spec                                  | command body, unique `operation_id`                  | same                                                                                           |
+| INV-T3 explicit reserve id                                                                     | area spec                                  | command body, unique `operation_id`                  | same                                                                                           |
 | INV-T4 capture and release race: one transition wins                                           | F6                                         | conditional state UPDATE                             | same                                                                                           |
 | INV-A1 rollback together, hook placement proven (4 phases x 3 points)                          | MIO-082 three tests, MIO-150-06/19         | one transaction, harness-driven hook                 | same                                                                                           |
 | INV-E1 event per phase, same tx, none on a replay                                              | MIO-082                                    | `Db.publish` in effect                               | same                                                                                           |
@@ -402,6 +402,6 @@ HTTP tests (`testing/app.ts`) override just the `SERVICE_AUTH_OPTIONS` sources w
 `testing/auth.ts`. `createAppModule(config)` reads `IDENTITY_URL`. It must register the
 inbox handler for `engagement.spin.completed` (the bus binding) and start the app with `rawBody: true`.
 The `payments_app` grants are listed in ONE migration, folded into the foundation `AppRoleGrants` migration
-(foundation grants `coin_credits`, which this epic drops: remove it there, `roles.compose.test.ts` pins it), and
-`wallets` gains `sandbox` (X-2). `seedCoins` (`tests/compose/src/seed-coins.ts`, owned by this epic, X-3 of the
+(foundation grants `coin_credits`, which this area drops: remove it there, `roles.compose.test.ts` pins it), and
+`wallets` gains `sandbox` (X-2). `seedCoins` (`tests/compose/src/seed-coins.ts`, owned by this area, X-3 of the
 reconciliation section 3) funds players in compose tests through a real `spin.completed` publish.

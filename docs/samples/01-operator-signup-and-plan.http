@@ -1,0 +1,71 @@
+@identity = http://localhost:4001
+@payments = http://localhost:4003
+
+### Operator signup: creates the tenant and its first owner. Public endpoint.
+# @name signup
+POST {{identity}}/v1/operators/signup
+Content-Type: application/json
+
+{
+  "tenant_name": "Casino A Demo",
+  "slug": "casino-a-demo",
+  "email": "owner@casino-a.example",
+  "password": "correct-horse-battery"
+}
+
+# Response: expected, to be replaced with captured output
+# HTTP/1.1 201 Created
+# {
+#   "tenant": { "id": "0190...-tenant-a", "type": "operator", "name": "Casino A Demo", "slug": "casino-a-demo", "status": "active" },
+#   "user":   { "id": "0190...-user", "email": "owner@casino-a.example", "roles": ["operator_admin"] }
+# }
+
+### Operator login. The tenant comes from the Host, never from the body.
+# @name login
+POST {{identity}}/v1/auth/login
+Host: casino-a-demo.mio.localhost
+Content-Type: application/json
+
+{ "email": "owner@casino-a.example", "password": "correct-horse-battery", "audience": "web" }
+
+# Response: expected, to be replaced with captured output
+# HTTP/1.1 200 OK
+# { "access_token": "<jwt>", "token_type": "Bearer", "expires_in": 900 }
+
+### List billing plans (seeded: free 0, pro 4900, scale 19900, USD cents)
+GET {{payments}}/v1/billing/plans
+Authorization: Bearer {{operator_token}}
+
+# Response: expected, to be replaced with captured output
+# HTTP/1.1 200 OK
+# [
+#   { "id": "0190...-free",  "code": "free",  "name": "Free",  "interval": "month", "price_minor": 0,     "currency": "USD" },
+#   { "id": "0190...-pro",   "code": "pro",   "name": "Pro",   "interval": "month", "price_minor": 4900,  "currency": "USD" },
+#   { "id": "0190...-scale", "code": "scale", "name": "Scale", "interval": "month", "price_minor": 19900, "currency": "USD" }
+# ]
+
+### Start a plan checkout with a fake-provider test card (4242... accepted, 4000000000000002 declined)
+# @name attempt
+POST {{payments}}/v1/billing/attempts
+Authorization: Bearer {{operator_token}}
+Idempotency-Key: plan-attempt-0001
+Content-Type: application/json
+
+{ "plan_id": "0190...-pro", "card_number": "4242424242424242" }
+
+# Response: expected, to be replaced with captured output
+# HTTP/1.1 201 Created
+# The attempt stays "processing" until the provider's signed activation webhook arrives.
+# {
+#   "id": "0190...-attempt", "plan_id": "0190...-pro", "subscription_id": "0190...-sub",
+#   "state": "processing", "card_last4": "4242", "card_brand": "visa",
+#   "created_at": "2026-11-21T10:00:00.000Z", "updated_at": "2026-11-21T10:00:00.000Z"
+# }
+
+### Poll the attempt: it turns "succeeded" after the verified webhook
+GET {{payments}}/v1/billing/attempts/{{attempt.response.body.id}}
+Authorization: Bearer {{operator_token}}
+
+# Response: expected, to be replaced with captured output
+# HTTP/1.1 200 OK
+# { "id": "0190...-attempt", "state": "succeeded", "card_last4": "4242", "card_brand": "visa", "...": "..." }

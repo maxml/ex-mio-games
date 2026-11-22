@@ -13,14 +13,14 @@ import {
 import { useConnectionStore } from '@/layers/shared/lib';
 import type { NotificationEnvelope } from '@/layers/shared/types';
 
-// FSD `app` layer (ADR-0001 §3.1, §7): the realtime provider, composed inside the
+// FSD `app` layer (ADR-0013 §3.1, §7): the realtime provider, composed inside the
 // existing `Providers` so it shares the one QueryClient (it does not create a
 // second). It owns the bridge from the singleton socket (`shared/api/ws`) to the
 // TanStack Query cache and the Zustand connection store.
 
 /**
  * Map an inbound, already-Zod-validated notification onto the TanStack Query
- * cache (ADR-0002 §7): `invalidateQueries` by default — TanStack
+ * cache (ADR-0014 §7): `invalidateQueries` by default — TanStack
  * Query refetches only the active queries under the key — and `setQueryData` for
  * a high-frequency point update where a refetch round-trip would be wasteful.
  * Reuses the shared query-key factory so a WS write targets the exact key a
@@ -58,7 +58,7 @@ export function WSProvider({
   // capture a stale client.
   const queryClient = useQueryClient();
   // Keep the token getter in a ref so a new prop identity doesn't tear down and
-  // re-open the socket (handler-in-ref guard against stale closures, ADR-0002 §5.2).
+  // re-open the socket (handler-in-ref guard against stale closures, ADR-0014 §5.2).
   const getTokenRef = useRef(getToken);
   getTokenRef.current = getToken;
 
@@ -75,7 +75,7 @@ export function WSProvider({
     }
 
     // Instantiate the socket only here, on the client — newing it during SSR
-    // throws (ADR-0002 §5.2). Read store actions via `getState()` so the handlers
+    // throws (ADR-0014 §5.2). Read store actions via `getState()` so the handlers
     // never close over a stale snapshot.
     const { setStatus, setError, reset } = useConnectionStore.getState();
     const socket = getWsClient({ getToken: () => getTokenRef.current?.() ?? null });

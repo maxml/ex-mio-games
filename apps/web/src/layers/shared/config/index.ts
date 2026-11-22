@@ -1,7 +1,7 @@
 // Public API for the `shared/config` segment — app-wide constants and runtime
-// configuration shared across layers (ADR-0001 §7).
+// configuration shared across layers (ADR-0013 §7).
 //
-// i18n (ADR-0001 §6: next-intl on web). The locale set + routing strategy and the
+// i18n (ADR-0013 §6: next-intl on web). The locale set + routing strategy and the
 // locale-aware navigation primitives are the consumer-facing surface; the
 // next-intl request config (`./i18n/request.ts`) is loaded by the framework via
 // `next.config.mjs`, not imported through here.

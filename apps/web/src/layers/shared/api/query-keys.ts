@@ -1,4 +1,4 @@
-// Centralized, typed TanStack Query key factory (ADR-0001 §8: "Query key factory —
+// Centralized, typed TanStack Query key factory (ADR-0013 §8: "Query key factory —
 // централізовані ключі (typed)"). One source of truth for cache keys keeps
 // invalidation precise: WS handlers and mutations target the same key a query
 // reads from, instead of re-typing string arrays at each call site.

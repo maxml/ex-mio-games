@@ -6,7 +6,7 @@ import fsd from '@feature-sliced/steiger-plugin';
 // `import/no-restricted-paths` rule in apps/web/.eslintrc.cjs, which enforces the
 // *import-direction* dependency rule. Run with `pnpm lint:fsd`.
 //
-// The FSD root is apps/web/src/layers (ADR-0005 §3.1 Variant A: the Next `app/`
+// The FSD root is apps/web/src/layers (ADR-0013 §3.1 Variant A: the Next `app/`
 // directory stays routes-only, and the FSD `pages` layer is renamed `views`).
 export default defineConfig([
   ...fsd.configs.recommended,
@@ -19,7 +19,7 @@ export default defineConfig([
     ignores: ['**/*.stories.@(ts|tsx)', '**/*.test.@(ts|tsx)'],
   },
   {
-    // ADR-0001 §7 mandates a `shared/types` segment that re-exports
+    // ADR-0013 §7 mandates a `shared/types` segment that re-exports
     // `@ex-mio/contracts`. That name is "by contents", which trips
     // steiger's `segments-by-purpose` heuristic — but the ADR is the source of
     // truth for this skeleton, so silence that one rule on the shared layer.
@@ -30,12 +30,12 @@ export default defineConfig([
   },
   {
     // `insignificant-slice` flags slices with too few inbound references. Under
-    // ADR-0005 §3.1 Variant A the real consumers are the Next route files in
+    // ADR-0013 §3.1 Variant A the real consumers are the Next route files in
     // `apps/web/app/**`, which live *outside* steiger's `apps/web/src/layers`
     // root — so steiger's reference graph is rooted at the `views` layer and can
     // never observe a widget/feature/entity actually being used. The heuristic
     // therefore false-positives on every legitimately-used non-entry slice
-    // (e.g. the `api-health` client island, ADR-0005 §4.1). Disable it for those
+    // (e.g. the `api-health` client island, ADR-0013 §4.1). Disable it for those
     // layers; the load-bearing FSD rules — import direction (ESLint
     // `import/no-restricted-paths`) and per-slice Public API — stay enforced.
     files: [

@@ -1,0 +1,92 @@
+{
+  "schema_version": 1,
+  "diagram_type": "erd",
+  "meta": {
+    "title": "Tenancy and ledger schema",
+    "output": "erd.html",
+    "quality_profile": "standard"
+  },
+  "layout": { "mode": "grid", "gapX": 80, "gapY": 60 },
+  "entities": [
+    {
+      "id": "tenant", "label": "tenant", "tag": "identity db", "row": 0, "col": 0,
+      "attributes": [
+        { "name": "id", "type": "uuid", "key": "pk" },
+        { "name": "kind", "type": "text" },
+        { "name": "domain", "type": "text", "key": "uk" },
+        { "name": "status", "type": "text" }
+      ]
+    },
+    {
+      "id": "app_user", "label": "app_user", "tag": "identity db", "row": 0, "col": 1,
+      "attributes": [
+        { "name": "tenant_id", "type": "uuid", "key": ["pk", "fk"], "references": "tenant.id" },
+        { "name": "user_id", "type": "uuid", "key": "pk" },
+        { "name": "email", "type": "text" },
+        { "name": "role", "type": "text" }
+      ]
+    },
+    {
+      "id": "player_link", "label": "player_link", "tag": "identity db", "row": 0, "col": 2,
+      "attributes": [
+        { "name": "tenant_id", "type": "uuid", "key": ["pk", "fk"], "references": "app_user.tenant_id" },
+        { "name": "platform", "type": "text", "key": "pk" },
+        { "name": "external_player_id", "type": "text", "key": "pk" },
+        { "name": "user_id", "type": "uuid", "key": "fk", "references": "app_user.user_id" }
+      ]
+    },
+    {
+      "id": "ledger_account", "label": "ledger_account", "tag": "payments db", "row": 1, "col": 0,
+      "attributes": [
+        { "name": "tenant_id", "type": "uuid", "key": "pk" },
+        { "name": "id", "type": "uuid", "key": "pk" },
+        { "name": "owner_user_id", "type": "uuid" },
+        { "name": "kind", "type": "text" },
+        { "name": "balance_minor", "type": "bigint" }
+      ]
+    },
+    {
+      "id": "journal_transaction", "label": "journal_transaction", "tag": "payments db", "row": 1, "col": 1,
+      "attributes": [
+        { "name": "tenant_id", "type": "uuid", "key": ["pk", "uk"] },
+        { "name": "id", "type": "uuid", "key": "pk" },
+        { "name": "operation_type", "type": "text", "key": "uk" },
+        { "name": "operation_id", "type": "text", "key": "uk" },
+        { "name": "created_at", "type": "timestamptz" }
+      ]
+    },
+    {
+      "id": "journal_leg", "label": "journal_leg", "tag": "payments db", "row": 2, "col": 1,
+      "attributes": [
+        { "name": "tenant_id", "type": "uuid", "key": "pk" },
+        { "name": "id", "type": "uuid", "key": "pk" },
+        { "name": "transaction_id", "type": "uuid", "key": "fk", "references": "journal_transaction.id" },
+        { "name": "account_id", "type": "uuid", "key": "fk", "references": "ledger_account.id" },
+        { "name": "direction", "type": "text" },
+        { "name": "amount_minor", "type": "bigint" }
+      ]
+    },
+    {
+      "id": "coin_hold", "label": "coin_hold", "tag": "payments db", "row": 2, "col": 0,
+      "attributes": [
+        { "name": "tenant_id", "type": "uuid", "key": "pk" },
+        { "name": "id", "type": "uuid", "key": "pk" },
+        { "name": "account_id", "type": "uuid", "key": "fk", "references": "ledger_account.id" },
+        { "name": "amount_minor", "type": "bigint" },
+        { "name": "status", "type": "text" }
+      ]
+    }
+  ],
+  "relationships": [
+    { "id": "user_tenant", "from": "app_user", "to": "tenant", "label": "belongs to", "fromCardinality": "many", "toCardinality": "one", "identifying": true },
+    { "id": "link_user", "from": "player_link", "to": "app_user", "label": "maps to", "fromCardinality": "many", "toCardinality": "one" },
+    { "id": "leg_tx", "from": "journal_leg", "to": "journal_transaction", "label": "2 or more legs", "fromCardinality": "many", "toCardinality": "one" },
+    { "id": "leg_account", "from": "journal_leg", "to": "ledger_account", "label": "moves", "fromCardinality": "many", "toCardinality": "one" },
+    { "id": "hold_account", "from": "coin_hold", "to": "ledger_account", "label": "reserves", "fromCardinality": "many", "toCardinality": "one" }
+  ],
+  "cards": [
+    { "dot": "cyan", "title": "Tenancy", "items": ["every table carries tenant_id; keys are (tenant_id, id)", "RLS filters rows by the transaction's tenant, FORCE on", "a person on a second tenant is a new app_user row"] },
+    { "dot": "amber", "title": "Ledger", "items": ["a deferred trigger checks debits equal credits per transaction", "unique (tenant_id, operation_type, operation_id) stops a repeat", "balance_minor has CHECK (balance_minor >= 0)"] },
+    { "dot": "slate", "title": "Across databases", "items": ["payments stores owner_user_id and tenant_id as opaque ids, with no foreign key into identity", "personal data exists only in identity"] }
+  ]
+}

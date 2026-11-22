@@ -4,7 +4,7 @@ const path = require('path');
 // ESLint's cwd (root `nx run-many` vs. `next lint` in this project).
 const layer = (name) => path.join(__dirname, 'src', 'layers', name);
 
-// FSD layers, top -> bottom. Imports may only flow downward (ADR-0001 §3, §6):
+// FSD layers, top -> bottom. Imports may only flow downward (ADR-0013 §3, §6):
 //   app(Next routes) -> app -> views -> widgets -> features -> entities -> shared
 // `import/no-restricted-paths` forbids a file in `target` from importing any
 // `from` layer (a layer at or above it). The `@/*` -> `src/*` alias is resolved

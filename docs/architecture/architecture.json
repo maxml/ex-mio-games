@@ -1,0 +1,50 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "MIO Games: context and containers",
+    "output": "architecture.html",
+    "quality_profile": "standard"
+  },
+  "components": [
+    { "id": "players", "type": "external", "label": "Player", "sublabel": "browser, inside casino page", "pos": [40, 60], "size": [180, 60] },
+    { "id": "web", "type": "frontend", "label": "web", "sublabel": "player widget, operator console", "pos": [320, 60], "size": [190, 60] },
+    { "id": "identity", "type": "security", "label": "identity", "sublabel": "authN, authZ, tenants module", "pos": [640, 60], "size": [200, 64] },
+    { "id": "identity-db", "type": "database", "label": "Postgres: identity", "sublabel": "RLS, tenant_id", "pos": [960, 60], "size": [180, 60] },
+    { "id": "casino-sim", "type": "external", "label": "casino-sim", "sublabel": "Casino A and Casino B", "pos": [40, 300], "size": [180, 60] },
+    { "id": "engagement", "type": "backend", "label": "engagement", "sublabel": "ingestion, integrations module, rules, wheel, store, saga", "pos": [320, 300], "size": [230, 70] },
+    { "id": "rabbit", "type": "messagebus", "label": "RabbitMQ", "sublabel": "events, outbox and inbox", "pos": [640, 300], "size": [200, 60] },
+    { "id": "redis", "type": "database", "label": "Redis", "sublabel": "optional balance projection", "pos": [960, 300], "size": [220, 60] },
+    { "id": "engagement-db", "type": "database", "label": "Postgres: engagement", "sublabel": "RLS, tenant_id", "pos": [40, 540], "size": [180, 60] },
+    { "id": "payments", "type": "backend", "label": "payments", "sublabel": "ledger, coin operations, fake provider", "pos": [640, 540], "size": [220, 64] },
+    { "id": "payments-db", "type": "database", "label": "Postgres: payments", "sublabel": "journal, balances", "pos": [960, 540], "size": [180, 60] },
+    { "id": "varta", "type": "cloud", "label": "Varta", "sublabel": "observability and analytics", "pos": [1300, 60], "size": [190, 60] },
+    { "id": "deckhand", "type": "cloud", "label": "Deckhand", "sublabel": "blue-green deploy", "pos": [1300, 540], "size": [190, 60] }
+  ],
+  "boundaries": [
+    { "kind": "region", "label": "MIO Games platform (one container per service)", "wraps": ["web", "identity", "identity-db", "engagement", "rabbit", "redis", "engagement-db", "payments", "payments-db"], "pad": 24 }
+  ],
+  "connections": [
+    { "id": "player-web", "from": "players", "to": "web", "label": "HTTPS", "variant": "emphasis" },
+    { "id": "web-identity", "from": "web", "to": "identity", "label": "login, launch" },
+    { "id": "web-engagement", "from": "web", "to": "engagement", "label": "REST, websocket /rt (realtime gateway)", "fromSide": "bottom", "toSide": "top", "labelDx": 70 },
+    { "id": "casino-engagement", "from": "casino-sim", "to": "engagement", "label": "signed events", "variant": "security", "labelDy": -14 },
+    { "id": "engagement-casino", "from": "engagement", "to": "casino-sim", "label": "issue reward", "variant": "dashed", "fromSide": "bottom", "toSide": "right", "labelDy": 16 },
+    { "id": "identity-db-link", "from": "identity", "to": "identity-db", "label": "SQL" },
+    { "id": "identity-rabbit", "from": "identity", "to": "rabbit", "label": "events", "variant": "dashed", "fromSide": "bottom", "toSide": "top", "labelAt": [770, 210] },
+    { "id": "engagement-rabbit", "from": "engagement", "to": "rabbit", "label": "events", "variant": "dashed", "labelDy": -14 },
+    { "id": "rabbit-payments", "from": "rabbit", "to": "payments", "label": "commands, events", "variant": "dashed", "fromSide": "bottom", "toSide": "top", "labelDx": 70 },
+    { "id": "payments-redis", "from": "payments", "to": "redis", "label": "balance projection", "variant": "dashed", "fromSide": "right", "toSide": "bottom", "labelDy": -14 },
+    { "id": "engagement-payments", "from": "engagement", "to": "payments", "label": "sync coin reserve", "fromSide": "bottom", "toSide": "left", "labelDy": 16 },
+    { "id": "engagement-db-link", "from": "engagement", "to": "engagement-db", "label": "SQL", "fromSide": "bottom", "toSide": "top", "labelDx": 20 },
+    { "id": "payments-db-link", "from": "payments", "to": "payments-db", "label": "SQL" },
+    { "id": "varta-link", "from": "identity-db", "to": "varta", "label": "logs, events", "variant": "dashed", "fromSide": "right", "toSide": "left", "labelDy": -14 },
+    { "id": "deckhand-link", "from": "payments-db", "to": "deckhand", "label": "deploys", "variant": "dashed", "labelDy": -14 }
+  ],
+  "cards": [
+    { "dot": "cyan", "title": "Services and modules", "items": ["identity, engagement, payments are services", "tenants live inside identity, integrations inside engagement", "modules sit behind Nx boundaries and can be promoted later"] },
+    { "dot": "emerald", "title": "Data and messaging", "items": ["one Postgres database per service, tenant_id and RLS", "RabbitMQ with outbox and inbox in every service", "Redis holds an optional balance projection, never the source of truth for money"] },
+    { "dot": "amber", "title": "Money", "items": ["only payments writes coins", "balance is readable from any service", "redemption is a saga across engagement and payments"] },
+    { "dot": "slate", "title": "Not drawn", "items": ["every service emits structured logs and events to Varta", "Deckhand deploys every container", "Stripe adapter and production identity provider are designed only"] }
+  ]
+}

@@ -1,0 +1,37 @@
+@engagement = http://localhost:4002
+
+### Casino B deposit webhook: a different external schema, the same internal logic (workflow steps 1-3)
+# No signature headers. The signature is inside the body:
+#   signature = hex HMAC-SHA256(secret, "${sent_at}.${type}.${txn_id}.${customer_ref}.${amount_cents}.${ccy}")
+# Any other type, for example payment.refunded, is acknowledged and ignored.
+POST {{engagement}}/v1/integrations/casino-b-demo/events
+Content-Type: application/json
+
+{
+  "type": "payment.completed",
+  "data": { "txn_id": "txn-b-9001", "customer_ref": "B-CUST-12", "amount_cents": 7500, "ccy": "USD" },
+  "sent_at": "2026-11-21T10:05:00.000Z",
+  "signature": "{{casino_b_signature}}"
+}
+
+# Response: expected, to be replaced with captured output
+# HTTP/1.1 200 OK
+# { "status": "accepted", "inbound_event_id": "0190...-inbound-b" }
+#
+# Both adapters produce the same canonical event (source, external_event_id, external_player_id,
+# amount_minor, currency, occurred_at), so everything after this point is identical to casino A.
+
+### Casino B refund notification is ignored
+POST {{engagement}}/v1/integrations/casino-b-demo/events
+Content-Type: application/json
+
+{
+  "type": "payment.refunded",
+  "data": { "txn_id": "txn-b-9002", "customer_ref": "B-CUST-12", "amount_cents": 7500, "ccy": "USD" },
+  "sent_at": "2026-11-21T10:06:00.000Z",
+  "signature": "{{casino_b_signature_refund}}"
+}
+
+# Response: expected, to be replaced with captured output
+# HTTP/1.1 200 OK
+# { "status": "ignored", "inbound_event_id": null }

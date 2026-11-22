@@ -1,4 +1,4 @@
-// Reconnect backoff policy for the singleton socket (ADR-0002 §6):
+// Reconnect backoff policy for the singleton socket (ADR-0014 §6):
 // exponential backoff with jitter, a ~30s cap, and a give-up bound. socket.io's
 // Manager implements this math natively, so `reconnectionOptions` configures it
 // directly; `computeBackoffDelay` mirrors the same formula as a pure, testable
