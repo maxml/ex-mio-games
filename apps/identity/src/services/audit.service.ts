@@ -1,6 +1,12 @@
 import { Injectable } from '@nestjs/common';
 import { runWithTenant } from '@ex-mio/tenancy';
-import { parseEvent, uuidv7, type AuditEntry, type EventEnvelope } from '@ex-mio/contracts';
+import {
+  parseEvent,
+  uuidv7,
+  type Action,
+  type AuditEntry,
+  type EventEnvelope,
+} from '@ex-mio/contracts';
 import type { AuditRow, Clock, Repos, Tx, UnitOfWork } from '../model/ports';
 
 const toEntry = (r: AuditRow): AuditEntry =>
@@ -61,6 +67,37 @@ export class AuditService {
         }),
       ),
     );
+  }
+
+  /**
+   * An operator's change of its own configuration (D-27), written in the caller's transaction so the
+   * change and its audit row commit or fail together. The action is the permission that allowed it.
+   */
+  async recordChangeIn(
+    tx: Tx,
+    entry: {
+      tenantId: string;
+      actorUserId: string;
+      actorTenantId: string;
+      actingTenantId: string | null;
+      action: Action;
+      reason: string;
+    },
+  ): Promise<void> {
+    await this.repos.audit.insert(tx, {
+      tenant_id: entry.tenantId,
+      id: uuidv7(),
+      occurred_at: new Date(this.clock.now() * 1000).toISOString(),
+      actor_user_id: entry.actorUserId,
+      actor_tenant_id: entry.actorTenantId,
+      acting_tenant_id: entry.actingTenantId,
+      action: entry.action,
+      reason: entry.reason,
+      service: null,
+      route: null,
+      decision: null,
+      caller_service: null,
+    });
   }
 
   async list(tenantId: string): Promise<AuditEntry[]> {

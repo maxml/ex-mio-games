@@ -5,10 +5,10 @@
 # trimmed response, then asserts the expected status and fields; the first mismatch prints the
 # request and the full response and exits non-zero.
 #
-# Public routes only, with three marked exceptions where the product has no public route yet:
-#   SETUP-DB-1  the Wheel of Fortune reward table and the deposit rule of a new tenant (no admin API)
-#   SETUP-DB-2  the fake payment provider's own subscription id, which the provider's callback carries
-#   (see "Known gaps" in the README; the script says so where it happens)
+# Public routes only. (The two database steps of the first version are gone: the wheel and rule are
+# published with PUT /v1/operator/wheel and /rules, the provider subscription id is read from
+# GET /v1/operator/plan, and the casino reward API is registered with PUT
+# /v1/operator/integrations/:casino/reward-api.)
 #
 # Usage:   docker compose -p demo up -d --wait && scripts/demo.sh
 # Env:     COMPOSE_PROJECT (default "demo"), *_PORT (same names compose uses), DEMO_SLUG_SUFFIX.
@@ -22,6 +22,7 @@ SIM="http://localhost:${CASINO_SIM_PORT:-4004}"
 WEB="http://localhost:${WEB_PORT:-3000}"
 # Addresses of the services as the casino simulator sees them (inside the compose network).
 ENG_INTERNAL="http://engagement:4002"
+SIM_INTERNAL="http://casino-sim:4004"
 COMPOSE=(docker compose -p "${COMPOSE_PROJECT:-demo}")
 PG_PASSWORD="${POSTGRES_PASSWORD:-postgres-dev}"
 # Local-development value from docker-compose.yml (payments: FAKE_PROVIDER_WEBHOOK_SECRET).
@@ -129,10 +130,6 @@ launch_token() { # key_id secret platform external_player_id
   printf '%s.%s.%s' "$h" "$p" "$s"
 }
 
-psql_as() { # database, sql (superuser inside the postgres container; used only for the two SETUP-DB steps)
-  "${COMPOSE[@]}" exec -T postgres psql -U postgres -d "$1" -v ON_ERROR_STOP=1 -tA -c "$2"
-}
-
 # ---- small domain helpers -------------------------------------------------------------------------
 
 auth() { printf 'authorization: Bearer %s' "$1"; }
@@ -217,8 +214,11 @@ for X in A B; do
   ATTEMPT_ID="$(jqr .id)"
   SUB_ID="$(jqr .subscription_id)"
 
-  note "SETUP-DB-2: the provider's callback carries ITS subscription id, which no public route returns; read it from payments' own table, then sign the callback like the provider does."
-  PROVIDER_SUB="$(psql_as payments "SELECT provider_subscription_id FROM subscriptions WHERE tenant_id='${TID[$X]}' AND id='$SUB_ID'")"
+  note "the provider's callback carries ITS subscription id; the operator reads it from GET /v1/operator/plan, then signs the callback like the provider does."
+  call GET "$PAY/v1/operator/plan" -H "$(auth "${TOK_PAY[$X]}")"
+  expect_status 200
+  expect_eq "plan subscription" "$(jqr .subscription_id)" "$SUB_ID"
+  PROVIDER_SUB="$(jqr .provider_subscription_id)"
   [ -n "$PROVIDER_SUB" ] || fail "no provider subscription id for $SUB_ID"
   WEBHOOK="$(jq -nc --arg t "${TID[$X]}" --arg s "$PROVIDER_SUB" --arg e "evt-$SUF-$X" \
     '{eventId:$e,tenantId:$t,subscriptionId:$s,status:"active",version:1,amountMinor:4900,currency:"USD",periodStart:"2026-11-01T00:00:00.000Z",periodEnd:"2026-12-01T00:00:00.000Z"}')"
@@ -245,13 +245,24 @@ for X in A B; do
   expect_status 200
   expect_jq ".slug==\"${SLUG[$X]}\""
 
-  heading "Casino $X: SETUP-DB-1 one deposit rule (deposit >= 20.00 EUR gives 1 spin) and one weighted reward table"
-  note "There is no admin route for rules or the reward table yet, so they are inserted into engagement's own tables."
-  WHEEL_ID="0190a1b2-c3d4-4e5f-8a6b-2000000000${X,,}1"
-  RULE="$(jq -nc --arg w "$WHEEL_ID" '{name:"Deposit 20 EUR, 1 spin",trigger:"deposit.succeeded",conditions:{min_amount_minor:2000,currency:"EUR"},action:{type:"grant_spins",spins:1,wheel_id:$w},active_from:"2026-01-01T00:00:00.000Z",active_to:null,max_grants_per_player:null}')"
+  heading "Casino $X operator registers its reward API (casino-sim, production) so MIO can issue bonuses"
+  call PUT "$IDN/v1/operator/integrations/${PLAT[$X]}/reward-api" -H 'content-type: application/json' -H "$(auth "${TOK_ID[$X]}")" \
+    -d "$(jq -nc --arg u "$SIM_INTERNAL" --arg k "demo-reward-key-${X,,}" '{environment:"production",base_url:$u,api_key:$k}')"
+  note "no route of the stack answers with the secret again; it is sealed at rest and served to engagement only."
+  expect_status 200
+  expect_jq '.has_api_key==true and (has("api_key")|not)'
+
+  heading "Casino $X operator publishes one weighted reward table and one deposit rule (deposit >= 20.00 EUR gives 1 spin)"
+  note "A new tenant already has a default wheel and rule; the operator replaces them with the next version."
   TABLE='{"name":"Demo wheel","segments":[{"label":"200 coins","weight":6,"reward":{"type":"coins","amount":200}},{"label":"300 coins","weight":3,"reward":{"type":"coins","amount":300}},{"label":"500 coins","weight":1,"reward":{"type":"coins","amount":500}}]}'
-  psql_as engagement "INSERT INTO rules (tenant_id, rule_id, version, definition) VALUES ('${TID[$X]}', 'deposit-20', 1, '$RULE'::jsonb); INSERT INTO reward_tables (tenant_id, wheel_id, version, definition) VALUES ('${TID[$X]}', '$WHEEL_ID', 1, '$TABLE'::jsonb);" >/dev/null || fail "seeding rule and wheel failed"
-  pass "rule and reward table inserted for ${SLUG[$X]}"
+  call PUT "$ENG/v1/operator/wheel" -H 'content-type: application/json' -H "$(auth "${OP_ENG[$X]}")" -d "$TABLE"
+  expect_status 200
+  expect_jq '.version>=2'
+  call PUT "$ENG/v1/operator/rules" -H 'content-type: application/json' -H "$(auth "${OP_ENG[$X]}")" \
+    -d '{"name":"Deposit 20 EUR, 1 spin","min_amount_minor":2000,"currency":"EUR","spins":1}'
+  expect_status 200
+  expect_jq '.version>=2'
+  pass "rule and reward table published for ${SLUG[$X]}"
 done
 
 heading "Casino A operator adds a Bonus Store item (50 coins for a 5.00 EUR bonus)"

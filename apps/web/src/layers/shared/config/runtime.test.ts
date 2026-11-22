@@ -136,12 +136,29 @@ describe('resolveWsBaseUrl', () => {
 describe('getPublicRuntimeConfig', () => {
   it('reads PUBLIC_API_URL at call time, defaulting to same origin ("")', () => {
     const restore = setEnv('PUBLIC_API_URL', undefined);
+    const restoreRt = setEnv('PUBLIC_REALTIME_URL', undefined);
     try {
-      expect(getPublicRuntimeConfig()).toEqual({ apiUrl: '' });
+      expect(getPublicRuntimeConfig()).toEqual({ apiUrl: '', realtimeUrl: '' });
       process.env.PUBLIC_API_URL = 'https://api.example.com';
-      expect(getPublicRuntimeConfig()).toEqual({ apiUrl: 'https://api.example.com' });
+      expect(getPublicRuntimeConfig()).toEqual({
+        apiUrl: 'https://api.example.com',
+        realtimeUrl: '',
+      });
     } finally {
       restore();
+      restoreRt();
+    }
+  });
+
+  it('D-27: serves realtimeUrl from PUBLIC_REALTIME_URL, and the socket client uses it', () => {
+    const restoreRt = setEnv('PUBLIC_REALTIME_URL', 'https://rt.example.com');
+    try {
+      expect(getPublicRuntimeConfig().realtimeUrl).toBe('https://rt.example.com');
+      (globalThis as MutableGlobal).__APP_CONFIG__ = { realtimeUrl: 'https://rt.example.com' };
+      expect(resolveWsBaseUrl()).toBe('wss://rt.example.com');
+    } finally {
+      delete (globalThis as MutableGlobal).__APP_CONFIG__;
+      restoreRt();
     }
   });
 });

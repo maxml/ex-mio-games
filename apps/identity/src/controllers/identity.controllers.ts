@@ -1,6 +1,9 @@
-import { Body, Controller, Get, HttpCode, Param, Post, Req } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, Param, Post, Put, Req } from '@nestjs/common';
 import { z } from 'zod';
 import {
+  CasinoParam,
+  PutRewardApiRequest,
+  type RewardApiSummary,
   InternalResolvePlayerRequest,
   InviteStaffRequest,
   IssueCredentialRequest,
@@ -65,6 +68,7 @@ const UserIdParam = z.object({ userId: Uuid });
 const TenantIdParam = z.object({ tenantId: Uuid });
 const TenantUserParam = z.object({ tenantId: Uuid, userId: Uuid });
 const SlugParam = z.object({ slug: z.string().trim().min(1).max(48) });
+const CasinoParams = z.object({ casino: CasinoParam });
 const RotateParams = z.object({ keyId: z.string().min(1).max(200) });
 
 @Controller('v1/auth')
@@ -215,6 +219,20 @@ export class CredentialsController {
     const { keyId } = parseInput(RotateParams, params);
     const { grace_seconds } = parseInput(RotateRequest, body ?? {});
     return this.credentials.rotate(subject(), keyId, { graceSeconds: grace_seconds });
+  }
+}
+
+/** D-27: the operator's own casino integration settings. */
+@Controller('v1/operator/integrations')
+export class OperatorIntegrationsController {
+  constructor(private readonly credentials: CredentialsService) {}
+
+  /** Where MIO calls the casino to issue a reward, and the secret that signs those calls. */
+  @RequirePermission('credentials.rotate')
+  @Put(':casino/reward-api')
+  putRewardApi(@Param() params: unknown, @Body() body: unknown): Promise<RewardApiSummary> {
+    const { casino } = parseInput(CasinoParams, params);
+    return this.credentials.putRewardApi(subject(), casino, parseInput(PutRewardApiRequest, body));
   }
 }
 

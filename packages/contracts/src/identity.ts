@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { CasinoRewardApiConfig } from './casino-adapter';
+import { CasinoRewardApiConfig, IssueDeadlineMs } from './casino-adapter';
 import { Uuid } from './ids';
 import { COIN_VALUE_ACTIONS } from './payments';
 
@@ -453,6 +453,44 @@ export const IssueCredentialRequest = z
   })
   .strict();
 export type IssueCredentialRequest = z.infer<typeof IssueCredentialRequest>;
+
+/**
+ * D-27: `PUT /v1/operator/integrations/:casino/reward-api`. The operator registers where MIO calls
+ * the casino to issue a reward, and the secret MIO signs those calls with, for ONE environment. The
+ * sandbox endpoint is served only beside a production one (engagement never falls back to either).
+ */
+export const CasinoParam = z
+  .string()
+  .trim()
+  .toLowerCase()
+  .regex(/^[a-z0-9][a-z0-9-]{0,63}$/);
+export const PutRewardApiRequest = z
+  .object({
+    environment: IntegrationEnvironment.default('production'),
+    base_url: z
+      .string()
+      .url()
+      .max(2048)
+      .refine((u) => /^https?:\/\//i.test(u), { message: 'base_url must be http or https' }),
+    /** The secret that signs issuance requests; sealed at rest, never returned. */
+    api_key: z.string().min(1).max(512).optional(),
+    /** Overrides the adapter type's default deadline; production only. */
+    issue_deadline_ms: IssueDeadlineMs.optional(),
+  })
+  .strict();
+export type PutRewardApiRequest = z.infer<typeof PutRewardApiRequest>;
+
+/** What the PUT answers: the secret is only reported as present, never returned. */
+export const RewardApiSummary = z
+  .object({
+    platform: z.string(),
+    environment: IntegrationEnvironment,
+    base_url: z.string(),
+    has_api_key: z.boolean(),
+    issue_deadline_ms: IssueDeadlineMs.nullable(),
+  })
+  .strict();
+export type RewardApiSummary = z.infer<typeof RewardApiSummary>;
 
 export const RotateRequest = z
   .object({

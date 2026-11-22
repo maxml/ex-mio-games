@@ -8,6 +8,7 @@ import type {
   CredentialRow,
   PlayerLinkRow,
   Repos,
+  RewardApiRow,
   SigningKeyRow,
   TenantRow,
   Tx,
@@ -233,6 +234,40 @@ export function pgRepos(): Repos {
           `UPDATE "integration_credentials" SET "status" = $3, "retiring_until" = $4 WHERE "tenant_id" = $1 AND "key_id" = $2`,
           [tenantId, keyId, patch.status, ts(patch.retiring_until)],
         );
+      },
+    },
+    rewardApis: {
+      async upsert(tx, row) {
+        await m(tx).query(
+          `INSERT INTO "reward_apis"
+             ("tenant_id","platform","environment","base_url","api_key_enc","issue_deadline_ms","updated_at")
+           VALUES ($1,$2,$3,$4,$5,$6, now())
+           ON CONFLICT ("tenant_id","platform","environment") DO UPDATE
+             SET "base_url" = EXCLUDED."base_url", "api_key_enc" = EXCLUDED."api_key_enc",
+                 "issue_deadline_ms" = EXCLUDED."issue_deadline_ms", "updated_at" = now()`,
+          [
+            row.tenant_id,
+            row.platform,
+            row.environment,
+            row.base_url,
+            row.api_key_enc,
+            row.issue_deadline_ms,
+          ],
+        );
+      },
+      async list(tx, tenantId) {
+        const rows = (await m(tx).query(
+          `SELECT * FROM "reward_apis" WHERE "tenant_id" = $1 ORDER BY "platform", "environment"`,
+          [tenantId],
+        )) as Array<Record<string, unknown>>;
+        return rows.map((r) => ({
+          tenant_id: String(r.tenant_id),
+          platform: String(r.platform),
+          environment: r.environment as RewardApiRow['environment'],
+          base_url: String(r.base_url),
+          api_key_enc: r.api_key_enc === null ? null : String(r.api_key_enc),
+          issue_deadline_ms: r.issue_deadline_ms === null ? null : Number(r.issue_deadline_ms),
+        }));
       },
     },
     audit: {

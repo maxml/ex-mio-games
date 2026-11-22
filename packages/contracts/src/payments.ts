@@ -196,6 +196,22 @@ export const Subscription = z.object({
 });
 export type Subscription = z.infer<typeof Subscription>;
 
+/**
+ * D-27: `GET /v1/operator/plan`. The operator's current plan and the provider's own subscription id,
+ * which the provider's callbacks carry, so nobody has to read it from the database.
+ */
+export const OperatorPlan = z
+  .object({
+    subscription_id: Uuid,
+    status: z.enum(SUBSCRIPTION_STATUSES),
+    plan: z.object({ id: Uuid, code: z.string().min(1), name: z.string().min(1) }).strict(),
+    provider: z.string(),
+    provider_subscription_id: z.string(),
+    current_period_end: z.string().datetime(),
+  })
+  .strict();
+export type OperatorPlan = z.infer<typeof OperatorPlan>;
+
 export const INVOICE_STATUSES = ['paid', 'failed'] as const;
 export const Invoice = z.object({
   id: Uuid,

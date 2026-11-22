@@ -146,6 +146,23 @@ export interface CredentialsRepo {
   ): Promise<void>;
 }
 
+/** D-27: where MIO calls a casino to issue a reward, per tenant, casino platform and environment. */
+export interface RewardApiRow {
+  tenant_id: string;
+  platform: string;
+  environment: IntegrationEnvironment;
+  base_url: string;
+  /** Sealed with the credentials KEK; null when the casino needs no signing secret. */
+  api_key_enc: string | null;
+  issue_deadline_ms: number | null;
+}
+
+export interface RewardApisRepo {
+  /** Insert, or replace the row of the same (tenant, platform, environment). */
+  upsert(tx: Tx, row: RewardApiRow): Promise<void>;
+  list(tx: Tx, tenantId: string): Promise<RewardApiRow[]>;
+}
+
 export interface AuditRepo {
   /** False when a row with this (tenant, id) already existed (a redelivery). */
   insert(tx: Tx, row: AuditRow): Promise<boolean>;
@@ -164,6 +181,7 @@ export interface Repos {
   players: PlayersRepo;
   jti: LaunchJtiRepo;
   credentials: CredentialsRepo;
+  rewardApis: RewardApisRepo;
   audit: AuditRepo;
   keys: SigningKeysRepo;
 }

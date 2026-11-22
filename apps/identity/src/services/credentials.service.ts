@@ -3,12 +3,15 @@ import {
   type CredentialIssued,
   type CredentialSummary,
   type IntegrationEnvironment,
+  type PutRewardApiRequest,
+  type RewardApiSummary,
   type TenantIntegration,
 } from '@ex-mio/contracts';
 import { emitProductEventAs, type ProductAuth } from '@ex-mio/logger';
 import { IdentityError } from '../errors';
-import type { Clock, CredentialRow, Repos, UnitOfWork } from '../model/ports';
+import type { Clock, CredentialRow, Repos, RewardApiRow, UnitOfWork } from '../model/ports';
 import { AccessService, effectiveTenant, type Subject } from './access.service';
+import { AuditService } from './audit.service';
 import {
   compactUuid,
   decryptSecret,
@@ -45,7 +48,59 @@ export class CredentialsService {
     private readonly clock: Clock,
     private readonly access: AccessService,
     private readonly kek: string,
+    private readonly audit: AuditService,
   ) {}
+
+  /**
+   * D-27: the operator registers where MIO calls the casino to issue a reward, and the secret that
+   * signs those calls, for one environment. `credentials.rotate` (operator_admin only) decides who
+   * may; the tenant is the subject's own (or the acting tenant), never an input. The row and its
+   * audit row are one transaction. The secret is sealed and never returned.
+   */
+  async putRewardApi(
+    subject: Subject,
+    casino: string,
+    input: PutRewardApiRequest,
+  ): Promise<RewardApiSummary> {
+    const tenantId = effectiveTenant(subject);
+    await this.access.authorize(subject, 'credentials.rotate', { tenant_id: tenantId });
+    const row: RewardApiRow = {
+      tenant_id: tenantId,
+      platform: casino,
+      environment: input.environment,
+      base_url: input.base_url,
+      api_key_enc: input.api_key === undefined ? null : encryptSecret(input.api_key, this.kek),
+      issue_deadline_ms:
+        input.environment === 'production' ? (input.issue_deadline_ms ?? null) : null,
+    };
+    await this.uow.run(tenantId, async (tx) => {
+      if (input.environment === 'sandbox') {
+        // The sandbox endpoint is served beside a production one, never instead of it.
+        const existing = await this.repos.rewardApis.list(tx, tenantId);
+        const hasProduction = existing.some(
+          (r) => r.platform === casino && r.environment === 'production',
+        );
+        if (!hasProduction)
+          throw new IdentityError('VALIDATION_FAILED', 'register the production reward API first');
+      }
+      await this.repos.rewardApis.upsert(tx, row);
+      await this.audit.recordChangeIn(tx, {
+        tenantId,
+        actorUserId: subject.userId,
+        actorTenantId: subject.tenantId,
+        actingTenantId: subject.acting?.tenantId ?? null,
+        action: 'credentials.rotate',
+        reason: `reward-api ${casino} ${input.environment} set`,
+      });
+    });
+    return {
+      platform: casino,
+      environment: row.environment,
+      base_url: row.base_url,
+      has_api_key: row.api_key_enc !== null,
+      issue_deadline_ms: row.issue_deadline_ms,
+    };
+  }
 
   private async create(
     tenantId: string,
@@ -226,6 +281,7 @@ export class CredentialsService {
         .slice(0, 2)
         .map((r) => decryptSecret(r.secret_enc, this.kek));
     const sandboxSecrets = head.environment === 'production' ? secretsOf('sandbox') : [];
+    const rewardApi = await this.rewardApiOf(tenantId, head.platform);
     return {
       tenant_id: tenantId,
       platform: head.platform,
@@ -233,8 +289,40 @@ export class CredentialsService {
       environment: head.environment,
       webhook_secrets: secretsOf(head.environment),
       ...(sandboxSecrets.length > 0 ? { sandbox: { webhook_secrets: sandboxSecrets } } : {}),
+      ...(rewardApi ? { reward_api: rewardApi } : {}),
       // per-tenant, derived from the KEK so it is stable, secret and needs no extra column (D-12)
       player_hash_key: hmacHex(this.kek, `player-hash-key:${tenantId}`),
+    };
+  }
+
+  /**
+   * D-27: the reward API of the tenant's casino platform, as engagement's `CasinoRewardApiConfig`.
+   * No production endpoint means no reward API at all (the sandbox one is never served alone), so
+   * an order ends in NEEDS_REVIEW `no_adapter` instead of reaching a casino by guess. The tenant is
+   * the argument; the secrets are opened here and served to engagement only.
+   */
+  private async rewardApiOf(
+    tenantId: string,
+    platform: string,
+  ): Promise<TenantIntegration['reward_api']> {
+    const rows = await this.uow.run(tenantId, (tx) => this.repos.rewardApis.list(tx, tenantId));
+    const of = (environment: IntegrationEnvironment) =>
+      rows.find(
+        (r) => r.tenant_id === tenantId && r.platform === platform && r.environment === environment,
+      );
+    const prod = of('production');
+    if (!prod) return undefined;
+    const sandbox = of('sandbox');
+    const open = (r: RewardApiRow | undefined): string | undefined =>
+      r?.api_key_enc ? decryptSecret(r.api_key_enc, this.kek) : undefined;
+    const apiKey = open(prod);
+    const sandboxKey = open(sandbox);
+    return {
+      base_url: prod.base_url,
+      ...(apiKey ? { api_key: apiKey } : {}),
+      ...(sandbox ? { sandbox_base_url: sandbox.base_url } : {}),
+      ...(sandboxKey ? { sandbox_api_key: sandboxKey } : {}),
+      ...(prod.issue_deadline_ms ? { issue_deadline_ms: prod.issue_deadline_ms } : {}),
     };
   }
 

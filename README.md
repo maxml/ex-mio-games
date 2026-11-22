@@ -193,35 +193,31 @@ Realtime through the web origin (one Socket.IO client, namespace `/rt`, one-time
 
 ### Known gaps from the recorded run
 
-These are product behaviours the demo script exposed. They are recorded, not hidden, and the script exits
-non-zero while they exist.
+The first recorded run exposed three gaps. All three are closed (decision D-27); the captured output above is
+from that first run.
 
-- **Socket.IO through the web origin does not connect.** `GET /socket.io/?EIO=4` on port 3000 answers `308`
-  to `/socket.io?EIO=4`, and the Next rewrite then proxies that path (no trailing slash) to engagement, which
-  answers `404 Cannot GET /socket.io`. Long-polling therefore fails through the web origin, and so does the
-  websocket upgrade (no `101`). On engagement's own port both work (`101 Switching Protocols`, packets flow),
-  and the pushed `spin.result` and `balance.changed` frames arrive there.
-- **Redemption cannot reach the casino on a fresh stack.** Identity does not serve a `reward_api` for a tenant
-  integration (no route or credential field sets one), so engagement has no reward port, and every order ends
-  as `NEEDS_REVIEW` / `no_adapter` with the coins held. The issuance, the final status, and the timeout and
-  recovery case therefore do not complete in the recorded run.
-- **A new tenant has no deposit rule and no wheel.** There is no admin route for them, so the script inserts
-  them into engagement's tables (marked `SETUP-DB-1` in the script). The fake payment provider's own
-  subscription id, which its webhook carries, is read from payments' table the same way (`SETUP-DB-2`).
+- **Socket.IO.** The web `/config` now returns `realtimeUrl` (engagement's public URL, `PUBLIC_REALTIME_URL`),
+  engagement allows the web origin (`REALTIME_ALLOWED_ORIGINS`), and the same-origin `/socket.io` rewrite
+  stays as a fallback with `skipTrailingSlashRedirect` so `/socket.io/` is no longer redirected.
+- **Redemption reaching the casino.** An operator registers the casino reward API with
+  `PUT /v1/operator/integrations/:casino/reward-api` (identity); it is served to engagement as `reward_api`.
+- **Wheel, rules and subscription id.** `PUT /v1/operator/wheel` and `PUT /v1/operator/rules` (engagement,
+  `operator_admin`), a default wheel and rule on signup, and `GET /v1/operator/plan` (payments) replace the
+  database steps; the script no longer reads or writes any database.
 
 ## Service map, ports and environment
 
-| Container       | Host port          | Owns                                                                                          |
-| --------------- | ------------------ | --------------------------------------------------------------------------------------------- |
-| `web`           | 3000               | Next.js app: player widget and operator console, a BFF in front of the services               |
-| `identity`      | 4001               | tenants, users, tokens and JWKS, player mapping, integration credentials, audit (own database) |
+| Container       | Host port          | Owns                                                                                                                         |
+| --------------- | ------------------ | ---------------------------------------------------------------------------------------------------------------------------- |
+| `web`           | 3000               | Next.js app: player widget and operator console, a BFF in front of the services                                              |
+| `identity`      | 4001               | tenants, users, tokens and JWKS, player mapping, integration credentials, audit (own database)                               |
 | `engagement`    | 4002               | casino ingest and adapters, rules, wheel and spins, Bonus Store, redemption saga, the `/rt` Socket.IO gateway (own database) |
-| `payments`      | 4003               | the only place coins change: ledger, reserves, reconciliation, plan billing (own database)    |
-| `casino-sim`    | 4004               | two simulated casinos with fault injection (`SIM_FAULTS=1` in compose)                        |
-| `postgres`      | 54329              | one database and one non-superuser app role per service, plus an owner role for migrations    |
-| `rabbitmq`      | 55672, UI on 15672 | event bus (outbox and inbox in every service)                                                 |
-| `redis`         | 56379              | append-only persistence; an optional balance projection and a health probe                    |
-| `firebase-auth` | 9099               | Firebase Auth Emulator, project `demo-ex-mio`                                                 |
+| `payments`      | 4003               | the only place coins change: ledger, reserves, reconciliation, plan billing (own database)                                   |
+| `casino-sim`    | 4004               | two simulated casinos with fault injection (`SIM_FAULTS=1` in compose)                                                       |
+| `postgres`      | 54329              | one database and one non-superuser app role per service, plus an owner role for migrations                                   |
+| `rabbitmq`      | 55672, UI on 15672 | event bus (outbox and inbox in every service)                                                                                |
+| `redis`         | 56379              | append-only persistence; an optional balance projection and a health probe                                                   |
+| `firebase-auth` | 9099               | Firebase Auth Emulator, project `demo-ex-mio`                                                                                |
 
 How the services talk: services publish events over RabbitMQ through a transactional outbox and consume them
 through an idempotent inbox. Two calls are synchronous: the coin reserve for a redemption (engagement to
@@ -235,28 +231,28 @@ Override any host port with the variable named in `docker-compose.yml` (`POSTGRE
 
 Main variables (all have a working default in compose; the values there are for local development only):
 
-| Variable                                   | Service            | Meaning                                                              |
-| ------------------------------------------ | ------------------ | -------------------------------------------------------------------- |
-| `DATABASE_URL`                             | every service      | runtime connection as `<service>_app` (not the owner, no DDL)        |
-| `MIGRATION_DATABASE_URL`                   | every service      | connection as `<service>_owner`, used by `node dist/migrate.js` only |
-| `IDENTITY_URL`                             | engagement, payments | where tokens and keys are verified                                 |
-| `SERVICE_CLIENT_SECRET`                    | engagement, payments | this service's client secret for service tokens                    |
-| `SERVICE_CLIENT_SECRETS`                   | identity           | the registry of service client secrets                               |
-| `CREDENTIALS_KEK`                          | identity           | key that encrypts casino integration secrets                         |
-| `PLATFORM_ADMIN_EMAIL`, `PLATFORM_ADMIN_PASSWORD` | identity    | the platform admin                                                   |
-| `IDENTITY_PROVIDER`                        | identity           | `firebase-emulator` (default) or `fake` (tests only)                 |
-| `FIREBASE_AUTH_EMULATOR_HOST`, `FIREBASE_PROJECT` | identity    | the emulator address and project                                     |
-| `BASE_DOMAIN`                              | identity           | tenants resolve from `<slug>.<BASE_DOMAIN>` (`mio.localhost`)        |
-| `REDIS_URL`                                | engagement, payments | optional; payments uses it for the balance projection              |
-| `PAYMENTS_URL`                             | engagement         | where the coin reserve is called                                     |
-| `FAKE_PROVIDER_WEBHOOK_SECRET`             | payments           | billing webhook secret; required in production unless Stripe is set  |
-| `STRIPE_SECRET_KEY`                        | payments           | selects the Stripe stub, which throws on every call                  |
-| `LEDGER_JOBS_INTERVAL_SECONDS`             | payments           | interval of the reconciliation and usage-report jobs                 |
-| `DATABASE_SSL`                             | every service      | `disable`, `require` or `verify-full`; stated explicitly in production |
-| `API_URL`                                  | web                | server-side URL of identity inside the compose network               |
-| `REALTIME_UPSTREAM`                        | web (build time)   | where `/socket.io/*` is proxied (default `http://engagement:4002`)   |
-| `REALTIME_ALLOWED_ORIGINS`                 | engagement         | comma-separated origins that may open a socket cross-origin          |
-| `SIM_FAULTS`                               | casino-sim         | `1` turns on fault injection                                         |
+| Variable                                          | Service              | Meaning                                                                |
+| ------------------------------------------------- | -------------------- | ---------------------------------------------------------------------- |
+| `DATABASE_URL`                                    | every service        | runtime connection as `<service>_app` (not the owner, no DDL)          |
+| `MIGRATION_DATABASE_URL`                          | every service        | connection as `<service>_owner`, used by `node dist/migrate.js` only   |
+| `IDENTITY_URL`                                    | engagement, payments | where tokens and keys are verified                                     |
+| `SERVICE_CLIENT_SECRET`                           | engagement, payments | this service's client secret for service tokens                        |
+| `SERVICE_CLIENT_SECRETS`                          | identity             | the registry of service client secrets                                 |
+| `CREDENTIALS_KEK`                                 | identity             | key that encrypts casino integration secrets                           |
+| `PLATFORM_ADMIN_EMAIL`, `PLATFORM_ADMIN_PASSWORD` | identity             | the platform admin                                                     |
+| `IDENTITY_PROVIDER`                               | identity             | `firebase-emulator` (default) or `fake` (tests only)                   |
+| `FIREBASE_AUTH_EMULATOR_HOST`, `FIREBASE_PROJECT` | identity             | the emulator address and project                                       |
+| `BASE_DOMAIN`                                     | identity             | tenants resolve from `<slug>.<BASE_DOMAIN>` (`mio.localhost`)          |
+| `REDIS_URL`                                       | engagement, payments | optional; payments uses it for the balance projection                  |
+| `PAYMENTS_URL`                                    | engagement           | where the coin reserve is called                                       |
+| `FAKE_PROVIDER_WEBHOOK_SECRET`                    | payments             | billing webhook secret; required in production unless Stripe is set    |
+| `STRIPE_SECRET_KEY`                               | payments             | selects the Stripe stub, which throws on every call                    |
+| `LEDGER_JOBS_INTERVAL_SECONDS`                    | payments             | interval of the reconciliation and usage-report jobs                   |
+| `DATABASE_SSL`                                    | every service        | `disable`, `require` or `verify-full`; stated explicitly in production |
+| `API_URL`                                         | web                  | server-side URL of identity inside the compose network                 |
+| `REALTIME_UPSTREAM`                               | web (build time)     | where `/socket.io/*` is proxied (default `http://engagement:4002`)     |
+| `REALTIME_ALLOWED_ORIGINS`                        | engagement           | comma-separated origins that may open a socket cross-origin            |
+| `SIM_FAULTS`                                      | casino-sim           | `1` turns on fault injection                                           |
 
 Each service applies its own migrations (`node dist/migrate.js`) before it serves, and starts only after what it
 needs reports healthy. Probes: `GET /healthz/live` (the process is up) and `GET /healthz/ready` (dependencies
@@ -275,19 +271,19 @@ there is no replay of events missed while disconnected: the client resyncs over 
 You need Node 24 and pnpm 9 for everything below (`pnpm install --frozen-lockfile` first). Every heavy command
 can be run for one project with `pnpm nx run <project>:<target>`.
 
-| Suite                                  | Command                                                         | Needs                       |
-| -------------------------------------- | --------------------------------------------------------------- | --------------------------- |
-| All unit and contract tests            | `pnpm test` (nx, every project)                                 | nothing running             |
-| One service or package                 | `pnpm --filter @ex-mio/<name> test` (identity, engagement, payments, contracts, service-kit, bus, tenancy, idempotency, logger, casino-sim) | nothing running |
-| Web                                    | `pnpm --filter @ex-mio/web test` (vitest)                       | nothing running             |
-| Design system, contrast and colour gate | `pnpm --filter @ex-mio/ui test`                                | nothing running             |
-| Payments against Postgres              | `pnpm --filter @ex-mio/payments test:db`                        | `docker compose up -d --wait postgres` |
-| Engagement store against Postgres      | `pnpm --filter @ex-mio/engagement test:pg`                      | `docker compose up -d --wait postgres` |
-| Whole stack: health, roles, tenant isolation, idempotency, bus, ingest, saga, audit | `pnpm test:compose` | `docker compose up -d --wait` (the stack on its default ports) |
-| Lint (layering, package boundaries)    | `pnpm lint`                                                     | nothing running             |
-| Typecheck                              | `pnpm typecheck`                                                | nothing running             |
-| Frontend layering                      | `pnpm lint:fsd`                                                 | nothing running             |
-| Design system in a browser             | `pnpm storybook` (port 6006)                                    | nothing running             |
+| Suite                                                                               | Command                                                                                                                                     | Needs                                                          |
+| ----------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------- |
+| All unit and contract tests                                                         | `pnpm test` (nx, every project)                                                                                                             | nothing running                                                |
+| One service or package                                                              | `pnpm --filter @ex-mio/<name> test` (identity, engagement, payments, contracts, service-kit, bus, tenancy, idempotency, logger, casino-sim) | nothing running                                                |
+| Web                                                                                 | `pnpm --filter @ex-mio/web test` (vitest)                                                                                                   | nothing running                                                |
+| Design system, contrast and colour gate                                             | `pnpm --filter @ex-mio/ui test`                                                                                                             | nothing running                                                |
+| Payments against Postgres                                                           | `pnpm --filter @ex-mio/payments test:db`                                                                                                    | `docker compose up -d --wait postgres`                         |
+| Engagement store against Postgres                                                   | `pnpm --filter @ex-mio/engagement test:pg`                                                                                                  | `docker compose up -d --wait postgres`                         |
+| Whole stack: health, roles, tenant isolation, idempotency, bus, ingest, saga, audit | `pnpm test:compose`                                                                                                                         | `docker compose up -d --wait` (the stack on its default ports) |
+| Lint (layering, package boundaries)                                                 | `pnpm lint`                                                                                                                                 | nothing running                                                |
+| Typecheck                                                                           | `pnpm typecheck`                                                                                                                            | nothing running                                                |
+| Frontend layering                                                                   | `pnpm lint:fsd`                                                                                                                             | nothing running                                                |
+| Design system in a browser                                                          | `pnpm storybook` (port 6006)                                                                                                                | nothing running                                                |
 
 `pnpm test` (`nx run-many -t test`, one project at a time) on this commit. Twelve of the thirteen projects pass:
 
@@ -304,8 +300,10 @@ The one failure is a web timing test that ran on a machine at load average 30:
 `player-widget-money.test.tsx` "says the result is unknown, re-queries, and shows the result when the re-query
 succeeds" did not find the text `Result unknown` within its wait. It was not re-run in isolation, so it is not
 yet shown to be a flake.
+
 <!-- OUTPUT: `pnpm --filter @ex-mio/payments test:db` and `pnpm --filter @ex-mio/engagement test:pg` -->
 <!-- OUTPUT: `pnpm test:compose` (suite and test counts against the running stack) -->
+
 ```text
 $ pnpm lint
  NX   Successfully ran target lint for 13 projects
@@ -346,40 +344,40 @@ second one.
 Checked against the code. The full table with the reasons is section 14 of
 [`docs/architecture/overview.md`](docs/architecture/overview.md#14-built-versus-designed).
 
-| Area                                                                                         | Status                                                    |
-| -------------------------------------------------------------------------------------------- | --------------------------------------------------------- |
-| Five services, one container and one database each, one compose file                         | Built                                                     |
-| Tenancy: token claim, row-level security, separate owner and app roles, isolation tests      | Built                                                     |
-| Two casino adapters, canonical model, adapter contract suite, simulator with fault injection | Built                                                     |
-| Signed event ingestion, validation, deduplication, outbox and inbox, dead-letter replay      | Built                                                     |
-| Rules engine, versioned reward table, server-side deterministic wheel                        | Built                                                     |
-| Double-entry coin ledger, reserve, capture, release, refund, reconciliation job              | Built (reports a mismatch, no pager)                      |
-| Bonus Store, redemption saga with recovery from unknown outcomes, operator review route      | Built                                                     |
-| Identity: tokens, JWKS, RBAC, acting sessions with audit, service tokens, launch exchange    | Built                                                     |
-| Operator signup and plan checkout against the fake provider                                  | Built                                                     |
-| Realtime push over Socket.IO with a one-time ticket                                          | Built, at most once                                       |
+| Area                                                                                         | Status                                                                 |
+| -------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------- |
+| Five services, one container and one database each, one compose file                         | Built                                                                  |
+| Tenancy: token claim, row-level security, separate owner and app roles, isolation tests      | Built                                                                  |
+| Two casino adapters, canonical model, adapter contract suite, simulator with fault injection | Built                                                                  |
+| Signed event ingestion, validation, deduplication, outbox and inbox, dead-letter replay      | Built                                                                  |
+| Rules engine, versioned reward table, server-side deterministic wheel                        | Built                                                                  |
+| Double-entry coin ledger, reserve, capture, release, refund, reconciliation job              | Built (reports a mismatch, no pager)                                   |
+| Bonus Store, redemption saga with recovery from unknown outcomes, operator review route      | Built                                                                  |
+| Identity: tokens, JWKS, RBAC, acting sessions with audit, service tokens, launch exchange    | Built                                                                  |
+| Operator signup and plan checkout against the fake provider                                  | Built                                                                  |
+| Realtime push over Socket.IO with a one-time ticket                                          | Built, at most once                                                    |
 | Web: player widget and operator console                                                      | Built, minimal; rules and wheel publishing are mocked (see known gaps) |
-| Product events for Varta                                                                     | Partial: contract and logger function, no service emits yet |
-| Redis balance projection                                                                     | Partial: wired, optional, off in default compose          |
-| Missed-event replay on websocket reconnect                                                   | Next                                                      |
-| Rate limiting                                                                                | Next                                                      |
-| Stripe payment provider                                                                      | Next (interface and a stub that throws)                   |
-| Production identity provider, refresh tokens                                                 | Next                                                      |
-| Provably-fair seed commitment, RNG certification                                             | Next                                                      |
-| Per-service deployment secrets                                                               | Next, not claimed                                         |
-| Deckhand deploy and Varta wiring                                                             | Described, not run here                                   |
+| Product events for Varta                                                                     | Partial: contract and logger function, no service emits yet            |
+| Redis balance projection                                                                     | Partial: wired, optional, off in default compose                       |
+| Missed-event replay on websocket reconnect                                                   | Next                                                                   |
+| Rate limiting                                                                                | Next                                                                   |
+| Stripe payment provider                                                                      | Next (interface and a stub that throws)                                |
+| Production identity provider, refresh tokens                                                 | Next                                                                   |
+| Provably-fair seed commitment, RNG certification                                             | Next                                                                   |
+| Per-service deployment secrets                                                               | Next, not claimed                                                      |
+| Deckhand deploy and Varta wiring                                                             | Described, not run here                                                |
 
 ## Where the answers are
 
-| Part                                       | Answer                                                                                                                                      |
-| ------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------- |
-| A: architecture                            | [`docs/architecture/`](docs/architecture/README.md) (diagrams), [`overview.md`](docs/architecture/overview.md), [`docs/adrs/`](docs/adrs/) |
-| B: working prototype                       | this README, the flows in [`docs/samples/`](docs/samples/), the service specs in [`docs/specs/`](docs/specs/)                                |
-| C: reliability and security                | [`docs/submission/part-c.md`](docs/submission/part-c.md) and the reliability matrix in the overview                                          |
-| D: AI-native development                   | [`docs/ai/`](docs/ai/README.md): process, decisions, defects found, verification                                                            |
-| E: scaling, first 90 days, team            | [`docs/scaling/`](docs/scaling/README.md) and [`90-days.md`](docs/scaling/90-days.md)                                                       |
-| What is missing                            | [`docs/submission/known-gaps.md`](docs/submission/known-gaps.md)                                                                            |
-| The backlog (17 epics, tasks, acceptance)  | [`backlog/`](backlog/README.md)                                                                                                             |
+| Part                                      | Answer                                                                                                                                     |
+| ----------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| A: architecture                           | [`docs/architecture/`](docs/architecture/README.md) (diagrams), [`overview.md`](docs/architecture/overview.md), [`docs/adrs/`](docs/adrs/) |
+| B: working prototype                      | this README, the flows in [`docs/samples/`](docs/samples/), the service specs in [`docs/specs/`](docs/specs/)                              |
+| C: reliability and security               | [`docs/submission/part-c.md`](docs/submission/part-c.md) and the reliability matrix in the overview                                        |
+| D: AI-native development                  | [`docs/ai/`](docs/ai/README.md): process, decisions, defects found, verification                                                           |
+| E: scaling, first 90 days, team           | [`docs/scaling/`](docs/scaling/README.md) and [`90-days.md`](docs/scaling/90-days.md)                                                      |
+| What is missing                           | [`docs/submission/known-gaps.md`](docs/submission/known-gaps.md)                                                                           |
+| The backlog (17 epics, tasks, acceptance) | [`backlog/`](backlog/README.md)                                                                                                            |
 
 ## Known limitations
 

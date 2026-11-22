@@ -143,6 +143,56 @@ export const RewardTableDefinition = z
   });
 export type RewardTableDefinition = z.infer<typeof RewardTableDefinition>;
 
+/**
+ * D-27: `PUT /v1/operator/wheel`. Publishes the next version of the tenant's reward table. Without
+ * `wheel_id` the tenant's active wheel gets a new version; a tenant with none gets a new wheel.
+ */
+export const PutWheelRequest = z
+  .object({
+    wheel_id: Uuid.optional(),
+    name: z.string().trim().min(1).max(120),
+    segments: z.array(RewardSegment).min(1).max(50),
+  })
+  .strict()
+  .refine(
+    (t) => {
+      const total = t.segments.reduce((sum, s) => sum + s.weight, 0);
+      return total > 0 && total <= MAX_TOTAL_WEIGHT;
+    },
+    { message: `total weight must be above 0 and at most ${MAX_TOTAL_WEIGHT}` },
+  );
+export type PutWheelRequest = z.infer<typeof PutWheelRequest>;
+
+/**
+ * D-27: `PUT /v1/operator/rules`. Publishes the next version of one deposit rule (deposit of at
+ * least `min_amount_minor` gives `spins` spins). The newest version of a `rule_id` replaces the
+ * older ones, so a default rule is replaced by publishing under the same id.
+ */
+export const DEFAULT_RULE_ID = 'deposit';
+export const PutRuleRequest = z
+  .object({
+    rule_id: z
+      .string()
+      .trim()
+      .regex(/^[a-z0-9][a-z0-9-]{0,63}$/)
+      .default(DEFAULT_RULE_ID),
+    name: z.string().trim().min(1).max(120),
+    min_amount_minor: z.number().int().nonnegative().safe(),
+    currency: Currency.optional(),
+    spins: z.number().int().min(1).max(100),
+    /** Defaults to the tenant's active wheel. */
+    wheel_id: Uuid.optional(),
+    max_grants_per_player: z.number().int().positive().nullable().default(null),
+  })
+  .strict();
+export type PutRuleRequest = z.infer<typeof PutRuleRequest>;
+
+/** What both PUT routes answer: the id and the version that is now in force. */
+export const PublishedVersion = z
+  .object({ id: z.string().min(1), version: z.number().int().positive() })
+  .strict();
+export type PublishedVersion = z.infer<typeof PublishedVersion>;
+
 /** What a player may send to spin: nothing but, optionally, which of their own credits. */
 export const SpinRequest = z.object({ credit_id: Uuid.optional() }).strict();
 export type SpinRequest = z.infer<typeof SpinRequest>;

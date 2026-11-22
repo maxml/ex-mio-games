@@ -3,6 +3,7 @@ import { BalanceController } from './balance.controller';
 import { BillingController } from './billing.controller';
 import { CoinsController } from './coins.controller';
 import { LedgerAdminController } from './ledger-admin.controller';
+import { OperatorPlanController } from './operator-plan.controller';
 
 /**
  * Every controller the payments app serves. `createAppModule` registers exactly this list, and each
@@ -13,4 +14,5 @@ export const paymentsControllers: Type[] = [
   BalanceController,
   BillingController,
   LedgerAdminController,
+  OperatorPlanController,
 ];
