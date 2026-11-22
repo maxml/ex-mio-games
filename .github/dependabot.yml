@@ -1,30 +1,68 @@
+# Version updates: one grouped PR per ecosystem per month, minor and patch only, and only versions
+# at least a week old. A major (Node runtime, eslint, @types/node) is a decision a person makes in
+# its own branch, not a bot PR. A Dependabot PR gets the cheap CI job only; the full stack runs on
+# the combined branch the bumps are applied from and on main. Policy and reasons: docs/ci.md.
 version: 2
 updates:
   - package-ecosystem: npm
     directory: /
     schedule:
-      interval: weekly
-    open-pull-requests-limit: 5
+      interval: monthly
+    cooldown:
+      default-days: 7
+    open-pull-requests-limit: 2
+    ignore:
+      - dependency-name: '*'
+        update-types: ['version-update:semver-major']
     groups:
-      types:
-        patterns:
-          - '@types/*'
-      eslint:
-        patterns:
-          - 'eslint*'
-          - '@typescript-eslint/*'
+      npm-minor-patch:
+        update-types: ['minor', 'patch']
 
   - package-ecosystem: github-actions
     directory: /
     schedule:
-      interval: weekly
+      interval: monthly
+    cooldown:
+      default-days: 7
+    open-pull-requests-limit: 1
+    groups:
+      actions:
+        patterns: ['*']
 
+  # Every Dockerfile in the repository (the compose stack builds all of them). The Node major must
+  # match .nvmrc and the Postgres major is a data migration, so majors are ignored here too.
   - package-ecosystem: docker
-    directory: /apps/api
+    directories:
+      - /apps/casino-sim
+      - /apps/engagement
+      - /apps/identity
+      - /apps/payments
+      - /apps/web
+      - /docker/firebase-emulator
+      - /docker/postgres
     schedule:
-      interval: weekly
+      interval: monthly
+    cooldown:
+      default-days: 7
+    open-pull-requests-limit: 1
+    ignore:
+      - dependency-name: '*'
+        update-types: ['version-update:semver-major']
+    groups:
+      docker-images:
+        patterns: ['*']
 
-  - package-ecosystem: docker
-    directory: /apps/web
+  # Images used as-is by docker-compose.yml (postgres, rabbitmq, redis).
+  - package-ecosystem: docker-compose
+    directory: /
     schedule:
-      interval: weekly
+      interval: monthly
+    cooldown:
+      default-days: 7
+    open-pull-requests-limit: 1
+    ignore:
+      - dependency-name: '*'
+        update-types: ['version-update:semver-major']
+    groups:
+      compose-images:
+        patterns: ['*']

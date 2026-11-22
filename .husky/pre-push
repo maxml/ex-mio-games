@@ -1,0 +1,2 @@
+# Local gate before a push (dev safety; `git push --no-verify` bypasses it). See scripts/local-gate.sh.
+exec bash "$(git rev-parse --show-toplevel)/scripts/local-gate.sh"
