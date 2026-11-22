@@ -402,8 +402,9 @@ Checked against the code. The full table with the reasons is section 14 of
   already consumed is an open question.
 - Postgres TLS is explicit in production: set `DATABASE_SSL` to `disable`, `require` or `verify-full`. Identity
   refuses to start in production with a development `CREDENTIALS_KEK` or `PLATFORM_ADMIN_PASSWORD` or with the
-  `fake` identity provider. Migrations are a separate step (`scripts/migrate-all.sh`, which the manifest
-  `.deckhand/deploy.yml` points at).
+  `fake` identity provider. Migrations are a separate step: the manifest `.deckhand/deploy.yml` runs
+  `docker run <service image> node dist/migrate.js` inline for each service (the Deckhand container has no checkout,
+  so it cannot run a repo script); `scripts/migrate-all.sh` is the same loop for a shell.
 
 The full list, with the web calls that no service answers yet, is in
 [`docs/submission/known-gaps.md`](docs/submission/known-gaps.md).
