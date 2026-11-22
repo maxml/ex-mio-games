@@ -55,48 +55,62 @@ Stream `product_events` (type logs) in the Varta OpenObserve. Every MIO event ha
 `varta_project = 'ex-mio'` and `varta_service`. The stream also holds one schema-seed record that is
 not an event, so every query filters on `kind`.
 
+## Column rules
+
+Varta flattens `props` into columns named `props_<key>`. The rules, from Varta:
+
+- Every value is a string (Utf8). Cast numbers before using them:
+  `CAST(props_amount_minor AS DOUBLE)`.
+- A key is lower-cased, and any character outside `[a-z0-9_]` becomes `_`.
+- Nested values, JSON text, PII-named keys and keys over 64 characters are dropped, and the event
+  gets `varta_props_dropped = true`.
+- Filter with `kind = 'product_event'` and `varta_project = 'ex-mio'`, using `=`, not `LIKE`.
+- Count with `count(DISTINCT event_id)` or `count(DISTINCT varta_actor_key)`, never `count(*)`. On
+  OpenObserve 0.14, `count(*)` over-counts while data is still arriving.
+- Do not build a funnel as one SQL JOIN. Joins give wrong funnels on OpenObserve. Write one query
+  per step and compute the step-to-step ratios outside the query, or by hand.
+
+Every prop key MIO emits (see [analytics.md](../analytics.md)) is already flat `snake_case`, so
+none is renamed or dropped: `role`, `environment`, `rotated`, `sandbox`, `new_player`, `launched`,
+`plan_code`, `amount_minor`, `currency`, `reason`, `casino`, `source`, `coins`, `reward_coins`,
+`price_coins`, `status`.
+
 ## Funnel queries
 
-Varta does not ship saved queries for MIO yet. Save these in the panel (Logs, stream
-`product_events`, SQL mode). Event names are in [analytics.md](../analytics.md). Check the column
-names of the props (`sandbox`, `plan_code`, ...) against the live stream before relying on them.
-
-Events per funnel step, per tenant:
+A computed funnel (ordered steps, conversion per step) is Varta VAR-5, which is pending. Until it
+exists, run one query per step and divide by hand. Save the template in the panel (Logs, stream
+`product_events`, SQL mode), changing only the event name:
 
 ```sql
-SELECT event, tenant_id, count(*) AS n
+SELECT count(DISTINCT varta_actor_key) AS actors
 FROM "product_events"
-WHERE kind = 'product_event' AND varta_project = 'ex-mio'
-GROUP BY event, tenant_id
-ORDER BY event, tenant_id
+WHERE kind = 'product_event'
+  AND varta_project = 'ex-mio'
+  AND event = 'identity.operator_signed_up'
 ```
 
-Operator activation (distinct tenants per step):
+Players and operators are identified by `varta_actor_key`. For steps that have no actor (or to
+count events themselves), use `count(DISTINCT event_id)`. The tenant view of the same step:
 
 ```sql
-SELECT event, count(DISTINCT tenant_id) AS tenants
+SELECT tenant_id, count(DISTINCT event_id) AS events
 FROM "product_events"
-WHERE kind = 'product_event' AND varta_project = 'ex-mio'
-  AND event IN ('identity.operator_signed_up', 'payments.plan_selected',
-                'payments.payment_succeeded', 'identity.credential_issued',
-                'engagement.deposit_ingested')
-GROUP BY event
+WHERE kind = 'product_event'
+  AND varta_project = 'ex-mio'
+  AND event = 'payments.payment_succeeded'
+GROUP BY tenant_id
 ```
 
-Player loop (events per step):
+Steps, one query each, event names from [analytics.md](../analytics.md):
 
-```sql
-SELECT event, count(*) AS n
-FROM "product_events"
-WHERE kind = 'product_event' AND varta_project = 'ex-mio'
-  AND event IN ('web.widget_opened', 'identity.player_launched', 'engagement.deposit_ingested',
-                'engagement.spin_completed', 'payments.coins_credited',
-                'engagement.redemption_requested', 'engagement.redemption_resolved')
-GROUP BY event
-```
+| Funnel | Steps, in order |
+| --- | --- |
+| Operator activation | `identity.operator_signed_up`, `identity.credential_issued`, `engagement.deposit_ingested` |
+| Operator revenue | `payments.plan_selected`, `payments.payment_succeeded` |
+| Player loop | `web.widget_opened`, `identity.player_launched`, `engagement.deposit_ingested`, `engagement.spin_completed`, `payments.coins_credited`, `engagement.redemption_requested`, `engagement.redemption_resolved` |
 
-Events can be read twice after a collector crash. Each carries `event_id`, so for exact counts use
-`count(DISTINCT event_id)` instead of `count(*)`.
+Money: `SELECT sum(CAST(props_amount_minor AS DOUBLE)) ...` over `payments.payment_succeeded`, with
+`props_sandbox = 'false'` (a string, not a boolean).
 
 ## Screenshot steps for the demo
 
