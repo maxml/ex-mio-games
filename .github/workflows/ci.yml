@@ -1,14 +1,16 @@
 name: ci
 
 # Proves that a clean clone works with no accounts and no repository secrets:
-# job "checks" runs lint, typecheck and unit tests; job "stack" brings the whole
-# docker compose stack up and runs the compose tests (and the demo, if present).
+# job "checks" runs the prompt check, format, lint, typecheck and unit tests; job "stack" brings the
+# whole docker compose stack up and runs the compose tests, the Postgres suites and the demo.
+# Profile, tiers, triggers and the Dependabot policy: docs/ci.md.
 
 on:
   push:
     branches: [main]
   pull_request:
     branches: [main]
+  workflow_dispatch:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -18,16 +20,45 @@ concurrency:
 permissions:
   contents: read
 
-# Every action is pinned to a commit SHA (the tag is in the trailing comment).
+# Every action is pinned to a full commit SHA; the tag is in the trailing comment.
 jobs:
   checks:
     name: prompts, format, lint, typecheck, unit tests
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 15
+    outputs:
+      code: ${{ steps.changes.outputs.code }}
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           submodules: false
+          persist-credentials: false
+
+      # Docs-only change? Then the stack job is skipped (prettier below still checks the Markdown).
+      # Fail-closed: if the diff cannot be computed the job fails, it never reports "no code".
+      - name: Docs-only change?
+        id: changes
+        env:
+          EVENT: ${{ github.event_name }}
+          BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
+          HEAD: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          if [ "$EVENT" = workflow_dispatch ] || [ -z "$BASE" ] || [ "$BASE" = 0000000000000000000000000000000000000000 ]; then
+            echo "code=true" >> "$GITHUB_OUTPUT"; exit 0
+          fi
+          git fetch --no-tags --depth=1 origin "$BASE"
+          changed="$(git diff --name-only "$BASE" "$HEAD")"
+          n="$(printf '%s\n' "$changed" | grep -cvE '(\.md$|^docs/)' || true)"
+          echo "changed files: $(printf '%s\n' "$changed" | grep -c . || true), non-docs: $n"
+          echo "code=$([ "$n" -gt 0 ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
+
+      # Dependency diff of the PR (base to head): vulnerable versions, licences, package age.
+      - name: Dependency review
+        if: github.event_name == 'pull_request'
+        uses: actions/dependency-review-action@bbc44d14a204704ccc493733616cd1e93a0321ec # v5.0.1
+        with:
+          fail-on-severity: high
 
       # Hermetic, seconds: role prompts and agent wrappers (bash and python3 only).
       - run: bash ci/check-prompts.sh
@@ -35,7 +66,7 @@ jobs:
       # pnpm comes from corepack, at the version in package.json "packageManager".
       - run: corepack enable
 
-      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version-file: .nvmrc
           cache: pnpm
@@ -53,17 +84,21 @@ jobs:
   stack:
     name: stack comes up healthy, compose tests pass
     needs: checks
+    # Skipped for a docs-only change and for Dependabot PRs: a bump gets the cheap job on its PR and
+    # the full stack on the combined branch and on main (docs/ci.md, "Dependabot").
+    if: needs.checks.outputs.code == 'true' && github.event.pull_request.user.login != 'dependabot[bot]'
     runs-on: ubuntu-latest
-    timeout-minutes: 40
+    timeout-minutes: 25
     steps:
       # The archify submodule is docs-only and large: do not fetch it.
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           submodules: false
+          persist-credentials: false
 
       - run: corepack enable
 
-      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version-file: .nvmrc
           cache: pnpm
@@ -106,8 +141,9 @@ jobs:
         env:
           DATABASE_URL: postgresql://engagement_app:engagement-app-dev@localhost:54329/engagement
 
+      # The demo is part of the proof: a missing script is a red run, not a silent skip.
       - name: Demo
-        run: if [ -f scripts/demo.sh ]; then bash scripts/demo.sh; fi
+        run: bash scripts/demo.sh
 
       - name: Container logs on failure
         if: failure()
