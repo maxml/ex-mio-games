@@ -76,6 +76,23 @@ jobs:
       - name: Compose tests (health, roles, tenancy, idempotency, bus)
         run: pnpm test:compose
 
+      # Money and row-level-security proofs against the compose Postgres. The payments
+      # suites connect as payments_app / payments_owner themselves (defaults in
+      # apps/payments/src/testing/pg.ts, same as docker/postgres/init.sh); the migrations were
+      # applied by the payments container at start.
+      - name: Payments Postgres suites (ledger, RLS)
+        run: pnpm --filter @ex-mio/payments test:db
+        env:
+          POSTGRES_HOST: localhost
+          POSTGRES_PORT: '54329'
+
+      # The store contract the in-memory fake also passes, against the real Postgres store,
+      # as the runtime role engagement_app (not the owner, RLS forced).
+      - name: Engagement Postgres store contract (RLS)
+        run: pnpm --filter @ex-mio/engagement test:pg
+        env:
+          DATABASE_URL: postgresql://engagement_app:engagement-app-dev@localhost:54329/engagement
+
       - name: Demo
         run: if [ -f scripts/demo.sh ]; then bash scripts/demo.sh; fi
 
