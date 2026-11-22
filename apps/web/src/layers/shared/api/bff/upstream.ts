@@ -149,6 +149,8 @@ export function createUpstream(
           : `Request failed with status ${response.status}`,
       );
     }
+    // Payments answers "no subscription yet" as 200 with a JSON `null`, not as 404.
+    if (json === null && options.nullOn404) return null as T;
     if (!options.schema) return json as T;
     const parsed = options.schema.safeParse(json);
     if (!parsed.success)

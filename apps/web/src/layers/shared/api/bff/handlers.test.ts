@@ -211,6 +211,17 @@ describe('player state: balance from payments, spins from GET /v1/me/spins, item
     expect(auth('/v1/me/spins')).toBe(`Bearer ${TOKEN('engagement')}`);
   });
 
+  it('a player with no wallet yet (payments 404 wallet_not_found) has 0 coins, not an error', async () => {
+    // Mutation: drop `nullOn404` on the balance call and this turns into a 404.
+    const w = await signedIn({
+      ...routes,
+      'GET /v1/me/balance': { status: 404, body: { code: 'wallet_not_found', message: 'x' } },
+    });
+    const r = await w.req('GET', '/api/player/state');
+    expect(r.status).toBe(200);
+    expect(r.body.coins).toBe(0);
+  });
+
   it('a service answer with the wrong shape is a 502, not a half-filled state', async () => {
     const w = await signedIn({ ...routes, 'GET /v1/me/balance': { body: { available: 'many' } } });
     const r = await w.req('GET', '/api/player/state');
@@ -466,7 +477,7 @@ describe('D-10 realtime ticket through the BFF', () => {
 });
 
 describe('player launch exchange', () => {
-  it('asks the engagement and payments audiences and keeps both tokens server-side', async () => {
+  it('exchanges the single-use launch token ONCE and keeps the token server-side for every audience', async () => {
     const w = world({
       'POST /v1/auth/launch': (c) => ({
         body: {
@@ -479,9 +490,7 @@ describe('player launch exchange', () => {
     const r = await w.req('POST', '/api/session/launch', { token: 'x'.repeat(40) });
     expect(r.status).toBe(200);
     expect(r.text).not.toMatch(/h\.[A-Za-z0-9_-]+\.s/);
-    expect(w.calls.map((c) => (c.body as { audience: string }).audience)).toEqual([
-      'engagement',
-      'payments',
-    ]);
+    // Mutation: exchange once per audience again and the second exchange (same jti) is refused by identity.
+    expect(w.calls).toHaveLength(1);
   });
 });

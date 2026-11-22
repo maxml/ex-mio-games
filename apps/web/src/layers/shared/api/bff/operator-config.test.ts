@@ -17,12 +17,14 @@ interface Call {
 
 async function signedIn(routes: Record<string, { status?: number; body?: unknown }>) {
   const calls: Call[] = [];
+  const loginHosts: string[] = [];
   const fetchImpl = (async (url: string, init: RequestInit) => {
     const u = new URL(url);
     const method = init.method ?? 'GET';
     const headers = (init.headers ?? {}) as Record<string, string>;
     const body = init.body ? JSON.parse(init.body as string) : undefined;
     calls.push({ method, url: u.pathname, body, auth: headers.authorization ?? '' });
+    if (u.pathname === '/v1/auth/login') loginHosts.push(headers.host ?? '');
     if (method === 'POST' && u.pathname === '/v1/auth/login') {
       const aud = (body as { audience: string }).audience;
       return new Response(
@@ -36,7 +38,9 @@ async function signedIn(routes: Record<string, { status?: number; body?: unknown
     }
     const r = routes[`${method} ${u.pathname}`];
     if (!r) return new Response('{"message":"no route","code":"nope"}', { status: 404 });
-    return new Response(JSON.stringify(r.body ?? {}), { status: r.status ?? 200 });
+    return new Response(JSON.stringify(r.body === undefined ? {} : r.body), {
+      status: r.status ?? 200,
+    });
   }) as unknown as typeof fetch;
   const bff = createBff({
     config: readBffConfig({
@@ -63,8 +67,55 @@ async function signedIn(routes: Record<string, { status?: number; body?: unknown
   };
   await req('POST', '/api/session/login', { email: 'o@x.io', password: 'correct horse' });
   calls.length = 0;
-  return { calls, req };
+  return { calls, req, loginHosts };
 }
+
+describe('tenant host', () => {
+  it('signup logs in as <slug>.<BASE_DOMAIN>, whatever host the browser is on', async () => {
+    // Mutation: send the browser host (`web`) instead and identity answers TENANT_UNRESOLVED.
+    const w = await signedIn({
+      'POST /v1/operators/signup': {
+        status: 201,
+        body: {
+          tenant: {
+            id: U(8),
+            slug: 'acme-casino',
+            name: 'Acme Casino',
+            type: 'operator',
+            status: 'active',
+          },
+          user: { id: U(9), email: 'a@acme.example', roles: ['operator_admin'] },
+        },
+      },
+    });
+    w.loginHosts.length = 0;
+    await w.req('POST', '/api/operator/account', {
+      companyName: 'Acme Casino',
+      email: 'a@acme.example',
+      password: 'correct horse',
+    });
+    expect(w.loginHosts.length).toBeGreaterThan(0);
+    expect(new Set(w.loginHosts)).toEqual(new Set(['acme-casino.mio.localhost']));
+  });
+});
+
+describe('operator console state against the real payments answers', () => {
+  it('no subscription yet is 200 with a JSON null and the console state still composes', async () => {
+    const w = await signedIn({
+      'GET /v1/billing/plans': { body: [] },
+      'GET /v1/billing/subscription': { body: null },
+      'GET /v1/billing/invoices': { body: [] },
+      'GET /v1/billing/usage': { body: { period: '2026-11', spins: 3, monthly_active_players: 2 } },
+      'GET /v1/store/items': { body: [] },
+      'GET /v1/operator/redemptions': { body: [] },
+    });
+    const r = await w.req('GET', '/api/operator/state');
+    expect(r.status).toBe(200);
+    expect(r.body.planActive).toBe(false);
+    expect(r.body.usage.spinsThisMonth).toBe(3);
+    expect(w.calls.find((c) => c.url === '/v1/billing/usage')).toBeDefined();
+  });
+});
 
 describe('operator credentials, rules and wheel reach the services', () => {
   it('credentials: identity gets platform and environment; the secrets come back once, camelCase', async () => {

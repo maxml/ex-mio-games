@@ -6,6 +6,8 @@ export interface BffConfig {
   identityUrl: string;
   paymentsUrl: string;
   engagementUrl: string;
+  /** Identity's `BASE_DOMAIN`: a tenant is `<slug>.<baseDomain>`. */
+  baseDomain: string;
   /** Sandbox casino (compose network only). Empty: the sandbox routes answer 501. */
   casinoSimUrl: string;
   /** The wheel the widget shows. No service tells the web which wheel is active (known gap G-3). */
@@ -27,6 +29,7 @@ export function readBffConfig(env: Record<string, string | undefined> = process.
     identityUrl: trim(env.IDENTITY_URL ?? 'http://identity:4001'),
     paymentsUrl: trim(env.PAYMENTS_URL ?? 'http://payments:4003'),
     engagementUrl: trim(env.ENGAGEMENT_URL ?? 'http://engagement:4002'),
+    baseDomain: env.BASE_DOMAIN ?? 'mio.localhost',
     casinoSimUrl: trim(env.CASINO_SIM_URL ?? ''),
     wheelId: env.MIO_WHEEL_ID ?? '',
     casinoPath: env.MIO_SANDBOX_CASINO ?? 'casino-a',
