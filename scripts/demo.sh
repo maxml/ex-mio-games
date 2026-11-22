@@ -135,6 +135,23 @@ launch_token() { # key_id secret platform external_player_id
 auth() { printf 'authorization: Bearer %s' "$1"; }
 spins_of() { quiet "$ENG/v1/me/spins" -H "$(auth "$1")" | jq -r '.available // empty'; }
 balance_of() { quiet "$PAY/v1/me/balance" -H "$(auth "$1")" | jq -r '.available // empty'; }
+# stable_balance TOKEN: credits arrive over the bus, so a baseline read right after a spin can be stale.
+# Polls until two reads 1 s apart are equal (15 s timeout) and prints that value.
+stable_balance() {
+  local prev cur end=$((SECONDS + 15))
+  prev="$(balance_of "$1")"
+  while :; do
+    sleep 1
+    cur="$(balance_of "$1")"
+    if [ -n "$cur" ] && [ "$cur" = "$prev" ]; then printf '%s' "$cur"; return 0; fi
+    if [ "$SECONDS" -ge "$end" ]; then
+      fail "balance did not settle within 15s (last reads '$prev' then '$cur')" >&2
+      printf '%s' "$cur"
+      return 0
+    fi
+    prev="$cur"
+  done
+}
 redemption_state() { quiet "$ENG/v1/redemptions/$2" -H "$(auth "$1")" | jq -r '.state // empty'; }
 is_final() { [ "$1" = ISSUED ] || [ "$1" = COMPLETED ]; }
 
@@ -486,7 +503,7 @@ call GET "$ENG/v1/me/spins" -H "$(auth "$PA_ENG")"
 expect_jq '.available==0'
 
 heading "Part C-3. Duplicate redemption: the same Idempotency-Key 5 times in parallel debits the coins once"
-BAL0="$(balance_of "$PA_PAY")"
+BAL0="$(stable_balance "$PA_PAY")"
 printf '  > 5 x POST /v1/redemptions (same Idempotency-Key, in parallel)\n'
 OUT="$(seq 1 5 | xargs -P 5 -I@@ curl -s -m 30 -X POST "$ENG/v1/redemptions" -H 'content-type: application/json' \
   -H "authorization: Bearer $PA_ENG" -H "idempotency-key: redeem-a-$SUF-dup" -d "{\"item_id\":\"$ITEM_A\"}" -w '\n%{http_code}\n')"
