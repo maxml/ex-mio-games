@@ -64,6 +64,21 @@ export class CredentialsService {
   ): Promise<RewardApiSummary> {
     const tenantId = effectiveTenant(subject);
     await this.access.authorize(subject, 'credentials.rotate', { tenant_id: tenantId });
+    // D-30 (F1): a production reward API is https. Plain http is for hosts listed in
+    // REWARD_API_ALLOW_HOSTS (compose: casino-sim) and for the sandbox endpoint.
+    if (input.environment === 'production') {
+      const url = new URL(input.base_url);
+      const allowed = (process.env.REWARD_API_ALLOW_HOSTS ?? '')
+        .split(',')
+        .map((h) => h.trim().toLowerCase())
+        .filter((h) => h !== '');
+      if (url.protocol !== 'https:' && !allowed.includes(url.hostname.toLowerCase())) {
+        throw new IdentityError(
+          'VALIDATION_FAILED',
+          'a production reward API must use https (http only for hosts in REWARD_API_ALLOW_HOSTS)',
+        );
+      }
+    }
     const row: RewardApiRow = {
       tenant_id: tenantId,
       platform: casino,

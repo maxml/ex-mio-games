@@ -106,6 +106,8 @@ services:
       # Runtime role: not the table owner. The owner URL is given to the migrate step only.
       DATABASE_URL: postgresql://identity_app:identity-app-dev@postgres:5432/identity
       BASE_DOMAIN: mio.localhost
+      # D-30 (F1): the reward-API PUT refuses http for a production endpoint unless the host is listed.
+      REWARD_API_ALLOW_HOSTS: casino-sim
       PLATFORM_ADMIN_EMAIL: root@mio.test
       PLATFORM_ADMIN_PASSWORD: platform-dev-password-0000
       CREDENTIALS_KEK: dev-credentials-kek-0000000000

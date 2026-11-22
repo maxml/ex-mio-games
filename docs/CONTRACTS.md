@@ -108,9 +108,12 @@ sandbox?, payload }`; `tenant_id` is mandatory; the payload schema is registered
   private, link-local, unspecified and metadata addresses (`packages/contracts/src/ip-guard.ts`). The
   engagement transport (`fetchTransport`) resolves the host at call time, connects only to an address that
   passed the same check, never follows a redirect (any 3xx is an unknown outcome), and requires `https`
-  when `NODE_ENV=production`. Hosts in the `REWARD_API_ALLOW_HOSTS` env var (comma separated; compose:
-  `casino-sim`) are exempt from the address and https rules. The casino's rejection reason is truncated to
-  64 characters and limited to `[A-Za-z0-9 _.-]` before it is stored.
+  when `NODE_ENV=production`. Identity's PUT service also refuses a plain-http `base_url` for the
+  `production` environment (`VALIDATION_FAILED`); the sandbox endpoint may be http. Hosts in the
+  `REWARD_API_ALLOW_HOSTS` env var (comma separated; read by both identity and engagement; compose:
+  `casino-sim`) are exempt from the https rule, and engagement's transport also exempts them from the
+  address rule. The casino's rejection reason is truncated to 64 characters and limited to
+  `[A-Za-z0-9_.:-]` (anything else becomes `_`) before it is stored.
   **Spin Idempotency-Key.** `scopedKey` throws `ScopedKeyTooLong` when escaping pushes a key past 512
   characters; the spin service maps it to 422, never 500.
 - **pinned:** `packages/contracts/src/ingest.contracts.test.ts`,

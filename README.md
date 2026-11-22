@@ -204,9 +204,11 @@ from that first run.
   The URL is checked twice (D-30). The PUT refuses credentials in the URL and literal loopback, private,
   link-local (cloud metadata) and unspecified addresses. Engagement's transport resolves the host at call
   time and refuses the same ranges, never follows a redirect (a 3xx counts as "outcome unknown"), and in
-  production requires `https`. `REWARD_API_ALLOW_HOSTS` (comma separated host names, engagement) exempts
-  listed hosts from both the address and the https rules; compose sets it to `casino-sim`. The casino's
-  rejection reason is cut to 64 characters of `[A-Za-z0-9 _.-]` before it is stored or shown.
+  production requires `https`; identity's PUT likewise refuses a plain-http URL for the `production`
+  environment (the sandbox endpoint may be http). `REWARD_API_ALLOW_HOSTS` (comma separated host names,
+  read by identity and engagement) exempts listed hosts from the https rule, and from the address rule in
+  engagement's transport; compose sets it to `casino-sim` on both services. The casino's rejection
+  reason is cut to 64 characters of `[A-Za-z0-9_.:-]` before it is stored or shown.
 - **Wheel, rules and subscription id.** `PUT /v1/operator/wheel` and `PUT /v1/operator/rules` (engagement,
   `operator_admin`), a default wheel and rule on signup, and `GET /v1/operator/plan` (payments) replace the
   database steps; the script no longer reads or writes any database.

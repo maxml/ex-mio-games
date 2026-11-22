@@ -39,14 +39,12 @@ export const isRecord = (v: unknown): v is Record<string, unknown> =>
 
 /**
  * F1: the casino's rejection reason is stored on the order and shown to the operator, so it is a
- * read channel for whatever a hostile URL answers with. Cut to 64 characters of `[A-Za-z0-9 _.-]`.
+ * read channel for whatever a hostile URL answers with. Cut to 64 characters of `[A-Za-z0-9_.:-]`
+ * (D30-REASON); every other character, a space included, becomes `_`.
  */
 export const REASON_MAX_LENGTH = 64;
 export const sanitizeReason = (reason: string, fallback = 'rejected'): string => {
-  const clean = reason
-    .replace(/[^A-Za-z0-9 _.-]/g, '_')
-    .slice(0, REASON_MAX_LENGTH)
-    .trim();
+  const clean = reason.replace(/[^A-Za-z0-9_.:-]/g, '_').slice(0, REASON_MAX_LENGTH);
   return clean === '' ? fallback : clean;
 };
 

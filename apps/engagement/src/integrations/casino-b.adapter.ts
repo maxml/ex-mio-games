@@ -109,7 +109,10 @@ export function createCasinoB(config: AdapterConfig): CasinoAdapter {
       return { kind: 'issued', external_ref: body.reward_ref };
     }
     if (body.state === 'FAILED') {
-      return { kind: 'rejected', reason: nonEmptyString(body.code) ? body.code : 'failed' };
+      return {
+        kind: 'rejected',
+        reason: nonEmptyString(body.code) ? sanitizeReason(body.code, 'failed') : 'failed',
+      };
     }
     return { kind: 'unknown' };
   }
