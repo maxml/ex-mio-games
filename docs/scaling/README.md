@@ -19,14 +19,14 @@ What the prototype already has, so the phases do not redo it: five services (`id
 
 ### Phase 0: close the known gaps that block any real money (before the pilot goes live)
 
-| Item | Today | Production needs | Exit |
-|---|---|---|---|
-| Per-service secrets on deploy | Designed, not claimed. Services are isolated at the database level, but deploy delivers secrets without per-service scoping | Each service gets only its own secrets from Deckhand's secret store; database owner and runtime roles use separate credentials; rotation procedure | A deploy drill shows service A cannot read service B's secret; one rotation done with no downtime |
-| Identity provider choice | The interface and the emulator are Built; the production provider is not chosen | Choose and wire one production provider (criteria below), keep the emulator for tests | Same adapter contract test passes against the real provider in a staging project |
-| Stripe adapter | `fake` is Built; Stripe is an interface only | A `stripe` implementation of `PaymentProvider`, webhook signature check, idempotency key per charge | Sandbox charge, refund and a replayed webhook each produce exactly one ledger effect |
-| Reward API configuration | Built in code (D-27): the operator registers each casino's reward API with `PUT /v1/operator/integrations/:casino/reward-api` and identity serves it as `reward_api`. Without it an order stops in `NEEDS_REVIEW` with `no_adapter`. Not yet run end to end against casino-sim on a live stack (known gaps, G-12 and S-12) | Run one issuance through the registered API on the compose stack, then through the pilot casino's staging API; an operator-facing form in the console | An order placed by a stranger on a fresh tenant reaches `COMPLETED` without a database edit |
-| Rule and wheel publishing | Built in code (D-27): `PUT /v1/operator/rules` and `PUT /v1/operator/wheel`, a default rule and wheel on signup. The web console still answers those calls from its mock (known gaps, G-4), and the sandbox-check and go-live routes do not exist | Switch the console to the routes; add the sandbox-check and go-live routes; prove "signed deposit leads to one spin" in one compose test | A fresh tenant gets a spin from a signed deposit with no SQL, and a published wheel version changes the next spin's table version |
-| Open reviewer-found defects | Two tenant and environment defects were red in the review run (known gaps, S-11) | Merge the final integration branch with its invariant tests and re-run them | `INV-ENV-SCHEMA` and `INV-AUD-MATRIX` green on the merged tree |
+| Item                          | Today                                                                                                                                                                                                                                                                                                                      | Production needs                                                                                                                                      | Exit                                                                                                                              |
+| ----------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
+| Per-service secrets on deploy | Designed, not claimed. Services are isolated at the database level, but deploy delivers secrets without per-service scoping                                                                                                                                                                                                | Each service gets only its own secrets from Deckhand's secret store; database owner and runtime roles use separate credentials; rotation procedure    | A deploy drill shows service A cannot read service B's secret; one rotation done with no downtime                                 |
+| Identity provider choice      | The interface and the emulator are Built; the production provider is not chosen                                                                                                                                                                                                                                            | Choose and wire one production provider (criteria below), keep the emulator for tests                                                                 | Same adapter contract test passes against the real provider in a staging project                                                  |
+| Stripe adapter                | `fake` is Built; Stripe is an interface only                                                                                                                                                                                                                                                                               | A `stripe` implementation of `PaymentProvider`, webhook signature check, idempotency key per charge                                                   | Sandbox charge, refund and a replayed webhook each produce exactly one ledger effect                                              |
+| Reward API configuration      | Built in code (D-27): the operator registers each casino's reward API with `PUT /v1/operator/integrations/:casino/reward-api` and identity serves it as `reward_api`. Without it an order stops in `NEEDS_REVIEW` with `no_adapter`. Not yet run end to end against casino-sim on a live stack (known gaps, G-12 and S-12) | Run one issuance through the registered API on the compose stack, then through the pilot casino's staging API; an operator-facing form in the console | An order placed by a stranger on a fresh tenant reaches `COMPLETED` without a database edit                                       |
+| Rule and wheel publishing     | Built in code (D-27): `PUT /v1/operator/rules` and `PUT /v1/operator/wheel`, a default rule and wheel on signup. The web console still answers those calls from its mock (known gaps, G-4), and the sandbox-check and go-live routes do not exist                                                                          | Switch the console to the routes; add the sandbox-check and go-live routes; prove "signed deposit leads to one spin" in one compose test              | A fresh tenant gets a spin from a signed deposit with no SQL, and a published wheel version changes the next spin's table version |
+| Open reviewer-found defects   | Two tenant and environment defects were red in the review run (known gaps, S-11)                                                                                                                                                                                                                                           | Merge the final integration branch with its invariant tests and re-run them                                                                           | `INV-ENV-SCHEMA` and `INV-AUD-MATRIX` green on the merged tree                                                                    |
 
 Identity provider choice. Criteria, in order: per-tenant users with the same email in two tenants (a hard requirement of the tenancy ADR), cost per active user, data residency, lock-in. Default recommendation: keep the Firebase/Identity Platform adapter that the emulator already mirrors, because the multi-tenant model is the same and the switch costs the least. The alternative is a self-hosted OIDC server, chosen only if a customer demands residency that the managed provider cannot give. This is a recommendation to confirm, not a decision already taken.
 
@@ -70,12 +70,12 @@ Answer: one codebase, one adapter per casino platform type (not per operator), a
 
 ### What is code and what is configuration
 
-| Code (shared, one release for all) | Tenant configuration (data, per operator) |
-|---|---|
-| Canonical event and command types | Integration credentials, webhook secrets, platform type, `environment: sandbox or production` |
-| Adapter per platform type: signature scheme, event schema mapping, reward API call, native lookup by our key | Rules (versioned), wheel weight tables (versioned), Bonus Store catalog and stock |
-| Rules engine, wheel, redemption saga, ledger | Rate limits, plan and entitlements, branding for the player widget |
-| Identity interface, tenancy and RLS | Region, retention settings |
+| Code (shared, one release for all)                                                                           | Tenant configuration (data, per operator)                                                     |
+| ------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------- |
+| Canonical event and command types                                                                            | Integration credentials, webhook secrets, platform type, `environment: sandbox or production` |
+| Adapter per platform type: signature scheme, event schema mapping, reward API call, native lookup by our key | Rules (versioned), wheel weight tables (versioned), Bonus Store catalog and stock             |
+| Rules engine, wheel, redemption saga, ledger                                                                 | Rate limits, plan and entitlements, branding for the player widget                            |
+| Identity interface, tenancy and RLS                                                                          | Region, retention settings                                                                    |
 
 ### The adapter registry
 
@@ -97,11 +97,11 @@ The integration credential carries `environment: sandbox or production`. The eng
 
 These are estimates for planning, to be replaced by measured values after the first two onboardings:
 
-| Case | Estimate | What it takes |
-|---|---|---|
-| New operator, known platform | under 1 day, self-serve | Sign up, enter credentials, configure rules and catalog, pass sandbox checklist, switch environment |
-| New platform type | 1 to 2 weeks of one engineer | Read the casino's API, write the adapter, pass the contract suite, one staging run with the casino's test account |
-| Operator-specific quirk on a known platform | do not allow | If two operators on one platform differ in behaviour, that is a configuration option on the adapter, not a fork |
+| Case                                        | Estimate                     | What it takes                                                                                                     |
+| ------------------------------------------- | ---------------------------- | ----------------------------------------------------------------------------------------------------------------- |
+| New operator, known platform                | under 1 day, self-serve      | Sign up, enter credentials, configure rules and catalog, pass sandbox checklist, switch environment               |
+| New platform type                           | 1 to 2 weeks of one engineer | Read the casino's API, write the adapter, pass the contract suite, one staging run with the casino's test account |
+| Operator-specific quirk on a known platform | do not allow                 | If two operators on one platform differ in behaviour, that is a configuration option on the adapter, not a fork   |
 
 ### What changes at ten operators
 
@@ -113,12 +113,12 @@ Answer: new features consume canonical domain events and ask `payments` for coin
 
 ### Boundaries
 
-| Boundary | Rule |
-|---|---|
-| `integrations` module (inside `engagement`) | The only code that knows casino payloads. Publishes canonical events. Nothing imports it except the engagement composition root |
-| Canonical events | The only input new features may use: `deposit.confirmed`, `spin.completed`, `coins.*` (credited, debited, refunded, held), redemption events |
-| `payments` service | The only writer of coins. A feature that rewards coins asks payments through the allow-listed internal route with an idempotency key; it cannot mint arbitrarily (the service-token allow-list limits `engagement` to reserve, capture, release, refund and balance reads) |
-| Events carry the internal `player_id` and `tenant_id` only | A feature never learns the casino's external player id |
+| Boundary                                                   | Rule                                                                                                                                                                                                                                                                       |
+| ---------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `integrations` module (inside `engagement`)                | The only code that knows casino payloads. Publishes canonical events. Nothing imports it except the engagement composition root                                                                                                                                            |
+| Canonical events                                           | The only input new features may use: `deposit.confirmed`, `spin.completed`, `coins.*` (credited, debited, refunded, held), redemption events                                                                                                                               |
+| `payments` service                                         | The only writer of coins. A feature that rewards coins asks payments through the allow-listed internal route with an idempotency key; it cannot mint arbitrarily (the service-token allow-list limits `engagement` to reserve, capture, release, refund and balance reads) |
+| Events carry the internal `player_id` and `tenant_id` only | A feature never learns the casino's external player id                                                                                                                                                                                                                     |
 
 The check: Nx module boundary rules fail the build if a feature module imports `integrations`. A scan test proves that the rule fails when a forbidden import is added (a mutation of the guard).
 
@@ -185,12 +185,12 @@ Deliberately not done in 90 days: PvP, Kingdom Builder, multi-region, RNG certif
 
 Answer: three engineers and a part-time product owner, about 3.5 FTE. Everything in this section is an estimate with its reasoning shown; none of it is a measurement from this project.
 
-| Role | FTE | Why |
-|---|---|---|
-| Founding engineer (backend, payments and identity, owns architecture and review) | 1.0 | The expensive-to-change parts are money and tenancy. One person must hold them and review the rest |
-| Backend engineer (integrations, engagement, new features) | 1.0 | Adapters, rules, saga, Missions. Two backend people allow review by a second pair of eyes |
-| Frontend engineer with design skill | 1.0 | Design drives money; the whole frontend is built from Storybook components, widget and operator console |
-| Product owner (also talks to operators) | 0.5 | Chooses what earns money, runs the pilot, handles contracts |
+| Role                                                                             | FTE | Why                                                                                                     |
+| -------------------------------------------------------------------------------- | --- | ------------------------------------------------------------------------------------------------------- |
+| Founding engineer (backend, payments and identity, owns architecture and review) | 1.0 | The expensive-to-change parts are money and tenancy. One person must hold them and review the rest      |
+| Backend engineer (integrations, engagement, new features)                        | 1.0 | Adapters, rules, saga, Missions. Two backend people allow review by a second pair of eyes               |
+| Frontend engineer with design skill                                              | 1.0 | Design drives money; the whole frontend is built from Storybook components, widget and operator console |
+| Product owner (also talks to operators)                                          | 0.5 | Chooses what earns money, runs the pilot, handles contracts                                             |
 
 Not in the core team and bought or borrowed: SRE (about 0.2 FTE, a contractor for the first two months to set up backups, alerts and the restore drill; after that the founding engineer carries on-call), QA (replaced by test-first process, Section 6).
 
@@ -200,12 +200,12 @@ What can be dropped and at what cost: the second backend engineer can go, at the
 
 What AI tooling replaces and what it does not:
 
-| Replaces or speeds up | Does not replace |
-|---|---|
-| First drafts of specs, tests and code; adapter scaffolding from an API document; documentation and backlog upkeep; first-pass review | Choosing what to build and what earns money |
-| Mechanical reviewer work: re-applying mutations, checking numbers | Decisions about money invariants, tenancy and security boundaries |
-| Fixture and sample generation | Talking to operators and casinos; a real casino's undocumented behaviour |
-| | Accountability for production: on-call, incident decisions |
+| Replaces or speeds up                                                                                                                | Does not replace                                                         |
+| ------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------ |
+| First drafts of specs, tests and code; adapter scaffolding from an API document; documentation and backlog upkeep; first-pass review | Choosing what to build and what earns money                              |
+| Mechanical reviewer work: re-applying mutations, checking numbers                                                                    | Decisions about money invariants, tenancy and security boundaries        |
+| Fixture and sample generation                                                                                                        | Talking to operators and casinos; a real casino's undocumented behaviour |
+|                                                                                                                                      | Accountability for production: on-call, incident decisions               |
 
 The speed-up from AI is not assumed in the team arithmetic above. Measure it (findings per change, time per change, escaped defects) in the first 90 days and reduce the team estimate only if the measurement supports it.
 
@@ -235,13 +235,13 @@ This follows the practice recorded in review-framework, a separate set of review
 
 ### What stays human
 
-| Step | Human check that stays |
-|---|---|
-| Risk class and scope | The person decides |
-| Money, tenancy, auth specifications | A person reads the spec before tests are written |
-| Review of guard changes | A person reads the mutation evidence |
-| DLQ and `NEEDS_REVIEW` redemptions | A person decides; AI may summarise the case. An operator's word alone never moves coins or stock |
-| Pricing, contracts, operator communication | The person |
+| Step                                       | Human check that stays                                                                           |
+| ------------------------------------------ | ------------------------------------------------------------------------------------------------ |
+| Risk class and scope                       | The person decides                                                                               |
+| Money, tenancy, auth specifications        | A person reads the spec before tests are written                                                 |
+| Review of guard changes                    | A person reads the mutation evidence                                                             |
+| DLQ and `NEEDS_REVIEW` redemptions         | A person decides; AI may summarise the case. An operator's word alone never moves coins or stock |
+| Pricing, contracts, operator communication | The person                                                                                       |
 
 ### Risks and how they are contained
 

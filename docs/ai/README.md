@@ -18,15 +18,15 @@ break each piece of work before it was merged.
 9. Everything on this page happened on 2026-11-21, with a deadline of the evening of 2026-11-22.
 10. This folder is about 9.5k words; start with this summary, then `case-studies.md` for six traced defects.
 
-| File | What it shows |
-| --- | --- |
-| `README.md` | This page: the process, the roles, the models, where the prompts live |
-| `decisions.md` | Human decisions against AI proposals, including the ones where the human overruled the AI |
-| `defects-found.md` | Defects that independent AI review caught before merge, with the test that now pins each one, and one fully traced example |
-| `verification.md` | How AI output was checked, and what went wrong along the way |
-| `case-studies.md` | Six defects on `int/rc`: how each was caught, the fixing commit and the test that pins it |
-| `../decision-log.md` | What each `D-<n>` cited in tests and comments means, with the reason and where it is enforced |
-| `limits.md` | What the AI got wrong, fixes that moved a defect, and what the process does not cover |
+| File                 | What it shows                                                                                                              |
+| -------------------- | -------------------------------------------------------------------------------------------------------------------------- |
+| `README.md`          | This page: the process, the roles, the models, where the prompts live                                                      |
+| `decisions.md`       | Human decisions against AI proposals, including the ones where the human overruled the AI                                  |
+| `defects-found.md`   | Defects that independent AI review caught before merge, with the test that now pins each one, and one fully traced example |
+| `verification.md`    | How AI output was checked, and what went wrong along the way                                                               |
+| `case-studies.md`    | Six defects on `int/rc`: how each was caught, the fixing commit and the test that pins it                                  |
+| `../decision-log.md` | What each `D-<n>` cited in tests and comments means, with the reason and where it is enforced                              |
+| `limits.md`          | What the AI got wrong, fixes that moved a defect, and what the process does not cover                                      |
 
 All of it happened on one day, 2026-11-21, with a deadline of the evening of 2026-11-22. The numbers
 below come from that run.
@@ -68,15 +68,15 @@ and the brief it is given. Nobody carries a conclusion in memory from one round 
 
 ## Roles and models
 
-| Role | Model | Writes | Does not write |
-| --- | --- | --- | --- |
-| Coordinator | Opus | briefs, decisions, merge order | code |
-| Spec author | Sonnet | spec, contracts, state tables | tests, code |
-| Test author | Sonnet | failing tests, frozen | production code |
-| Coder | Sonnet | production code until frozen tests pass | tests |
-| Docs author | Sonnet | permanent documents | code |
-| Reviewer | Opus | its own regression tests, a review file | production code |
-| Re-reviewer | Opus | probes and a verdict on each fix | production code |
+| Role        | Model  | Writes                                  | Does not write  |
+| ----------- | ------ | --------------------------------------- | --------------- |
+| Coordinator | Opus   | briefs, decisions, merge order          | code            |
+| Spec author | Sonnet | spec, contracts, state tables           | tests, code     |
+| Test author | Sonnet | failing tests, frozen                   | production code |
+| Coder       | Sonnet | production code until frozen tests pass | tests           |
+| Docs author | Sonnet | permanent documents                     | code            |
+| Reviewer    | Opus   | its own regression tests, a review file | production code |
+| Re-reviewer | Opus   | probes and a verdict on each fix        | production code |
 
 Executors run on Sonnet because the work is well specified and cheap to repeat. Reviewers run on the
 stronger Opus model because a reviewer has to find what the author did not think of, and an author

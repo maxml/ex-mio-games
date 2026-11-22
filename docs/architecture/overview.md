@@ -8,18 +8,18 @@ Legend used throughout: **Built** means implemented in the submission and checke
 
 Five deployables, each in its own container, plus infrastructure:
 
-| Part | Owns |
-|---|---|
-| `identity` | authentication, authorization, the tenants module, JWT and JWKS, player identity mapping |
-| `engagement` | ingestion, the integrations module (casino adapters), rules engine, wheel, Bonus Store, redemption saga, the Socket.IO gateway (namespace `/rt`) |
-| `payments` | the coin ledger, coin operations, payment provider (`fake`), operator tariff |
-| `web` | player widget and operator console |
-| `casino-sim` | two simulated casino platforms with fault injection |
-| RabbitMQ | domain events between services (ADR 0003) |
-| Postgres | one database per service, RLS on tenant data |
-| Redis | optional balance projection cache for read APIs, and a health probe; persistence on. Rate-limit counters and a websocket journal are next, not built |
-| Varta | observability and product analytics (external project; wiring described, not run here) |
-| Deckhand | blue-green deployment (external project; a manifest exists, no deploy was run here) |
+| Part         | Owns                                                                                                                                                 |
+| ------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `identity`   | authentication, authorization, the tenants module, JWT and JWKS, player identity mapping                                                             |
+| `engagement` | ingestion, the integrations module (casino adapters), rules engine, wheel, Bonus Store, redemption saga, the Socket.IO gateway (namespace `/rt`)     |
+| `payments`   | the coin ledger, coin operations, payment provider (`fake`), operator tariff                                                                         |
+| `web`        | player widget and operator console                                                                                                                   |
+| `casino-sim` | two simulated casino platforms with fault injection                                                                                                  |
+| RabbitMQ     | domain events between services (ADR 0003)                                                                                                            |
+| Postgres     | one database per service, RLS on tenant data                                                                                                         |
+| Redis        | optional balance projection cache for read APIs, and a health probe; persistence on. Rate-limit counters and a websocket journal are next, not built |
+| Varta        | observability and product analytics (external project; wiring described, not run here)                                                               |
+| Deckhand     | blue-green deployment (external project; a manifest exists, no deploy was run here)                                                                  |
 
 ## 2. Modules versus services, and why
 
@@ -98,38 +98,38 @@ The operator console (in `web`, backed by `identity`, `engagement` and `payments
 
 ## 13. Reliability matrix (Part C)
 
-| Scenario | Mechanism |
-|---|---|
-| Duplicate deposit event | unique key on `(tenant, source, external_event_id)`; one spin |
-| Concurrent spin requests | conditional update on the credit; one winner |
-| Duplicate redemption | scoped `Idempotency-Key` with request hash; per-phase keys |
-| External API timeout | `UNKNOWN` state, lookup by our key, no premature release |
-| Failed reward issuance | final refusal releases the hold and returns stock |
-| Retries and recovery | backoff, sweeper, maximum age, `NEEDS_REVIEW` |
-| Tenant isolation | RLS, composite keys, ALS, generated suite, mutations |
-| Invalid or unauthorized events | HMAC, timestamp window, schema, rejection codes and log lines (no counter metric) |
-| No negative balance or double reward | database constraints and per-operation keys |
+| Scenario                             | Mechanism                                                                         |
+| ------------------------------------ | --------------------------------------------------------------------------------- |
+| Duplicate deposit event              | unique key on `(tenant, source, external_event_id)`; one spin                     |
+| Concurrent spin requests             | conditional update on the credit; one winner                                      |
+| Duplicate redemption                 | scoped `Idempotency-Key` with request hash; per-phase keys                        |
+| External API timeout                 | `UNKNOWN` state, lookup by our key, no premature release                          |
+| Failed reward issuance               | final refusal releases the hold and returns stock                                 |
+| Retries and recovery                 | backoff, sweeper, maximum age, `NEEDS_REVIEW`                                     |
+| Tenant isolation                     | RLS, composite keys, ALS, generated suite, mutations                              |
+| Invalid or unauthorized events       | HMAC, timestamp window, schema, rejection codes and log lines (no counter metric) |
+| No negative balance or double reward | database constraints and per-operation keys                                       |
 
 ## 14. Built versus designed
 
-| Item | Status |
-|---|---|
-| Five services, container each, DB each | Built |
-| Tenancy with RLS, isolation tests | Built |
-| Two casino adapters, canonical model, contract suite | Built |
-| Ledger, reserves, reconciliation job | Built (reconciliation reports, no pager) |
-| Wheel with versioned weights and server RNG | Built |
-| Redemption saga with lost-ticket recovery and operator review | Built |
-| Identity interface with Firebase Auth Emulator | Built (staff and operators; players use the launch token) |
-| Realtime push (Socket.IO gateway in engagement, one-time ticket, rooms per tenant and player) | Built, at most once |
-| Websocket replay of missed events | Next (client resyncs over REST) |
-| Product events on stdout (Varta contract) | Built (12 events emitted, conformance-tested); not received by a running Varta |
-| Redis balance projection | Partial (wired and optional, off in default compose) |
-| Rate limiting, Redis counters | Next |
-| Operator console writes for rules and wheel versions | Partial (reads real, publish calls mocked) |
-| Stripe payment provider | Next (interface and a stub that throws; `fake` is built) |
-| Production identity provider, refresh tokens | Next |
-| Per-service deployment secrets | Next, not claimed |
-| Deckhand deploy, Varta wiring | Described, not run here |
-| Changes inside Varta | Next |
-| Moving a module to its own service | Next |
+| Item                                                                                          | Status                                                                         |
+| --------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------ |
+| Five services, container each, DB each                                                        | Built                                                                          |
+| Tenancy with RLS, isolation tests                                                             | Built                                                                          |
+| Two casino adapters, canonical model, contract suite                                          | Built                                                                          |
+| Ledger, reserves, reconciliation job                                                          | Built (reconciliation reports, no pager)                                       |
+| Wheel with versioned weights and server RNG                                                   | Built                                                                          |
+| Redemption saga with lost-ticket recovery and operator review                                 | Built                                                                          |
+| Identity interface with Firebase Auth Emulator                                                | Built (staff and operators; players use the launch token)                      |
+| Realtime push (Socket.IO gateway in engagement, one-time ticket, rooms per tenant and player) | Built, at most once                                                            |
+| Websocket replay of missed events                                                             | Next (client resyncs over REST)                                                |
+| Product events on stdout (Varta contract)                                                     | Built (12 events emitted, conformance-tested); not received by a running Varta |
+| Redis balance projection                                                                      | Partial (wired and optional, off in default compose)                           |
+| Rate limiting, Redis counters                                                                 | Next                                                                           |
+| Operator console writes for rules and wheel versions                                          | Partial (reads real, publish calls mocked)                                     |
+| Stripe payment provider                                                                       | Next (interface and a stub that throws; `fake` is built)                       |
+| Production identity provider, refresh tokens                                                  | Next                                                                           |
+| Per-service deployment secrets                                                                | Next, not claimed                                                              |
+| Deckhand deploy, Varta wiring                                                                 | Described, not run here                                                        |
+| Changes inside Varta                                                                          | Next                                                                           |
+| Moving a module to its own service                                                            | Next                                                                           |
