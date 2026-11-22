@@ -22,7 +22,7 @@ One plain sentence per term, in the order a reader meets them.
 - **Deckhand**: a deploy tool that releases new versions without downtime (blue-green); optional, and no deploy was run for this repository.
 - **The monorepo starter**: the project skeleton this repository was built from, with Nx, shared packages and the service layout.
 - **Firebase Auth Emulator**: a local stand-in for Firebase sign-in, so the stack runs without an account.
-- **Fake payment provider**: a built-in stand-in for a payment service that confirms payments locally; Stripe is optional and exists only as an interface, with no code that charges anyone.
+- **Fake payment provider**: a built-in stand-in for a payment service that confirms payments locally; a Stripe adapter is a stub behind the same interface, and the fake provider is what runs.
 - **ADR**: an architecture decision record, a short document that states one decision, its alternatives and its cost.
 - **Compose stack**: the nine containers that `docker compose up` starts, the whole system on one machine.
 - **Mutation test**: a check that breaks a guard on purpose and confirms that a specific test then fails.

@@ -137,8 +137,7 @@ frozen-test conflicts on the test side and ran the whole compose suite against t
 
 - **The headline run counts have no committed output.** "98 then 107 of 111 compose tests", "12 of 13
   mutations red" and the other counts on this page are the reviewers' own reports from earlier trees. No
-  `pnpm test:compose` summary is committed in this repository, and CI has never run because the
-  repository has no remote (known gaps S-12). The captured counts are the per-project unit counts and
+  `pnpm test:compose` summary is committed in this repository, and CI runs on every push to the public repository (known gaps S-12). The captured counts are the per-project unit counts and
   the demo run, both in the root README. A reader can still re-check a claim: each frozen test names
   its mutation in its header, so the mutation can be applied and the test seen to go red.
 - The end-to-end demo run on `1aa98e0` (40 steps, 194 assertions passed, Part C cases C-1 to C-8) is recorded

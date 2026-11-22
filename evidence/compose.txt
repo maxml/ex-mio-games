@@ -1,4 +1,4 @@
-# commit 33462ab (later commits change docs, test email strings and deploy wording only), 2026-11-22
+# commit 2aa4b7a (hash as published; later commits are listed in evidence/README.md), 2026-11-22
 # command: pnpm test:compose
 
 

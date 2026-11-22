@@ -116,7 +116,7 @@ The operator console (in `web`, backed by `identity`, `engagement` and `payments
 
 | Item                                                                                          | Status                                                                         |
 | --------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------ |
-| Five services, container each, DB each                                                        | Built                                                                          |
+| Three domain services with a DB each, plus web and casino-sim, container each                 | Built                                                                          |
 | Tenancy with RLS, isolation tests                                                             | Built                                                                          |
 | Two casino adapters, canonical model, contract suite                                          | Built                                                                          |
 | Ledger, reserves, reconciliation job                                                          | Built (reconciliation reports, no pager)                                       |

@@ -58,7 +58,7 @@ The principles behind the design, each linked to where the repo does it:
   boundaries ([ADR 0008](docs/adrs/0008-integration-adapters-canonical-model.md)).
 - A message broker from the start, with outbox and inbox ([ADR 0003](docs/adrs/0003-rabbitmq-outbox-inbox.md)).
 - Identity and the payment provider sit behind interfaces. Sign-in runs on the Firebase Auth Emulator and payments on
-  a fake provider, so no accounts are needed. Stripe exists as a port only and is not used.
+  a fake provider, so no accounts are needed. Stripe is a stub behind the same interface, and the fake provider is what runs.
 - A websocket client that reconnects and resyncs over REST ([ADR 0014](docs/adrs/0014-realtime-websocket-client.md)).
 - Product analytics from day one through Varta, and a design system built in Storybook
   ([`packages/ui`](packages/ui/TOKENS.md), [ADR 0013](docs/adrs/0013-fsd-frontend-architecture.md)).
@@ -185,10 +185,10 @@ Postgres and RabbitMQ: 250 of 250 passed, and the payments and engagement databa
 
 ## Architecture in short
 
-Five services (identity, engagement, payments, a web app and a casino simulator) run next to RabbitMQ, Postgres
-and Redis in one Docker Compose file. Payments is the only writer of coins, identity signs tokens, and engagement
+Three domain services (identity, engagement, payments), each with its own database, run next to a web app, a
+casino simulator, RabbitMQ, Postgres and Redis in one Docker Compose file. Payments is the only writer of coins, identity signs tokens, and engagement
 holds the rules, wheel, store and the casino adapters. Services exchange events through RabbitMQ with an outbox and an inbox, and each
-service has its own database. See [`docs/architecture/overview.md`](docs/architecture/overview.md) for the
+domain service has its own database. See [`docs/architecture/overview.md`](docs/architecture/overview.md) for the
 diagrams and the reasons, and [`docs/how-to/where-to-change.md`](docs/how-to/where-to-change.md) for where to add
 a third casino or a reward type.
 
@@ -642,7 +642,7 @@ Main variables (all have a working default in compose; the values there are for 
 | `REDIS_URL`                                       | engagement, payments | optional; payments uses it for the balance projection                                                            |
 | `PAYMENTS_URL`                                    | engagement           | where the coin reserve is called                                                                                 |
 | `FAKE_PROVIDER_WEBHOOK_SECRET`                    | payments             | billing webhook secret; required in production unless Stripe is set                                              |
-| `STRIPE_SECRET_KEY`                               | payments             | selects the Stripe stub, which throws on every call                                                              |
+| `STRIPE_SECRET_KEY`                               | payments             | set only to select the Stripe stub, which throws on every call; the fake provider runs otherwise                 |
 | `LEDGER_JOBS_INTERVAL_SECONDS`                    | payments             | interval of the reconciliation and usage-report jobs                                                             |
 | `DATABASE_SSL`                                    | every service        | `disable`, `require` or `verify-full`; stated explicitly in production                                           |
 | `API_URL`                                         | web                  | server-side URL of identity inside the compose network                                                           |
@@ -686,7 +686,7 @@ can be run for one project with `pnpm nx run <project>:<target>`.
 | Frontend layering                                                                   | `pnpm lint:fsd`                                                                                                                             | nothing running                                                |
 | Design system in a browser                                                          | `pnpm storybook` (port 6006)                                                                                                                | nothing running                                                |
 
-`pnpm test` (`nx run-many -t test`, one project at a time) on the release commit `2aa4b7a` (2026-11-22). All thirteen projects pass; the skipped tests are marked
+`pnpm test` (`nx run-many -t test`, one project at a time) on the release commit `2aa4b7a` (2026-11-22). All projects pass; the skipped tests are marked
 skipped in the source, and the known-defect tests that are expected to fail are `it.failing`, counted as passed:
 
 ```text
@@ -706,8 +706,9 @@ output is in [`evidence/`](evidence/README.md): `compose.txt`, `pay-db.txt`, `en
 `pnpm --filter @ex-mio/payments test:db` 181 of 181 passed (8 suites),
 `pnpm --filter @ex-mio/engagement test:pg` 50 of 50 passed (4 suites), and `scripts/demo.sh` on a fresh slot passed
 40 steps and 194 assertions with 0 failures, including Part C cases C-1 to C-8 against the live stack. The Part C
-compose tests behind those cases are in `tests/compose/src/partc-issuance.compose.test.ts`. No CI run exists (the
-repository has no remote). The compose counts quoted in [`docs/ai/`](docs/ai/README.md) (98 then 107 of 111) are
+compose tests behind those cases are in `tests/compose/src/partc-issuance.compose.test.ts`. CI runs the same checks on every push to `main`: unit tests, lint and typecheck, then a
+clean-clone compose stack with the compose tests, both database suites and the demo. Runs are listed on the
+[Actions page](https://github.com/maxml/ex-mio-games/actions/workflows/ci.yml), and `9607734` has a green run: https://github.com/maxml/ex-mio-games/actions/runs/45056098182. The compose counts quoted in [`docs/ai/`](docs/ai/README.md) (98 then 107 of 111) are
 reviewer-reported on an earlier tree; the run above supersedes them (S-11, S-12 and S-13 in
 [`docs/submission/known-gaps.md`](docs/submission/known-gaps.md)).
 
@@ -773,28 +774,28 @@ slot (the default stack uses fixed host ports); use `scripts/stack-up.sh` to run
 Checked against the code. The full table with the reasons is section 14 of
 [`docs/architecture/overview.md`](docs/architecture/overview.md#14-built-versus-designed).
 
-| Area                                                                                         | Status                                                                                                           |
-| -------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
-| Five services, one container and one database each, one compose file                         | Built                                                                                                            |
-| Tenancy: token claim, row-level security, separate owner and app roles, isolation tests      | Built                                                                                                            |
-| Two casino adapters, canonical model, adapter contract suite, simulator with fault injection | Built                                                                                                            |
-| Signed event ingestion, validation, deduplication, outbox and inbox, dead-letter replay      | Built                                                                                                            |
-| Rules engine, versioned reward table, server-side deterministic wheel                        | Built                                                                                                            |
-| Double-entry coin ledger, reserve, capture, release, refund, reconciliation job              | Built (reports a mismatch, no pager)                                                                             |
-| Bonus Store, redemption saga with recovery from unknown outcomes, operator review route      | Built                                                                                                            |
-| Identity: tokens, JWKS, RBAC, acting sessions with audit, service tokens, launch exchange    | Built                                                                                                            |
-| Operator signup and plan checkout against the fake provider                                  | Built                                                                                                            |
-| Realtime push over Socket.IO with a one-time ticket                                          | Built, at most once                                                                                              |
-| Web: player widget and operator console                                                      | Built; live against the services by default. Sandbox check, go-live and coin history are mock (see known gaps)   |
-| Product events for Varta                                                                     | Built: 12 events on stdout; ingest path verified against Varta's schema; reaches Varta when deployed with labels |
-| Redis balance projection                                                                     | Partial: wired, optional, off in default compose                                                                 |
-| Missed-event replay on websocket reconnect                                                   | Next                                                                                                             |
-| Rate limiting                                                                                | Next                                                                                                             |
-| Stripe payment provider                                                                      | Next (interface and a stub that throws)                                                                          |
-| Production identity provider, refresh tokens                                                 | Next                                                                                                             |
-| Provably-fair seed commitment, RNG certification                                             | Next                                                                                                             |
-| Per-service deployment secrets                                                               | Next, not claimed                                                                                                |
-| Deckhand deploy                                                                              | Described, not run here                                                                                          |
+| Area                                                                                                      | Status                                                                                                           |
+| --------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
+| Three domain services with a database each, plus web and casino-sim, one container each, one compose file | Built                                                                                                            |
+| Tenancy: token claim, row-level security, separate owner and app roles, isolation tests                   | Built                                                                                                            |
+| Two casino adapters, canonical model, adapter contract suite, simulator with fault injection              | Built                                                                                                            |
+| Signed event ingestion, validation, deduplication, outbox and inbox, dead-letter replay                   | Built                                                                                                            |
+| Rules engine, versioned reward table, server-side deterministic wheel                                     | Built                                                                                                            |
+| Double-entry coin ledger, reserve, capture, release, refund, reconciliation job                           | Built (reports a mismatch, no pager)                                                                             |
+| Bonus Store, redemption saga with recovery from unknown outcomes, operator review route                   | Built                                                                                                            |
+| Identity: tokens, JWKS, RBAC, acting sessions with audit, service tokens, launch exchange                 | Built                                                                                                            |
+| Operator signup and plan checkout against the fake provider                                               | Built                                                                                                            |
+| Realtime push over Socket.IO with a one-time ticket                                                       | Built, at most once                                                                                              |
+| Web: player widget and operator console                                                                   | Built; live against the services by default. Sandbox check, go-live and coin history are mock (see known gaps)   |
+| Product events for Varta                                                                                  | Built: 12 events on stdout; ingest path verified against Varta's schema; reaches Varta when deployed with labels |
+| Redis balance projection                                                                                  | Partial: wired, optional, off in default compose                                                                 |
+| Missed-event replay on websocket reconnect                                                                | Next                                                                                                             |
+| Rate limiting                                                                                             | Next                                                                                                             |
+| Stripe payment provider                                                                                   | Next (interface and a stub that throws)                                                                          |
+| Production identity provider, refresh tokens                                                              | Next                                                                                                             |
+| Provably-fair seed commitment, RNG certification                                                          | Next                                                                                                             |
+| Per-service deployment secrets                                                                            | Next, not claimed                                                                                                |
+| Deckhand deploy                                                                                           | Described, not run here                                                                                          |
 
 ## Where the answers are
 

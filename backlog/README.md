@@ -32,7 +32,7 @@ The smallest thing a casino operator can find, try and pay for, end to end:
 operator self-serve signup → casino simulator connected → deposit → spin → coins → store → reward
 issued → plan paid (`fake` provider) → funnel visible in analytics.
 
-Its executable definition is MIO-005 (`pnpm demo`), run from a fresh clone with no accounts. **P0 is
+Its executable definition is MIO-005 (`scripts/demo.sh`), run from a fresh clone with no accounts. **P0 is
 exactly MIO-005, the design prototype MIO-121 (the owner's pre-code gate), and everything they depend on,
 directly or transitively.** Everything else is P1 or lower, including work the owner requires but the
 slice does not: Casino B, fault injection and recovery demos, metering, entitlements, the live websocket,
