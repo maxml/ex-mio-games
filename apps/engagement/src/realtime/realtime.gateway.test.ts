@@ -274,7 +274,8 @@ describe('realtime gateway', () => {
  * COMMIT-ONLY: pushes leave after the handler's transaction commits.
  * Mutation: `queue()` in realtime.gateway.ts calls `this.publish(event)` inline -> both tests red.
  * The fake runner replays what TypeORM does: the connection's subscribers get afterTransactionCommit
- * or afterTransactionRollback with the transaction's query runner.
+ * or afterTransactionRollback with the transaction's query runner. As in TypeORM, the runner is no
+ * longer in a transaction when those events fire (a nested savepoint release keeps it active).
  */
 type Sub = {
   afterTransactionCommit?: (e: unknown) => void;
@@ -288,9 +289,11 @@ function txRunner() {
     try {
       await fn(manager);
     } catch (err) {
+      queryRunner.isTransactionActive = false;
       connection.subscribers.forEach((s) => s.afterTransactionRollback?.({ queryRunner }));
       throw err;
     }
+    queryRunner.isTransactionActive = false;
     connection.subscribers.forEach((s) => s.afterTransactionCommit?.({ queryRunner }));
   };
 }
