@@ -8,6 +8,7 @@ import {
   ActAsTenantRequest,
   AuditEntry,
   BillingPlan,
+  CredentialIssued,
   HEADER_IDEMPOTENCY_KEY,
   Invoice,
   LaunchResponse,
@@ -497,6 +498,90 @@ export function createBff(deps: BffDeps) {
         });
         await loginOperator(ctx, email, password);
         return { status: 201 };
+      },
+    ],
+    // Casino integration credentials: `POST /v1/credentials` (identity). Both the platform and the environment
+    // are required by the service. The secrets are returned once and never stored by the BFF.
+    [
+      'POST',
+      /^\/api\/operator\/credentials$/,
+      async (ctx) => {
+        const s = need(ctx.session);
+        const environment = ctx.body.environment;
+        if (environment !== 'sandbox' && environment !== 'production')
+          throw new BffError(422, 'validation_error', 'environment must be sandbox or production');
+        const issued = await up('identity', 'POST', '/v1/credentials', {
+          token: token(s, 'identity'),
+          body: { platform: config.casinoPath, environment },
+          schema: CredentialIssued,
+        });
+        return {
+          status: 201,
+          body: {
+            environment,
+            keyId: issued.key_id,
+            apiKey: issued.api_key,
+            hmacSecret: issued.hmac_secret,
+          },
+        };
+      },
+    ],
+    // Rules: `PUT /v1/operator/rules` (engagement). `min` is EUR, the service takes minor units. `cap` is the
+    // per-player grant limit. `per` ("per each N EUR") has no service field and is dropped (known-gaps G-4).
+    [
+      'POST',
+      /^\/api\/operator\/rules$/,
+      async (ctx) => {
+        const s = need(ctx.session);
+        const num = (v: unknown, name: string): number => {
+          if (typeof v !== 'number' || !Number.isInteger(v) || v <= 0)
+            throw new BffError(422, 'validation_error', `${name} must be a positive integer`);
+          return v;
+        };
+        const min = num(ctx.body.min, 'min');
+        await up('engagement', 'PUT', '/v1/operator/rules', {
+          token: token(s, 'engagement'),
+          body: {
+            name: 'Deposit rule',
+            min_amount_minor: min * 100,
+            currency: 'EUR',
+            spins: num(ctx.body.spins, 'spins'),
+            max_grants_per_player: num(ctx.body.cap, 'cap'),
+          },
+        });
+        return { status: 204 };
+      },
+    ],
+    // Wheel: `PUT /v1/operator/wheel`. The console edits the weights of its fixed eight coin segments; the
+    // service takes integer weights, so the (up to one decimal) console weights are sent times 10.
+    [
+      'POST',
+      /^\/api\/operator\/wheel\/publish$/,
+      async (ctx) => {
+        const s = need(ctx.session);
+        const w = ctx.body.weights;
+        if (
+          !Array.isArray(w) ||
+          w.length !== WHEEL_REWARDS.length ||
+          !w.every((x) => typeof x === 'number' && Number.isFinite(x) && x > 0)
+        )
+          throw new BffError(
+            422,
+            'validation_error',
+            'weights must be one positive number per segment',
+          );
+        await up('engagement', 'PUT', '/v1/operator/wheel', {
+          token: token(s, 'engagement'),
+          body: {
+            name: 'Daily Wheel',
+            segments: WHEEL_REWARDS.map((r, i) => ({
+              label: r.label,
+              weight: Math.max(1, Math.round((w[i] as number) * 10)),
+              reward: { type: 'coins', amount: r.coins },
+            })),
+          },
+        });
+        return { status: 204 };
       },
     ],
     [

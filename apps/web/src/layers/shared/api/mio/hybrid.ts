@@ -9,12 +9,10 @@ import { MioApiError, type MioApi } from './api';
 export const GAP_CALLS = {
   /** G-1 (W-4): `GET /v1/me/transactions` does not exist. */
   'player.getState.history': 'W-4',
-  /** G-4 (W-14): no sandbox-check, go-live, rules or wheel routes. */
+  /** G-4 (W-14): no sandbox-check or go-live route (rules and wheel exist and are called). */
   'operator.runSandbox': 'W-14',
   'operator.startGoLive': 'W-14',
   'operator.confirmFirstLiveDeposit': 'W-14',
-  'operator.saveRules': 'W-14',
-  'operator.publishWheel': 'W-14',
   'operator.completeStep': 'W-14',
   'operator.selectPlan': 'console state',
   'operator.getState.{rules,wheel,sandbox,live,done}': 'W-14',
@@ -75,8 +73,16 @@ export function createHybridApi(real: MioApi, mock: MioApi): MioApi {
       runSandbox: () => mock.operator.runSandbox(),
       startGoLive: () => mock.operator.startGoLive(),
       confirmFirstLiveDeposit: () => mock.operator.confirmFirstLiveDeposit(),
-      saveRules: (rules) => mock.operator.saveRules(rules),
-      publishWheel: (weights) => mock.operator.publishWheel(weights),
+      // Real PUT first (engagement stores the version); the mock then keeps the console's own copy in step,
+      // because no service route reads the published rules and wheel back into the console's shape.
+      saveRules: async (rules) => {
+        await real.operator.saveRules(rules);
+        await mock.operator.saveRules(rules);
+      },
+      publishWheel: async (weights) => {
+        await real.operator.publishWheel(weights);
+        await mock.operator.publishWheel(weights);
+      },
       completeStep: (step) => mock.operator.completeStep(step),
     },
     admin: {

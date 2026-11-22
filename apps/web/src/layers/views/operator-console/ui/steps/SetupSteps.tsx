@@ -18,6 +18,7 @@ import {
   Text,
   Toast,
 } from '@/layers/shared/ui';
+import type { IssuedCredentialView } from '@/layers/shared/types';
 import type { StepProps } from './types';
 
 export function SignupStep({ s, nav }: StepProps) {
@@ -194,30 +195,47 @@ export function PlanStep({ s, nav }: StepProps) {
 export function KeysStep({ nav }: StepProps) {
   const [shown, setShown] = useState(false);
   const [note, setNote] = useState('');
-  const rotate = () => setNote('Webhook secret rotated: the old secret works for 24 more hours.');
-  const copy = (label: string) => () => setNote(`Copied: ${label} (mock, nothing is copied)`);
+  const issue = useMioMutation<void, IssuedCredentialView>((a) =>
+    a.operator.issueCredentials('sandbox'),
+  );
+  const issued = issue.data;
+  const copy = (label: string, value: string) => () => {
+    void navigator.clipboard?.writeText(value).then(
+      () => setNote(`Copied: ${label}`),
+      () => setNote(`Could not copy ${label}`),
+    );
+  };
   return (
     <Card
       title="Integration keys"
-      description="Test keys. Live keys unlock after the sandbox test passes."
+      description="Sandbox credentials for your casino integration. The secrets are shown once, so store them now. Live credentials unlock after the sandbox test passes."
     >
-      <KeyList>
-        <KeyRow
-          label="Publishable key (widget)"
-          value="pk_test_9d41c0a7e2b84f10"
-          onCopy={copy('Publishable key')}
-        />
-        <KeyRow
-          label="Secret key (server to server)"
-          value={shown ? 'sk_test_EXAMPLE_0000000000' : 'sk_test_' + '•'.repeat(20)}
-          onCopy={copy('Secret key')}
-        />
-        <KeyRow
-          label="Webhook secret (verify casino events)"
-          value={shown ? 'whsec_a83d0c1177ef42b9' : 'whsec_' + '•'.repeat(16)}
-          onCopy={copy('Webhook secret')}
-        />
-      </KeyList>
+      {issued ? (
+        <KeyList>
+          <KeyRow
+            label="Key id (sent with every casino event)"
+            value={issued.keyId}
+            onCopy={copy('Key id', issued.keyId)}
+          />
+          <KeyRow
+            label="API key (server to server)"
+            value={shown ? issued.apiKey : '•'.repeat(24)}
+            onCopy={copy('API key', issued.apiKey)}
+          />
+          <KeyRow
+            label="HMAC secret (signs casino events and launch tokens)"
+            value={shown ? issued.hmacSecret : '•'.repeat(24)}
+            onCopy={copy('HMAC secret', issued.hmacSecret)}
+          />
+        </KeyList>
+      ) : (
+        <Text>No credentials yet. Create them to connect your casino in the sandbox.</Text>
+      )}
+      {issue.isError && (
+        <Alert tone="danger">
+          <span role="alert">Credentials could not be created. Try again.</span>
+        </Alert>
+      )}
       <Toast
         className="mt-3 empty:hidden"
         message={note}
@@ -225,12 +243,16 @@ export function KeysStep({ nav }: StepProps) {
         tone="success"
       />
       <div className="mt-3 flex flex-wrap gap-2">
-        <Button variant="secondary" onClick={() => setShown((v) => !v)}>
-          {shown ? 'Hide secrets' : 'Reveal secrets'}
-        </Button>
-        <Button variant="danger" onClick={rotate}>
-          Rotate webhook secret
-        </Button>
+        {!issued && (
+          <Button loading={issue.isPending} onClick={() => issue.mutate()}>
+            Create sandbox credentials
+          </Button>
+        )}
+        {issued && (
+          <Button variant="secondary" onClick={() => setShown((v) => !v)}>
+            {shown ? 'Hide secrets' : 'Reveal secrets'}
+          </Button>
+        )}
       </div>
       {nav()}
     </Card>

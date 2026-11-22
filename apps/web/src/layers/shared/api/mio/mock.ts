@@ -151,6 +151,13 @@ export function createMockApi({ store = appStore }: MockApiOptions = {}): MioApi
     operator: {
       getState: async () => operatorState(),
       createAccount: async () => store.dispatch({ type: 'account/create' }),
+      // Mock mode only: obviously fake values, nothing is issued.
+      issueCredentials: async (environment) => ({
+        environment,
+        keyId: 'key_EXAMPLE_mock',
+        apiKey: 'EXAMPLE_api_key_mock',
+        hmacSecret: 'EXAMPLE_hmac_secret_mock',
+      }),
       selectPlan: async (id) => store.dispatch({ type: 'plan/select', id }),
       startPayment: async (planId, last4) => {
         const id = startPayment(planId, last4, store);
