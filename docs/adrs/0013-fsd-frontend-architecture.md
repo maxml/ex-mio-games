@@ -38,16 +38,16 @@ Status note (2026-11-23): ESLint `import/no-restricted-paths` fails the CI build
 
 ## 2. Decision (TL;DR)
 
-| Aspect                      | Decision                                                                        | Section |
-| --------------------------- | ------------------------------------------------------------------------------- | ------- |
-| Organizing architecture     | **Feature-Sliced Design (FSD)**, pragmatic                                      | §3      |
+| Aspect                       | Decision                                                                        | Section |
+| ---------------------------- | ------------------------------------------------------------------------------- | ------- |
+| Organizing architecture      | **Feature-Sliced Design (FSD)**, pragmatic                                      | §3      |
 | FSD ↔ Next `app/` collision | **Variant A**: `app/**` = Next routes only; FSD lives under `src/layers`        | §3.1    |
-| Render strategy             | **Server Components by default**; `"use client"` islands only where interactive | §4.1    |
-| Server-state                | **TanStack Query** (interactive/authed/WS-synced data)                          | §4.2    |
-| Client/UI-state             | **Zustand** (modals, filters, presence, connection status)                      | §4.2    |
-| Forms / validation          | **react-hook-form + Zod** (schemas from `packages/contracts`)                   | §4.2    |
-| Real-time                   | WebSocket-first; see the realtime ADR/dimension                                 | §5      |
-| Layer boundaries            | Enforced: ESLint `import/no-restricted-paths` + Steiger                         | §3, §7  |
+| Render strategy              | **Server Components by default**; `"use client"` islands only where interactive | §4.1    |
+| Server-state                 | **TanStack Query** (interactive/authed/WS-synced data)                          | §4.2    |
+| Client/UI-state              | **Zustand** (modals, filters, presence, connection status)                      | §4.2    |
+| Forms / validation           | **react-hook-form + Zod** (schemas from `packages/contracts`)                   | §4.2    |
+| Real-time                    | WebSocket-first; see the realtime ADR/dimension                                 | §5      |
+| Layer boundaries             | Enforced: ESLint `import/no-restricted-paths` + Steiger                         | §3, §7  |
 
 ## 3. Organizing architecture — Feature-Sliced Design
 
