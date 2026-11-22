@@ -86,12 +86,21 @@ const age = async (id: string, seconds: number) => {
   const owner = await pgAs('identity_owner');
   try {
     // FORCE RLS applies to the owner too (D-32 F1): opt in to the platform scan like the port does.
+    // Fix round 2 (test owner): under RLS an UPDATE that the policy hides matches 0 rows and does not
+    // fail. A silent no-op here would leave the intent young: M1-PG-4's "young stays" would pass
+    // vacuously and M1-PG-5 would never race (finalize alone wins, and `refused` is an allowed
+    // outcome). So the helper proves it aged exactly the one intent.
+    // Mutation: drop the platform-scan opt-in above -> this throws in M1-PG-4 and M1-PG-5.
     await owner.query('BEGIN');
     await owner.query(`SET LOCAL app.platform_scan = 'on'`);
-    await owner.query(
+    const aged = await owner.query(
       `UPDATE "audit_intents" SET "created_at" = now() - make_interval(secs => $2) WHERE "event_id" = $1`,
       [id, seconds],
     );
+    if (aged.rowCount !== 1) {
+      await owner.query('ROLLBACK');
+      throw new Error(`age(${id}): expected to age 1 intent, aged ${aged.rowCount}`);
+    }
     await owner.query('COMMIT');
   } finally {
     await owner.end();
