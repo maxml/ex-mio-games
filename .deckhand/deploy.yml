@@ -52,6 +52,8 @@ services:
       ready: /healthz/ready # 503 when the database or broker is down: blocks cutover
     public:
       paths: ['/v1/tenants*', '/v1/auth*']
+    env:
+      NODE_ENV: production # D-32: the services' https and cookie rules key on it
     resources: { cpu: '0.5', memory: '512M' }
     depends_on: [db, rabbitmq]
   engagement:
@@ -63,6 +65,8 @@ services:
       ready: /healthz/ready
     public:
       paths: ['/v1/tenant-projection*', '/v1/engagement*', '/socket.io/*']
+    env:
+      NODE_ENV: production
     resources: { cpu: '0.5', memory: '512M' }
     depends_on: [db, rabbitmq, redis]
   payments:
@@ -76,6 +80,8 @@ services:
       # No /v1/credits: coins are credited only by the payments consumer (D-1), and the
       # demo endpoint trusts a caller-supplied tenant header, so it is not mounted in production.
       paths: ['/v1/payments*']
+    env:
+      NODE_ENV: production
     resources: { cpu: '0.5', memory: '512M' }
     depends_on: [db, rabbitmq]
   web:
@@ -90,6 +96,7 @@ services:
     env:
       # Server-side base for web -> service calls, read at RUNTIME.
       API_URL: 'http://identity:4001'
+      NODE_ENV: production
     resources: { cpu: '0.5', memory: '512M' }
   db:
     image: postgres:16

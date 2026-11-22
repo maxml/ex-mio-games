@@ -169,10 +169,14 @@ export function createLogger(
   // be written raw (D-31 R3). `child` is wrapped here: the bindings pass the allow-list first. The
   // wrapper is inherited by every child, and it calls pino's own `child` on `this`, so chains keep
   // their bindings.
-  const pinoChild = root.child as (this: pino.Logger, b: pino.Bindings, o?: object) => pino.Logger;
+  const pinoChild = root.child as unknown as (
+    this: pino.Logger,
+    b: pino.Bindings,
+    o?: object,
+  ) => pino.Logger;
   root.child = function child(this: pino.Logger, bindings: pino.Bindings, childOptions?: object) {
     return pinoChild.call(this, sanitizeLogObject(bindings), childOptions);
-  } as typeof root.child;
+  } as unknown as typeof root.child;
   return root;
 }
 

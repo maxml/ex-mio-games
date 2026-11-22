@@ -157,6 +157,8 @@ export class CredentialsService {
     platform: string,
     environment: IntegrationEnvironment,
   ): Promise<CredentialIssued> {
+    // D-32 F2: the secret never reaches acting staff; refused before `authorize`, audited `refused`.
+    if (subject.acting) throw new AuthorizationRefused({ code: 'ACTING_FORBIDDEN' });
     const tenantId = effectiveTenant(subject);
     await this.access.authorize(subject, 'credentials.rotate', { tenant_id: tenantId });
     return this.issue(tenantId, platform, { environment, subject });
@@ -192,6 +194,7 @@ export class CredentialsService {
     keyId: string,
     options: { graceSeconds: number },
   ): Promise<CredentialIssued> {
+    if (subject.acting) throw new AuthorizationRefused({ code: 'ACTING_FORBIDDEN' });
     const tenantId = effectiveTenant(subject);
     await this.access.authorize(subject, 'credentials.rotate', { tenant_id: tenantId });
     const grace = Math.max(0, Math.floor(options.graceSeconds ?? 0));
