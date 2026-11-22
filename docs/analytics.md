@@ -37,8 +37,13 @@ against the schema with ajv in the tests:
 - exactly one of `actor_id` (an internal id, never starting with `anon:`) and `anon_id`;
 - ids are ASCII `[A-Za-z0-9._:|/+=~-]`, so an email cannot be an id;
 - `props` is a flat map of strings, numbers and booleans. Keys are `snake_case`, with no `varta_`
-  prefix and no PII-shaped name (`email`, `phone`, `ip`, `token`, `*_email`, ...). A string value that
-  is an email address or JSON text is refused;
+  prefix and no PII-shaped name (`email`, `phone`, `ip`, `token`, `*_email`, ...). String values are an
+  ALLOW-list, not a deny-list: every character must be in `A-Z a-z 0-9 space _ . : / [ ] ( ) -`, at most 256
+  characters, and no run of 9 or more digits. So an email (with or without a trailing `#`, zero-width
+  space or percent-encoding), a URL query, a bearer token (commas, `=`), JSON or `util.inspect` text and
+  non-ASCII digits (Arabic-Indic phone numbers) are all refused. This is stricter than the vendored Varta
+  schema, which a stricter producer still satisfies (D-19). A refused event is dropped whole (one
+  `product_event_dropped` warn line); no key or value is ever rewritten;
 - money is `amount_minor` (an integer in the minor unit) plus `currency`;
 - one line is at most 8 KiB.
 

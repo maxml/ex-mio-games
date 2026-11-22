@@ -1,5 +1,6 @@
 import { isSpanContextValid, trace } from '@opentelemetry/api';
 import pino from 'pino';
+import { isErrorLike, sanitizeLogObject, scrubString } from './redact';
 
 /**
  * The logger instance type. Re-exported so consumers can type a logger slot
@@ -41,24 +42,32 @@ export interface LoggerOptions {
   pino?: pino.LoggerOptions;
 }
 
-// Secret-bearing keys scrubbed from every line (§3.1: "No secrets/PII in logs").
-// Covered at the top level and one level deep (e.g. a `headers`/`req.headers`
-// bag): hyphenated keys use fast-redact bracket notation, and the `*.<key>`
-// forms catch the same secret nested one level under any parent.
-const REDACT_PATHS = [
-  'authorization',
-  'password',
-  'token',
-  'cookie',
-  '["set-cookie"]',
-  '*.authorization',
-  '*.password',
-  '*.token',
-  '*.cookie',
-  '*["set-cookie"]',
-];
+// Redaction is an ALLOW-list (§3.1: "No secrets/PII in logs"): see ./redact. Only known keys keep
+// their value; every other key is censored, and the strings that pass are scrubbed.
 
-const REDACT_CENSOR = '[redacted]';
+/** Scrub the message arguments (pino's `hooks.logMethod`): `msg` never goes through formatters. */
+function scrubLogArgs(args: unknown[]): unknown[] {
+  const first = args[0];
+  if (isErrorLike(first)) {
+    return [{ err: first }, scrubString(first.message), ...args.slice(1).map(scrubArg)];
+  }
+  // pino falls back to `err.message` as the line's msg when none is given: that copy would skip
+  // the scrub, so make the message explicit here.
+  const err = (first as { err?: unknown } | undefined)?.err;
+  if (
+    typeof first === 'object' &&
+    first !== null &&
+    isErrorLike(err) &&
+    typeof args[1] !== 'string'
+  ) {
+    return [first, scrubString(err.message), ...args.slice(1)];
+  }
+  return args.map(scrubArg);
+}
+
+function scrubArg(arg: unknown): unknown {
+  return typeof arg === 'string' ? scrubString(arg) : arg;
+}
 
 function resolveService(name?: string): string {
   return name ?? process.env.SERVICE_NAME ?? 'app';
@@ -101,13 +110,22 @@ export function buildLoggerOptions(options: LoggerOptions = {}): pino.LoggerOpti
     // trace|debug|info|warn|error|fatal already matches the LogLevel enum (§3.1).
     formatters: {
       level: (label) => ({ level: label }),
+      // The allow-list choke point: every key of every line passes through here.
+      log: sanitizeLogObject,
     },
     base,
     // Per-line trace correlation (§3.1, §5): stamps `trace_id`/`span_id` when an
     // OpenTelemetry span is active. Runs on every record, so it stays cheap and
     // never throws; a no-op when tracing is off (there is no active span).
     mixin: traceContextMixin,
-    redact: { paths: REDACT_PATHS, censor: REDACT_CENSOR },
+    // The `err` shape is built (and scrubbed) in sanitizeLogObject; pino's default err serializer
+    // would run again on it and rewrite `type` from the plain object's constructor.
+    serializers: { err: (e: unknown) => e },
+    hooks: {
+      logMethod(args, method) {
+        (method as (...a: unknown[]) => void).apply(this, scrubLogArgs(args as unknown[]));
+      },
+    },
     ...options.pino,
   };
 }

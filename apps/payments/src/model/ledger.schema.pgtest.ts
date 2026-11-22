@@ -36,10 +36,13 @@ async function seed(): Promise<Seed> {
     redeemed: uuidv7(),
   };
   await inTenant(app, s.tenant, async () => {
-    await app.query(`INSERT INTO wallets (tenant_id, id) VALUES ($1, $2)`, [s.tenant, s.wallet]);
+    await app.query(`INSERT INTO wallets (tenant_id, id, sandbox) VALUES ($1, $2, false)`, [
+      s.tenant,
+      s.wallet,
+    ]);
     const acc = (id: string, kind: string, wallet: string | null) =>
       app.query(
-        `INSERT INTO accounts (tenant_id, id, kind, wallet_id, currency) VALUES ($1, $2, $3, $4, 'COIN')`,
+        `INSERT INTO accounts (tenant_id, id, kind, wallet_id, currency, sandbox) VALUES ($1, $2, $3, $4, 'COIN', false)`,
         [s.tenant, id, kind, wallet],
       );
     await acc(s.issuance, 'tenant_issuance', null);
@@ -54,7 +57,7 @@ async function seed(): Promise<Seed> {
     }
     // A link and a reserve, so the isolation tests below have a row to hide in every table (F15).
     await app.query(
-      `INSERT INTO wallet_owner_links (tenant_id, wallet_id, user_id) VALUES ($1, $2, $3)`,
+      `INSERT INTO wallet_owner_links (tenant_id, wallet_id, user_id, sandbox) VALUES ($1, $2, $3, false)`,
       [s.tenant, s.wallet, uuidv7()],
     );
     await app.query(
@@ -154,12 +157,12 @@ describe('INV-L1 balanced legs are enforced by the database at commit', () => {
     const eur = uuidv7();
     const otherWallet = uuidv7();
     await inTenant(app, s.tenant, async () => {
-      await app.query(`INSERT INTO wallets (tenant_id, id) VALUES ($1, $2)`, [
+      await app.query(`INSERT INTO wallets (tenant_id, id, sandbox) VALUES ($1, $2, false)`, [
         s.tenant,
         otherWallet,
       ]);
       await app.query(
-        `INSERT INTO accounts (tenant_id, id, kind, wallet_id, currency) VALUES ($1, $2, 'player_available', $3, 'EUR')`,
+        `INSERT INTO accounts (tenant_id, id, kind, wallet_id, currency, sandbox) VALUES ($1, $2, 'player_available', $3, 'EUR', false)`,
         [s.tenant, eur, otherWallet],
       );
     });
@@ -213,12 +216,15 @@ describe('INV-L7 a wallet and the tenant system accounts exist once (F7)', () =>
     );
     const other = uuidv7();
     await inTenant(app, s.tenant, () =>
-      app.query(`INSERT INTO wallets (tenant_id, id) VALUES ($1, $2)`, [s.tenant, other]),
+      app.query(`INSERT INTO wallets (tenant_id, id, sandbox) VALUES ($1, $2, false)`, [
+        s.tenant,
+        other,
+      ]),
     );
     expect(
       await attempt(
         s.tenant,
-        `INSERT INTO wallet_owner_links (tenant_id, wallet_id, user_id) VALUES ($1, $2, $3)`,
+        `INSERT INTO wallet_owner_links (tenant_id, wallet_id, user_id, sandbox) VALUES ($1, $2, $3, false)`,
         [s.tenant, other, rows[0].user_id],
       ),
     ).toMatch(/unique|duplicate/i);
@@ -230,7 +236,7 @@ describe('INV-L7 a wallet and the tenant system accounts exist once (F7)', () =>
       expect(
         await attempt(
           s.tenant,
-          `INSERT INTO accounts (tenant_id, id, kind, wallet_id, currency) VALUES ($1, $2, $3, NULL, 'COIN')`,
+          `INSERT INTO accounts (tenant_id, id, kind, wallet_id, currency, sandbox) VALUES ($1, $2, $3, NULL, 'COIN', false)`,
           [s.tenant, uuidv7(), kind],
         ),
       ).toMatch(/unique|duplicate/i);
@@ -243,7 +249,7 @@ describe('INV-L7 a wallet and the tenant system accounts exist once (F7)', () =>
       expect(
         await attempt(
           s.tenant,
-          `INSERT INTO accounts (tenant_id, id, kind, wallet_id, currency) VALUES ($1, $2, $3, $4, 'COIN')`,
+          `INSERT INTO accounts (tenant_id, id, kind, wallet_id, currency, sandbox) VALUES ($1, $2, $3, $4, 'COIN', false)`,
           [s.tenant, uuidv7(), kind, s.wallet],
         ),
       ).toMatch(/unique|duplicate/i);

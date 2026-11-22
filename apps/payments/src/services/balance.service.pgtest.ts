@@ -34,6 +34,7 @@ describe('INV-B1 a balance read is fresh after a change, and survives Redis bein
         createEvent({
           type: 'payments.coins.credited',
           tenantId: t,
+          sandbox: false,
           payload: { credit_id: rows[0].id, player_id: p, amount: 7 },
         }),
       ),

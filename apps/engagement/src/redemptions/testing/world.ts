@@ -20,15 +20,19 @@ import type {
   Scope,
   StateChange,
 } from '../ports';
-import { scopedKey } from '@ex-mio/contracts';
 import { TestClock } from './clock';
 import { MemoryStore } from './memory-store';
 
-/** The idempotency key of one phase of an order (D-26: tenant and environment are in the key). */
+/**
+ * The idempotency key of one phase of an order, written out LITERALLY: `<kind>:<tenant>:<prd|sbx>:<order id>`
+ * (D-26: tenant and environment are in the key). It is a wire contract (payments stores the reserve
+ * under it, the casino dedupes and answers lookups by it), so it is never derived from `scopedKey`,
+ * the code under test: a format change must turn the saga tests red (final review F2).
+ */
 export const okey = (
   kind: 'redeem' | 'hold' | 'capture' | 'release' | 'refund',
   r: { id: string; tenantId: string; sandbox: boolean },
-): string => scopedKey({ kind, tenantId: r.tenantId, sandbox: r.sandbox, parts: [r.id] });
+): string => `${kind}:${r.tenantId.toLowerCase()}:${r.sandbox ? 'sbx' : 'prd'}:${r.id}`;
 
 export { TestClock };
 
@@ -192,17 +196,26 @@ export class FakePayments implements CoinsPort {
     return w;
   }
 
-  credit(player: string, amount: number, sandbox = false): void {
+  /** INV-ENV-INPUT: the environment is always stated. `credit`/`bal`/`total` name the PRODUCTION wallet; the `...In` forms take it as a required argument. */
+  creditIn(player: string, amount: number, sandbox: boolean): void {
     this.wallet(player, sandbox).available += amount;
   }
 
-  bal(player: string, sandbox = false) {
+  credit(player: string, amount: number): void {
+    this.creditIn(player, amount, false);
+  }
+
+  balIn(player: string, sandbox: boolean) {
     return this.wallet(player, sandbox);
   }
 
+  bal(player: string) {
+    return this.balIn(player, false);
+  }
+
   /** available + held + captured: what must stay equal to what was credited. */
-  total(player: string, sandbox = false): number {
-    const b = this.bal(player, sandbox);
+  total(player: string): number {
+    const b = this.bal(player);
     return b.available + b.held + b.captured;
   }
 
@@ -568,7 +581,7 @@ export class World<S extends RedemptionSaga> {
       reservation: r.reservation,
       effects: this.effects,
       holdState: this.payments.holdState(id),
-      balance: structuredClone(this.payments.bal(r.playerId, r.sandbox)),
+      balance: structuredClone(this.payments.balIn(r.playerId, r.sandbox)),
     };
   }
 }

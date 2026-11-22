@@ -124,18 +124,26 @@ describe('spin.completed (D-1: payments credits coins from this event)', () => {
   it('INV-SPIN-EVENT-CONTRACT: carries spin_id, player_id, reward_coins and the REQUIRED table_version (X-16)', () => {
     const base = { spin_id: SPIN, player_id: USER, reward_coins: 25 };
     const payload = { ...base, table_version: 6 };
-    const ev = parseEvent(createEvent({ type: 'engagement.spin.completed', tenantId: T, payload }));
+    const ev = parseEvent(
+      createEvent({ type: 'engagement.spin.completed', tenantId: T, sandbox: false, payload }),
+    );
     expect(ev.payload).toEqual(payload);
     // X-16: a spin without its table version cannot be audited; it is not an event.
     // Mutation: make table_version optional again.
     expect(() =>
-      createEvent({ type: 'engagement.spin.completed', tenantId: T, payload: base as never }),
+      createEvent({
+        type: 'engagement.spin.completed',
+        tenantId: T,
+        sandbox: false,
+        payload: base as never,
+      }),
     ).toThrow();
     expect(() =>
       parseEvent(
         createEvent({
           type: 'engagement.spin.completed',
           tenantId: T,
+          sandbox: false,
           payload: { ...base, table_version: 0 },
         } as never),
       ),

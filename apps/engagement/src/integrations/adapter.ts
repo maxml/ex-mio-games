@@ -51,9 +51,9 @@ export interface AdapterConfig {
   apiKey?: string;
   /**
    * D-12: the environment this instance talks to. A request whose `sandbox` differs is answered
-   * `rejected` before any I/O. Defaults to `false` (production).
+   * `rejected` before any I/O. Required (INV-ENV-INPUT): there is no production default.
    */
-  sandbox?: boolean;
+  sandbox: boolean;
 }
 
 export interface AdapterEntry {

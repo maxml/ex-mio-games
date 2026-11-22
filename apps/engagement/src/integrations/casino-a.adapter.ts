@@ -23,6 +23,7 @@ import {
   nonEmptyString,
   requestHeaders,
   sandboxMismatch,
+  sanitizeReason,
   usableSecret,
 } from './casino-http';
 
@@ -47,7 +48,7 @@ const TS_RE = /^\d{1,12}$/;
 
 export function createCasinoA(config: AdapterConfig): CasinoAdapter {
   const reasonOf = (body: unknown, fallback: string): string =>
-    isRecord(body) && nonEmptyString(body.error) ? body.error : fallback;
+    isRecord(body) && nonEmptyString(body.error) ? sanitizeReason(body.error, fallback) : fallback;
 
   return {
     verifySignature(raw: string, headers: Headers, secret: string, now: Date): SignatureVerdict {

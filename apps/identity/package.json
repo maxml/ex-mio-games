@@ -62,6 +62,9 @@
       "^@ex-mio/service-kit/testing$": "<rootDir>/../../packages/service-kit/src/testing",
       "^@ex-mio/service-kit$": "<rootDir>/../../packages/service-kit/src"
     },
+    "setupFiles": [
+      "<rootDir>/src/testing/jest-env.ts"
+    ],
     "testTimeout": 30000,
     "clearMocks": true
   },

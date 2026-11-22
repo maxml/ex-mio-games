@@ -208,14 +208,8 @@ describe('store HTTP layer', () => {
 
   it('I-API-6 only a player redeems; a replay says so', async () => {
     expect(
-      (
-        await req(
-          'POST',
-          '/v1/redemptions',
-          { ...as('operator_admin'), ...key },
-          { item_id: ITEM },
-        )
-      ).statusCode,
+      (await req('POST', '/v1/redemptions', { ...as('operator_admin'), ...key }, { item_id: ITEM }))
+        .statusCode,
     ).toBe(403);
     redemptions.redeem.mockResolvedValue({ redemption: record(), created: false });
     const res = await req(
@@ -367,8 +361,7 @@ describe('store HTTP layer', () => {
   it('I-OPS-1 operator list: players are refused, an unknown status filter is 400', async () => {
     expect((await req('GET', '/v1/operator/redemptions', as('player'))).statusCode).toBe(403);
     expect(
-      (await req('GET', '/v1/operator/redemptions?status=BOGUS', as('operator_admin')))
-        .statusCode,
+      (await req('GET', '/v1/operator/redemptions?status=BOGUS', as('operator_admin'))).statusCode,
     ).toBe(400);
   });
 
@@ -423,12 +416,10 @@ describe('store HTTP layer', () => {
     ['forbidden', 403],
   ] as const)('I-OPS-4 a saga refusal %s is HTTP %i with its code', async (code, status) => {
     redemptions.resolveReview.mockRejectedValueOnce(Object.assign(new Error(code), { code }));
-    const res = await req(
-      'POST',
-      `/v1/operator/redemptions/${RID}/resolve`,
-      as('operator_admin'),
-      { outcome: 'not_issued', reason: 'casino says no' },
-    );
+    const res = await req('POST', `/v1/operator/redemptions/${RID}/resolve`, as('operator_admin'), {
+      outcome: 'not_issued',
+      reason: 'casino says no',
+    });
     expect(res.statusCode).toBe(status);
     expect(res.json().code).toBe(code);
   });

@@ -127,7 +127,10 @@ describe('INV-ENV-KEYS the one key helper requires the environment (D-26)', () =
   it('INV-ENV-KEYS-4 the key is injective in its parts, whatever characters they contain', () => {
     const pairs: Array<[string[], string[]]> = [
       [['a:b'], ['a', 'b']],
-      [['a', 'b:c'], ['a:b', 'c']],
+      [
+        ['a', 'b:c'],
+        ['a:b', 'c'],
+      ],
       [['a|b'], ['a', 'b']],
       [['prod'], ['sbx']],
       [['x%3Ay'], ['x:y']],
@@ -180,7 +183,8 @@ const isTestOrFixture = (rel: string) =>
   /(^|\/)(testing|__tests__|migrations)\//.test(rel);
 
 /** Key kinds a string template or a join may not start with outside the helper. */
-const KIND = '(?:spin|deposit|order|hold|capture|release|refund|redeem|usage|inbox|idem(?:potency)?|dedupe|flight)';
+const KIND =
+  '(?:spin|deposit|order|hold|capture|release|refund|redeem|usage|inbox|idem(?:potency)?|dedupe|flight)';
 const RULES: Array<{ name: string; re: RegExp }> = [
   // `hold:${r.id}`, `usage:${tenantId}:${period}`, `spin|${...}`
   // (case-sensitive, and the separator is followed by the key material, not by prose)

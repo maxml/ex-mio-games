@@ -68,7 +68,9 @@ export class IngestionService {
       this.refuse(slug, 'unknown_tenant');
       throw reject('unknown_tenant', 'unknown tenant');
     }
-    const adapter = entry.create({ baseUrl: '', transport: noTransport });
+    // Verification only: no I/O, and `sandbox` is not read by `verify*`. The webhook's environment
+    // is decided by which key verifies it (`verifiedSandbox` below), never by this config.
+    const adapter = entry.create({ baseUrl: '', transport: noTransport, sandbox: false });
 
     const { verdict, sandbox: verifiedSandbox } = this.verify(adapter, integration, raw, headers);
     if (verdict !== 'valid') {
@@ -131,7 +133,7 @@ export class IngestionService {
         if (inserted) {
           // After the commit: one deposit, once (a duplicate delivery inserts nothing). The player
           // is the internal id and the casino is the platform name; no raw casino player id.
-          emitPlayerEventAfterCommit(tx, tenantId, playerId, {
+          emitPlayerEventAfterCommit(tx, tenantId, playerId, sandbox, {
             event: 'engagement.deposit_ingested',
             props: {
               casino: e.source,
@@ -145,7 +147,7 @@ export class IngestionService {
             createEvent({
               type: 'engagement.deposit.confirmed',
               tenantId,
-              ...(sandbox ? { sandbox: true } : {}),
+              sandbox,
               payload: {
                 inbound_event_id: id,
                 source: e.source,
