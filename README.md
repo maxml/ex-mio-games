@@ -23,6 +23,14 @@ docker compose up -d --wait      # builds the images, starts nine containers, re
 ```
 
 There is no `.env` file to create: every variable has a local-development default in `docker-compose.yml`.
+
+The web app at `localhost:3000` runs **live** by default: the image is built with `NEXT_PUBLIC_MIO_API=http` and
+its BFF calls identity (4001), engagement (4002) and payments (4003) over the compose network, so the player
+widget and the operator console show real service data. A few calls have no service endpoint yet and are still
+answered by the in-memory mock for that call only (transaction history, rules and wheel publishing, sandbox
+check, go-live, cross-tenant admin tables): see [`docs/submission/known-gaps.md`](docs/submission/known-gaps.md).
+Mock mode stays available explicitly, for screenshots and Storybook: `MIO_API=mock docker compose up -d --build web`
+(the variable is a build-time one, so rebuild the image to switch).
 The `tools/archify` submodule is only the diagram renderer; `docker compose` does not need it, so a plain clone
 is enough (use `git clone --recurse-submodules` only to re-render the diagrams).
 
@@ -231,28 +239,30 @@ Override any host port with the variable named in `docker-compose.yml` (`POSTGRE
 
 Main variables (all have a working default in compose; the values there are for local development only):
 
-| Variable                                          | Service              | Meaning                                                                |
-| ------------------------------------------------- | -------------------- | ---------------------------------------------------------------------- |
-| `DATABASE_URL`                                    | every service        | runtime connection as `<service>_app` (not the owner, no DDL)          |
-| `MIGRATION_DATABASE_URL`                          | every service        | connection as `<service>_owner`, used by `node dist/migrate.js` only   |
-| `IDENTITY_URL`                                    | engagement, payments | where tokens and keys are verified                                     |
-| `SERVICE_CLIENT_SECRET`                           | engagement, payments | this service's client secret for service tokens                        |
-| `SERVICE_CLIENT_SECRETS`                          | identity             | the registry of service client secrets                                 |
-| `CREDENTIALS_KEK`                                 | identity             | key that encrypts casino integration secrets                           |
-| `PLATFORM_ADMIN_EMAIL`, `PLATFORM_ADMIN_PASSWORD` | identity             | the platform admin                                                     |
-| `IDENTITY_PROVIDER`                               | identity             | `firebase-emulator` (default) or `fake` (tests only)                   |
-| `FIREBASE_AUTH_EMULATOR_HOST`, `FIREBASE_PROJECT` | identity             | the emulator address and project                                       |
-| `BASE_DOMAIN`                                     | identity             | tenants resolve from `<slug>.<BASE_DOMAIN>` (`mio.localhost`)          |
-| `REDIS_URL`                                       | engagement, payments | optional; payments uses it for the balance projection                  |
-| `PAYMENTS_URL`                                    | engagement           | where the coin reserve is called                                       |
-| `FAKE_PROVIDER_WEBHOOK_SECRET`                    | payments             | billing webhook secret; required in production unless Stripe is set    |
-| `STRIPE_SECRET_KEY`                               | payments             | selects the Stripe stub, which throws on every call                    |
-| `LEDGER_JOBS_INTERVAL_SECONDS`                    | payments             | interval of the reconciliation and usage-report jobs                   |
-| `DATABASE_SSL`                                    | every service        | `disable`, `require` or `verify-full`; stated explicitly in production |
-| `API_URL`                                         | web                  | server-side URL of identity inside the compose network                 |
-| `REALTIME_UPSTREAM`                               | web (build time)     | where `/socket.io/*` is proxied (default `http://engagement:4002`)     |
-| `REALTIME_ALLOWED_ORIGINS`                        | engagement           | comma-separated origins that may open a socket cross-origin            |
-| `SIM_FAULTS`                                      | casino-sim           | `1` turns on fault injection                                           |
+| Variable                                          | Service              | Meaning                                                                                         |
+| ------------------------------------------------- | -------------------- | ----------------------------------------------------------------------------------------------- |
+| `DATABASE_URL`                                    | every service        | runtime connection as `<service>_app` (not the owner, no DDL)                                   |
+| `MIGRATION_DATABASE_URL`                          | every service        | connection as `<service>_owner`, used by `node dist/migrate.js` only                            |
+| `IDENTITY_URL`                                    | engagement, payments | where tokens and keys are verified                                                              |
+| `SERVICE_CLIENT_SECRET`                           | engagement, payments | this service's client secret for service tokens                                                 |
+| `SERVICE_CLIENT_SECRETS`                          | identity             | the registry of service client secrets                                                          |
+| `CREDENTIALS_KEK`                                 | identity             | key that encrypts casino integration secrets                                                    |
+| `PLATFORM_ADMIN_EMAIL`, `PLATFORM_ADMIN_PASSWORD` | identity             | the platform admin                                                                              |
+| `IDENTITY_PROVIDER`                               | identity             | `firebase-emulator` (default) or `fake` (tests only)                                            |
+| `FIREBASE_AUTH_EMULATOR_HOST`, `FIREBASE_PROJECT` | identity             | the emulator address and project                                                                |
+| `BASE_DOMAIN`                                     | identity             | tenants resolve from `<slug>.<BASE_DOMAIN>` (`mio.localhost`)                                   |
+| `REDIS_URL`                                       | engagement, payments | optional; payments uses it for the balance projection                                           |
+| `PAYMENTS_URL`                                    | engagement           | where the coin reserve is called                                                                |
+| `FAKE_PROVIDER_WEBHOOK_SECRET`                    | payments             | billing webhook secret; required in production unless Stripe is set                             |
+| `STRIPE_SECRET_KEY`                               | payments             | selects the Stripe stub, which throws on every call                                             |
+| `LEDGER_JOBS_INTERVAL_SECONDS`                    | payments             | interval of the reconciliation and usage-report jobs                                            |
+| `DATABASE_SSL`                                    | every service        | `disable`, `require` or `verify-full`; stated explicitly in production                          |
+| `API_URL`                                         | web                  | server-side URL of identity inside the compose network                                          |
+| `IDENTITY_URL`, `ENGAGEMENT_URL`, `PAYMENTS_URL`  | web (BFF)            | where the BFF calls the services (compose: `identity:4001`, `engagement:4002`, `payments:4003`) |
+| `MIO_API`                                         | web (build time)     | compose build arg for `NEXT_PUBLIC_MIO_API`: `http` (default, live) or `mock`                   |
+| `REALTIME_UPSTREAM`                               | web (build time)     | where `/socket.io/*` is proxied (default `http://engagement:4002`)                              |
+| `REALTIME_ALLOWED_ORIGINS`                        | engagement           | comma-separated origins that may open a socket cross-origin                                     |
+| `SIM_FAULTS`                                      | casino-sim           | `1` turns on fault injection                                                                    |
 
 Each service applies its own migrations (`node dist/migrate.js`) before it serves, and starts only after what it
 needs reports healthy. Probes: `GET /healthz/live` (the process is up) and `GET /healthz/ready` (dependencies

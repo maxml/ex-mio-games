@@ -31,6 +31,11 @@ RUN pnpm --filter "@ex-mio/web^..." build
 # build context (see .dockerignore), so this is never picked up implicitly.
 ARG NEXT_PUBLIC_API_URL=""
 ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
+# NEXT_PUBLIC_MIO_API selects the data source and, being NEXT_PUBLIC_, is inlined at build time:
+# `http` = the real services through the BFF (the default), `mock` = the in-memory demo data
+# (screenshots, Storybook). Compose passes it as a build arg from MIO_API.
+ARG NEXT_PUBLIC_MIO_API=http
+ENV NEXT_PUBLIC_MIO_API=$NEXT_PUBLIC_MIO_API
 RUN pnpm --filter @ex-mio/web build
 
 FROM node:24-alpine AS runner

@@ -8,7 +8,7 @@ code), **partial** (the core exists, the stated part does not).
 
 The web BFF (`apps/web/app/api/[...path]/route.ts`, logic in `apps/web/src/layers/shared/api/bff/`) calls the
 services through the reconciled contracts. Where no service has an endpoint, the browser adapter
-(`createHybridApi`, `NEXT_PUBLIC_MIO_API=http`) keeps the mock adapter **for that call only**. A failed real
+(`createHybridApi`, `NEXT_PUBLIC_MIO_API=http`, the compose default; `MIO_API=mock` builds the all-mock app) keeps the mock adapter **for that call only**. A failed real
 call is never replaced by the mock. The list of mock-answered calls is `GAP_CALLS` in
 `apps/web/src/layers/shared/api/mio/hybrid.ts`; this table is its documentation, and it must be updated when
 that list changes.

@@ -24,9 +24,9 @@ const trim = (s: string) => s.replace(/\/+$/, '');
 
 export function readBffConfig(env: Record<string, string | undefined> = process.env): BffConfig {
   return {
-    identityUrl: trim(env.IDENTITY_URL ?? 'http://identity:3000'),
-    paymentsUrl: trim(env.PAYMENTS_URL ?? 'http://payments:3000'),
-    engagementUrl: trim(env.ENGAGEMENT_URL ?? 'http://engagement:3000'),
+    identityUrl: trim(env.IDENTITY_URL ?? 'http://identity:4001'),
+    paymentsUrl: trim(env.PAYMENTS_URL ?? 'http://payments:4003'),
+    engagementUrl: trim(env.ENGAGEMENT_URL ?? 'http://engagement:4002'),
     casinoSimUrl: trim(env.CASINO_SIM_URL ?? ''),
     wheelId: env.MIO_WHEEL_ID ?? '',
     casinoPath: env.MIO_SANDBOX_CASINO ?? 'casino-a',

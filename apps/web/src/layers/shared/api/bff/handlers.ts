@@ -119,7 +119,9 @@ export function createBff(deps: BffDeps) {
   };
   const hostHeader = (ctx: Ctx): Record<string, string> => {
     const host = ctx.request.headers.get('x-forwarded-host') ?? ctx.request.headers.get('host');
-    return host ? { 'x-forwarded-host': host } : {};
+    // Identity resolves the tenant from the `Host` header only (`<slug>.<BASE_DOMAIN>`), so the browser's host
+    // is passed as `Host`; `x-forwarded-host` stays for any hop that reads it.
+    return host ? { host, 'x-forwarded-host': host } : {};
   };
 
   /** Hold the tokens of one login/launch exchange. Never returned to the browser. */
@@ -415,11 +417,17 @@ export function createBff(deps: BffDeps) {
             nullOn404: true,
           }),
           up('payments', 'GET', '/v1/billing/invoices', { token: pay, schema: listOf(Invoice) }),
-          up('payments', 'GET', '/v1/billing/usage', {
-            token: pay,
-            schema: UsageReport,
-            nullOn404: true,
-          }),
+          // Payments requires `?period=YYYY-MM`; the console shows the current (UTC) month.
+          up(
+            'payments',
+            'GET',
+            `/v1/billing/usage?period=${new Date(now()).toISOString().slice(0, 7)}`,
+            {
+              token: pay,
+              schema: UsageReport,
+              nullOn404: true,
+            },
+          ),
           up('engagement', 'GET', '/v1/store/items', { token: eng, schema: listOf(StoreItem) }),
           up('engagement', 'GET', '/v1/operator/redemptions', {
             token: eng,
