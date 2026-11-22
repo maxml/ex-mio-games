@@ -36,13 +36,30 @@ These are the cases where a fix passed its own test and the reviewer found the d
 - **Sandbox.** Making every hop carry the sandbox flag was correct, and the defect moved to the credit
   table, which had no environment (case study 1).
 
-Measured pattern. In this repository, the identity area needed three review rounds, and every area needed
-at least one fix round at spec stage. Outside this repository, the review-framework lessons record the
-same effect on a seven-ticket epic: no ticket passed its first hostile round clean, and in the last
-four re-reviews the fix relocated the defect in three of four, two of two and three of three. Those
-figures come from that project and cannot be re-run from this repository. They are the reason every
-re-review brief asks "what did this fix move?" and every fix needs a test at the choke point, where a
-bad value cannot be built, not at the call site where the symptom showed.
+The pattern, stated without a rate: a fix that removes the reported symptom often leaves the defect
+one step away, in a neighbouring path, a fake or a shape the first fix did not touch. Evidence in this
+repository:
+
+- **F5, a shape the first model could not hold.** The identity integration reported one environment,
+  the newest credential's, so issuing a sandbox credential took away the production webhook secret.
+  The merged tree still had it, so `adb795a` added the red test `F5-1` in
+  `apps/identity/src/identity.http.test.ts` (a production and a newer sandbox credential must both be
+  served, each with its environment). The fix changed the contract itself, not one call site
+  (`1a810ae`: `packages/contracts/src/identity.ts` and `credentials.service.ts`).
+- **The after-commit fake.** The `COMMIT-ONLY` tests used a fake transaction that left
+  `isTransactionActive` true when the commit and rollback events fired, which real TypeORM does not.
+  The push fix could look correct against a fake that did not behave like the real runner. `a83c8be`
+  changed the fake (see the diff of `realtime.gateway.test.ts`) when the push moved to the logger's
+  `afterCommit`.
+- **The audit decision and the acting ban, the no-op for D-21 and the sandbox credit table**, described
+  above, each moved the defect one place along.
+- **Identity spec rounds.** The round-2 re-review recorded that the fix round "moved four defects to
+  new places" (the reviewer's wording), which led to decisions D-14 and D-17 in the coordinator file
+  summarised in `decisions.md`.
+
+This is why every re-review brief asks "what did this fix move?" and why a fix is accepted only with a
+test at the choke point, where a bad value cannot be built, not at the call site where the symptom
+showed. No rate is claimed.
 
 ## What the process does not cover
 
