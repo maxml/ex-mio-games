@@ -120,9 +120,10 @@ published; blur hostnames, tenant ids and anything else internal.
 1. Start the stack with the override, run `scripts/demo.sh`, and wait about a minute.
 2. Open `<varta-panel>`, log in, go to Logs.
 3. Pick stream `product_events`, set the time range to cover the demo run.
-4. Switch to SQL mode and run the "Events per funnel step, per tenant" query. Capture the result table.
-5. Run the "Operator activation" query. Capture it.
-6. Run the "Player loop" query. Capture it.
+4. Switch to SQL mode and run the per-step query once for each step of "Operator activation".
+   Capture each result, or the three together.
+5. Do the same for the "Player loop" steps.
+6. Run the tenant view for `payments.payment_succeeded`. Capture it.
 7. Capture one raw row (expand it) to show the envelope: `event`, `event_v`, `tenant_id`,
    `varta_project`, `varta_service`. Check that no email, token or key shows.
 8. Hand the images to the owner; nothing is published before that review.
