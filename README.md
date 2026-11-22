@@ -24,6 +24,28 @@ ownership, isolation), and a task with a class goes through a spec and failing t
 prototype implements the slice and the reliability cases of Part C. Billing beyond the fake provider, rate limits,
 the production deploy and the later products (PvP, Missions, Kingdom Builder) are planned in the backlog and not built.
 
+The principles behind the design, each linked to where the repo does it:
+
+- Money first: the backlog priorities follow profit impact, and P0 is the first sellable slice ([backlog](backlog/README.md)).
+- Think hard only about decisions that are expensive to reverse: tenancy ([ADR 0002](docs/adrs/0002-tenancy-model.md)),
+  the coin ledger ([ADR 0004](docs/adrs/0004-virtual-currency-ledger.md)), identity
+  ([ADR 0007](docs/adrs/0007-identity-interface-and-emulator.md)) and the analytics event taxonomy
+  ([ADR 0009](docs/adrs/0009-analytics-via-varta.md)). The rest stays simple: controllers validate input and
+  services hold the logic.
+- Services where a boundary protects something: payments is separate, and coins move only through it
+  ([ADR 0001](docs/adrs/0001-microservices-and-their-cost.md)). Tenants and integrations are modules behind Nx
+  boundaries ([ADR 0008](docs/adrs/0008-integration-adapters-canonical-model.md)).
+- A message broker from the start, with outbox and inbox ([ADR 0003](docs/adrs/0003-rabbitmq-outbox-inbox.md)).
+- Identity and the payment provider sit behind interfaces. Sign-in runs on the Firebase Auth Emulator and billing on
+  a fake provider, so no accounts are needed. Stripe exists as a port only.
+- A websocket client that reconnects and resyncs over REST ([ADR 0014](docs/adrs/0014-realtime-websocket-client.md)).
+- Product analytics from day one through Varta, and a design system built in Storybook
+  ([`packages/ui`](packages/ui/TOKENS.md), [ADR 0013](docs/adrs/0013-fsd-frontend-architecture.md)).
+- Ready for AI work: agent prompts live in the repo and every change goes through a role-separated, reviewed
+  process ([`prompts/`](prompts/README.md), [`docs/ai/`](docs/ai/README.md)).
+- Built on a monorepo starter with Nx boundaries, and diagrams kept as code with archify
+  ([ADR 0012](docs/adrs/0012-archify-and-mermaid.md)).
+
 ## Where things are
 
 The seven deliverables of the task, in the order the task lists them:
