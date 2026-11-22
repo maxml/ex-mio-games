@@ -88,7 +88,8 @@ services:
   firebase-auth:
     image: ex-mio/firebase-auth:${MIO_IMAGE_TAG:-dev}
     build:
-      context: ./docker/firebase-emulator
+      context: .
+      dockerfile: docker/firebase-emulator/Dockerfile
     restart: unless-stopped
     environment:
       FIREBASE_PROJECT: demo-ex-mio
