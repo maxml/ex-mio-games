@@ -7,6 +7,7 @@ import {
   AdminOverview,
   DepositResult,
   HEADER_IDEMPOTENCY_KEY,
+  IssuedCredentialView,
   OperatorState,
   PaymentAttemptView,
   PlayerRedemptionView,
@@ -190,11 +191,14 @@ export function createHttpApi(client: HttpClient = defaultHttp): MioApi {
           throw e;
         }
       },
+      issueCredentials: (environment) =>
+        post('/api/operator/credentials', { environment }, IssuedCredentialView),
       runSandbox: () => send('/api/operator/sandbox/run'),
       startGoLive: () => send('/api/operator/go-live'),
       confirmFirstLiveDeposit: () => send('/api/operator/go-live/first-deposit'),
       saveRules: (rules) => send('/api/operator/rules', rules),
       publishWheel: (weights) => send('/api/operator/wheel/publish', { weights }),
+      createItem: (input) => send('/api/operator/catalog', input),
       setPrice: (itemId, priceCoins) =>
         send(`/api/operator/catalog/${encodeURIComponent(itemId)}/price`, { priceCoins }),
       setVisible: (itemId, visible) =>

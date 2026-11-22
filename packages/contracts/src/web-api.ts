@@ -112,6 +112,15 @@ export const RulesView = z.object({
 });
 export type RulesView = z.infer<typeof RulesView>;
 
+/** Integration credentials of one environment, as identity issues them. The secrets are shown once. */
+export const IssuedCredentialView = z.object({
+  environment: z.enum(['sandbox', 'production']),
+  keyId: z.string(),
+  apiKey: z.string(),
+  hmacSecret: z.string(),
+});
+export type IssuedCredentialView = z.infer<typeof IssuedCredentialView>;
+
 export const PlanView = z.object({
   id: z.string(),
   name: z.string(),

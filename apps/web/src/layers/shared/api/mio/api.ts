@@ -5,6 +5,7 @@ import type {
   ActAsTenantRequest,
   AdminOverview,
   DepositResult,
+  IssuedCredentialView,
   OperatorState,
   OperatorStepId,
   PaymentAttemptView,
@@ -63,10 +64,19 @@ export interface SignupInput {
   password: string;
 }
 
+export interface NewStoreItem {
+  name: string;
+  priceCoins: number;
+  /** Whole EUR the casino credits as a bonus when the item is redeemed. */
+  bonusEur: number;
+}
+
 export interface OperatorApi {
   getState(): Promise<OperatorState>;
   /** W-11: what L1's signup needs. The mock ignores it. */
   createAccount(input: SignupInput): Promise<void>;
+  /** Issues the casino integration credentials of one environment. The secrets are shown once. */
+  issueCredentials(environment: 'sandbox' | 'production'): Promise<IssuedCredentialView>;
   selectPlan(planId: string): Promise<void>;
   /** W-9: `cardNumber` is the provider's test card; only the BFF forwards it, L2 keeps last4 and brand. */
   startPayment(planId: string, last4: string, cardNumber?: string): Promise<PaymentAttemptView>;
@@ -76,6 +86,8 @@ export interface OperatorApi {
   confirmFirstLiveDeposit(): Promise<void>;
   saveRules(rules: RulesView): Promise<void>;
   publishWheel(weights: number[]): Promise<void>;
+  /** Adds a Bonus Store item that pays a bonus (`bonusEur`) in the casino wallet. */
+  createItem(input: NewStoreItem): Promise<void>;
   setPrice(itemId: string, priceCoins: number): Promise<void>;
   setVisible(itemId: string, visible: boolean): Promise<void>;
   completeStep(step: OperatorStepId): Promise<void>;

@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { MioApiError, useMioMutation } from '@/layers/shared/api';
+import { MioApiError, useMioMutation, type NewStoreItem } from '@/layers/shared/api';
 import {
   expectedPayout,
   rulesValid,
@@ -16,6 +16,7 @@ import {
   Button,
   Card,
   Checkbox,
+  Field,
   Input,
   Link,
   RuleEditor,
@@ -37,7 +38,7 @@ export function RulesStep({ s, nav }: StepProps) {
   const dirty = JSON.stringify(draft) !== JSON.stringify(saved);
   const preview = invalid
     ? 'Values must be whole numbers, at least 1.'
-    : `Preview: a 40 EUR deposit earns ${Math.min(spinsForDeposit(draft, 40), draft.cap)} spin(s), at most ${draft.cap} per player per day.`;
+    : `Preview: a 40 EUR deposit earns ${Math.min(spinsForDeposit(draft, 40), draft.cap)} spin(s), a player gets spins from at most ${draft.cap} deposit(s).`;
   return (
     <Card
       title="Spin rules"
@@ -209,6 +210,77 @@ function PriceInput({ item }: { item: CatalogItemView }) {
   );
 }
 
+function AddItemForm() {
+  const add = useMioMutation<NewStoreItem>((a, input) => a.operator.createItem(input));
+  const [name, setName] = useState('');
+  const [price, setPrice] = useState('50');
+  const [bonus, setBonus] = useState('5');
+  const priceN = Number(price);
+  const bonusN = Number(bonus);
+  const ok =
+    name.trim() !== '' &&
+    Number.isInteger(priceN) &&
+    priceN >= 1 &&
+    Number.isInteger(bonusN) &&
+    bonusN >= 1;
+  return (
+    <Card
+      title="Add a bonus item"
+      description="Players buy it with coins; the casino credits the bonus."
+    >
+      <form
+        className="grid max-w-xl gap-3 sm:grid-cols-3"
+        onSubmit={(e) => {
+          e.preventDefault();
+          if (!ok) return;
+          add.mutate(
+            { name: name.trim(), priceCoins: priceN, bonusEur: bonusN },
+            { onSuccess: () => setName('') },
+          );
+        }}
+      >
+        <Field label="Item name">
+          {({ id }) => <Input id={id} value={name} onChange={(e) => setName(e.target.value)} />}
+        </Field>
+        <Field label="Price (coins)">
+          {({ id }) => (
+            <Input
+              id={id}
+              type="number"
+              min={1}
+              step={1}
+              value={price}
+              onChange={(e) => setPrice(e.target.value)}
+            />
+          )}
+        </Field>
+        <Field label="Bonus (EUR)">
+          {({ id }) => (
+            <Input
+              id={id}
+              type="number"
+              min={1}
+              step={1}
+              value={bonus}
+              onChange={(e) => setBonus(e.target.value)}
+            />
+          )}
+        </Field>
+        <div className="sm:col-span-3">
+          <Button type="submit" disabled={!ok} loading={add.isPending}>
+            Add item
+          </Button>
+        </div>
+      </form>
+      {add.error instanceof MioApiError && (
+        <Alert tone="danger" className="mt-3">
+          {add.error.message}
+        </Alert>
+      )}
+    </Card>
+  );
+}
+
 export function StoreStep({ s, nav }: StepProps) {
   const setVisible = useMioMutation<{ id: string; on: boolean }>((a, v) =>
     a.operator.setVisible(v.id, v.on),
@@ -264,6 +336,7 @@ export function StoreStep({ s, nav }: StepProps) {
           ]}
         />
       </Card>
+      <AddItemForm />
       {nav()}
     </div>
   );

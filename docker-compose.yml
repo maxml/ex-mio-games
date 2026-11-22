@@ -259,11 +259,24 @@ services:
     build:
       context: .
       dockerfile: apps/web/Dockerfile
+      args:
+        # Build time (NEXT_PUBLIC_): `http` = the real services (default), `mock` = in-memory demo data.
+        NEXT_PUBLIC_MIO_API: ${MIO_API:-http}
     restart: unless-stopped
     environment:
       PORT: '3000'
-      # Server-side calls to the identity service over the compose network.
+      # Server-side calls to the services over the compose network (the BFF reads these three).
       API_URL: http://identity:4001
+      IDENTITY_URL: http://identity:4001
+      ENGAGEMENT_URL: http://engagement:4002
+      PAYMENTS_URL: http://payments:4003
+      # A tenant is `<slug>.<BASE_DOMAIN>`, the same value identity runs with.
+      BASE_DOMAIN: mio.localhost
+      # Local stand-in for the payment provider's callback (the fake provider sends none): the same dev secret
+      # as payments' FAKE_PROVIDER_WEBHOOK_SECRET. Leave unset anywhere but a local stack.
+      FAKE_PROVIDER_WEBHOOK_SECRET: dev-fake-provider-webhook-secret-0000
+      # The stack is served over plain http on localhost: a `Secure` session cookie would not be sent back.
+      MIO_INSECURE_COOKIE: '1'
       # D-27: `/config` returns this as `realtimeUrl`, the engagement public URL the browser opens the
       # socket on. The same-origin `/socket.io` rewrite to engagement stays as a fallback.
       PUBLIC_REALTIME_URL: http://localhost:${ENGAGEMENT_PORT:-4002}

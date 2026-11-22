@@ -6,6 +6,7 @@ import {
   MioApiError,
   isOutcomeUnknown,
   queryKeys,
+  resolveMioApiMode,
   useMioApi,
   useMioMutation,
   usePlayerState,
@@ -64,6 +65,9 @@ export function PlayerWidgetView({
   const qc = useQueryClient();
   const { data: player, isPending, isError, refetch } = usePlayerState();
 
+  // The two sandbox-casino demo controls exist in mock mode only. Live, the casino sends the deposits (the
+  // sandbox routes need a per-tenant target the stack does not hold: known-gaps G-10).
+  const demoControls = resolveMioApiMode() === 'mock';
   const [tab, setTab] = useState<Tab>('wheel');
   // `reveal` is the wheel animation in progress. `pending` is reward the server announced but the
   // balance read has not shown yet: the last confirmed balance (`base`) and the rewards since.
@@ -313,25 +317,29 @@ export function PlayerWidgetView({
                   Spins come from deposits. Make a deposit to get more.
                 </Text>
               )}
-              <Button
-                variant="secondary"
-                loading={deposit.isPending}
-                onClick={() => void doDeposit()}
-              >
-                Simulate a 40 EUR deposit at the casino
-              </Button>
+              {demoControls && (
+                <Button
+                  variant="secondary"
+                  loading={deposit.isPending}
+                  onClick={() => void doDeposit()}
+                >
+                  Simulate a 40 EUR deposit at the casino
+                </Button>
+              )}
             </div>
           </TabPanel>
         )}
 
         {tab === 'store' && (
           <TabPanel idPrefix="pw" id="store">
-            <Checkbox
-              className="mb-3 text-fg-muted"
-              label="Demo: make the casino fail the next reward (shows failed, then refunded)"
-              checked={player.casinoDown}
-              onChange={(e) => casinoDown.mutate(e.target.checked)}
-            />
+            {demoControls && (
+              <Checkbox
+                className="mb-3 text-fg-muted"
+                label="Demo: make the casino fail the next reward (shows failed, then refunded)"
+                checked={player.casinoDown}
+                onChange={(e) => casinoDown.mutate(e.target.checked)}
+              />
+            )}
             <div className="grid gap-3 sm:grid-cols-2">
               {player.store.map((it) => (
                 <StoreItemCard

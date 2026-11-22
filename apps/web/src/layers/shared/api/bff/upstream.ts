@@ -51,7 +51,45 @@ export type Upstream = <T = unknown>(
   options?: UpstreamOptions<T>,
 ) => Promise<T>;
 
-export function createUpstream(config: BffConfig, fetchImpl: typeof fetch = fetch): Upstream {
+/**
+ * `fetch`, except that a caller-set `Host` header is honoured. Node's built-in fetch (undici) silently
+ * replaces `Host` with the URL's host, and identity resolves the tenant from `Host` alone
+ * (`<slug>.<BASE_DOMAIN>`), so a login through the BFF would always be TENANT_UNRESOLVED. Only the calls
+ * that set `host` take the `node:http` path; everything else is plain fetch.
+ */
+export const fetchHonouringHost: typeof fetch = async (input, init) => {
+  const headers = new Headers(init?.headers);
+  const host = headers.get('host');
+  if (!host) return fetch(input, init);
+  const { request } = await import('node:http');
+  const url = new URL(String(input));
+  const body = typeof init?.body === 'string' ? init.body : undefined;
+  return new Promise<Response>((resolve, reject) => {
+    const outgoing: Record<string, string> = {};
+    headers.forEach((v, k) => (outgoing[k] = v));
+    if (body !== undefined) outgoing['content-length'] = String(Buffer.byteLength(body));
+    const req = request(url, { method: init?.method ?? 'GET', headers: outgoing }, (res) => {
+      const chunks: Buffer[] = [];
+      res.on('data', (c: Buffer) => chunks.push(c));
+      res.on('end', () =>
+        resolve(
+          new Response(chunks.length ? Buffer.concat(chunks) : null, {
+            status: res.statusCode ?? 502,
+          }),
+        ),
+      );
+      res.on('error', reject);
+    });
+    req.on('error', reject);
+    if (body !== undefined) req.write(body);
+    req.end();
+  });
+};
+
+export function createUpstream(
+  config: BffConfig,
+  fetchImpl: typeof fetch = fetchHonouringHost,
+): Upstream {
   const base = (service: ServiceName | 'casino-sim') =>
     service === 'identity'
       ? config.identityUrl
@@ -111,6 +149,8 @@ export function createUpstream(config: BffConfig, fetchImpl: typeof fetch = fetc
           : `Request failed with status ${response.status}`,
       );
     }
+    // Payments answers "no subscription yet" as 200 with a JSON `null`, not as 404.
+    if (json === null && options.nullOn404) return null as T;
     if (!options.schema) return json as T;
     const parsed = options.schema.safeParse(json);
     if (!parsed.success)

@@ -62,7 +62,7 @@ export async function HomePage() {
 
       <Card
         title="Screens"
-        description="Built only from the design system; data is mocked unless NEXT_PUBLIC_MIO_API=http."
+        description="Built only from the design system; data comes from the real services when NEXT_PUBLIC_MIO_API=http (the compose default), and is mocked otherwise."
       >
         <ul className="grid gap-2 text-sm">
           <li>

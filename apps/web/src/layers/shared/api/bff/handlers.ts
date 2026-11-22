@@ -4,10 +4,12 @@
 //
 // Where a service endpoint does not exist yet, the BFF answers with the mock engine's default for that
 // field only and the browser adapter keeps the mock for that call (docs/submission/known-gaps.md).
+import { createHmac } from 'node:crypto';
 import {
   ActAsTenantRequest,
   AuditEntry,
   BillingPlan,
+  CredentialIssued,
   HEADER_IDEMPOTENCY_KEY,
   Invoice,
   LaunchResponse,
@@ -117,9 +119,17 @@ export function createBff(deps: BffDeps) {
     if (!k) throw new BffError(400, 'idempotency_key_required', 'Idempotency-Key is required');
     return { [HEADER_IDEMPOTENCY_KEY]: k };
   };
-  const hostHeader = (ctx: Ctx): Record<string, string> => {
+  const hostHeader = (ctx: Ctx, slug?: string): Record<string, string> => {
+    // A known tenant slug (just signed up, or given at login) names the tenant host directly, so the console
+    // works from plain `localhost:3000` as well as from `<slug>.mio.localhost:3000`.
+    if (slug) {
+      const tenantHost = `${slug}.${config.baseDomain}`;
+      return { host: tenantHost, 'x-forwarded-host': tenantHost };
+    }
     const host = ctx.request.headers.get('x-forwarded-host') ?? ctx.request.headers.get('host');
-    return host ? { 'x-forwarded-host': host } : {};
+    // Identity resolves the tenant from the `Host` header only (`<slug>.<BASE_DOMAIN>`), so the browser's host
+    // is passed as `Host`; `x-forwarded-host` stays for any hop that reads it.
+    return host ? { host, 'x-forwarded-host': host } : {};
   };
 
   /** Hold the tokens of one login/launch exchange. Never returned to the browser. */
@@ -128,12 +138,17 @@ export function createBff(deps: BffDeps) {
     expiresAt: now() + r.expires_in * 1000,
   });
 
-  async function loginOperator(ctx: Ctx, email: string, password: string): Promise<Session> {
+  async function loginOperator(
+    ctx: Ctx,
+    email: string,
+    password: string,
+    slug?: string,
+  ): Promise<Session> {
     const results = await Promise.all(
       AUDIENCES.map((audience) =>
         up('identity', 'POST', '/v1/auth/login', {
           body: { email, password, audience },
-          headers: hostHeader(ctx),
+          headers: hostHeader(ctx, slug),
           schema: TokenResponse,
         }),
       ),
@@ -174,6 +189,7 @@ export function createBff(deps: BffDeps) {
           ctx,
           str(ctx.body.email, 'email', 254),
           str(ctx.body.password, 'password', 200),
+          typeof ctx.body.slug === 'string' && ctx.body.slug ? ctx.body.slug : undefined,
         );
         return { body: { kind: s.kind, roles: s.roles, tenantId: s.tenantId } };
       },
@@ -183,24 +199,16 @@ export function createBff(deps: BffDeps) {
       /^\/api\/session\/launch$/,
       async (ctx) => {
         const launchToken = str(ctx.body.token, 'token', 4096);
-        // A launch token is single-use (jti): one exchange per audience is asked, and a refusal of the second
-        // one leaves that audience without a token (known-gaps G-8).
-        const audiences: ServiceAudience[] = ['engagement', 'payments'];
+        // A launch token is single-use (jti), and one exchange is enough: the player session it returns is valid
+        // for every audience the player needs (identity, engagement, payments; known-gaps G-8). A second
+        // exchange of the same token would be refused, so the one token is held under each audience.
+        const first = await up('identity', 'POST', '/v1/auth/launch', {
+          body: { token: launchToken, audience: 'engagement' },
+          schema: LaunchResponse,
+        });
         const tokens: Session['tokens'] = {};
-        let first: { user_id: string; tenant_id: string } | null = null;
-        for (const audience of audiences) {
-          try {
-            const r = await up('identity', 'POST', '/v1/auth/launch', {
-              body: { token: launchToken, audience },
-              schema: LaunchResponse,
-            });
-            tokens[audience] = held(r);
-            first ??= r;
-          } catch (e) {
-            if (!first) throw e;
-          }
-        }
-        if (!first) throw new BffError(401, 'LAUNCH_TOKEN_INVALID');
+        for (const audience of ['identity', 'engagement', 'payments'] as ServiceAudience[])
+          tokens[audience] = held(first);
         const session = sessions.create({
           kind: 'player',
           tenantId: first.tenant_id,
@@ -281,9 +289,12 @@ export function createBff(deps: BffDeps) {
         const s = need(ctx.session);
         const [balance, spins, items, redemptions, wheel] = await Promise.all([
           // W-3: the balance comes from payments (`available`), eventually consistent (D-1).
+          // A player who has never been credited has no wallet yet: payments answers 404 `wallet_not_found`,
+          // which is a balance of 0, not a failure.
           up('payments', 'GET', '/v1/me/balance', {
             token: token(s, 'payments'),
             schema: WalletBalance,
+            nullOn404: true,
           }),
           // `GET /v1/me/spins`
           up('engagement', 'GET', '/v1/me/spins', {
@@ -304,7 +315,7 @@ export function createBff(deps: BffDeps) {
         ]);
         const byId = new Map(items.map((i) => [i.id, i]));
         const state: PlayerState = {
-          coins: balance.available,
+          coins: balance?.available ?? 0,
           spins: spins.available,
           // W-2 / G-3: with no configured wheel id the default wheel labels are used (no service names the
           // active wheel). The segment id is its index.
@@ -415,11 +426,17 @@ export function createBff(deps: BffDeps) {
             nullOn404: true,
           }),
           up('payments', 'GET', '/v1/billing/invoices', { token: pay, schema: listOf(Invoice) }),
-          up('payments', 'GET', '/v1/billing/usage', {
-            token: pay,
-            schema: UsageReport,
-            nullOn404: true,
-          }),
+          // Payments requires `?period=YYYY-MM`; the console shows the current (UTC) month.
+          up(
+            'payments',
+            'GET',
+            `/v1/billing/usage?period=${new Date(now()).toISOString().slice(0, 7)}`,
+            {
+              token: pay,
+              schema: UsageReport,
+              nullOn404: true,
+            },
+          ),
           up('engagement', 'GET', '/v1/store/items', { token: eng, schema: listOf(StoreItem) }),
           up('engagement', 'GET', '/v1/operator/redemptions', {
             token: eng,
@@ -475,20 +492,126 @@ export function createBff(deps: BffDeps) {
         const companyName = str(ctx.body.companyName, 'companyName', 120);
         const email = str(ctx.body.email, 'email', 254);
         const password = str(ctx.body.password, 'password', 200);
+        const slug =
+          typeof ctx.body.slug === 'string' && ctx.body.slug ? ctx.body.slug : slugify(companyName);
         await up('identity', 'POST', '/v1/operators/signup', {
-          body: {
-            tenant_name: companyName,
-            slug:
-              typeof ctx.body.slug === 'string' && ctx.body.slug
-                ? ctx.body.slug
-                : slugify(companyName),
-            email,
-            password,
-          },
+          body: { tenant_name: companyName, slug, email, password },
           schema: SignupResponse,
         });
-        await loginOperator(ctx, email, password);
+        // The login names the tenant by its slug: the browser may be on plain `localhost`, not `<slug>.mio.localhost`.
+        await loginOperator(ctx, email, password, slug);
         return { status: 201 };
+      },
+    ],
+    // Casino integration credentials: `POST /v1/credentials` (identity). Both the platform and the environment
+    // are required by the service. The secrets are returned once and never stored by the BFF.
+    [
+      'POST',
+      /^\/api\/operator\/credentials$/,
+      async (ctx) => {
+        const s = need(ctx.session);
+        const environment = ctx.body.environment;
+        if (environment !== 'sandbox' && environment !== 'production')
+          throw new BffError(422, 'validation_error', 'environment must be sandbox or production');
+        const issued = await up('identity', 'POST', '/v1/credentials', {
+          token: token(s, 'identity'),
+          body: { platform: config.casinoPath, environment },
+          schema: CredentialIssued,
+        });
+        return {
+          status: 201,
+          body: {
+            environment,
+            keyId: issued.key_id,
+            apiKey: issued.api_key,
+            hmacSecret: issued.hmac_secret,
+          },
+        };
+      },
+    ],
+    // Bonus Store item: `POST /v1/store/items` (engagement). The item pays a casino bonus in whole EUR.
+    [
+      'POST',
+      /^\/api\/operator\/catalog$/,
+      async (ctx) => {
+        const s = need(ctx.session);
+        const name = str(ctx.body.name, 'name', 120);
+        const whole = (v: unknown, field: string): number => {
+          if (typeof v !== 'number' || !Number.isInteger(v) || v <= 0)
+            throw new BffError(422, 'validation_error', `${field} must be a positive integer`);
+          return v;
+        };
+        await up('engagement', 'POST', '/v1/store/items', {
+          token: token(s, 'engagement'),
+          body: {
+            name,
+            description: 'Bonus credited to the casino wallet',
+            price: whole(ctx.body.priceCoins, 'priceCoins'),
+            reward: {
+              type: 'bonus',
+              params: { amount_minor: whole(ctx.body.bonusEur, 'bonusEur') * 100, currency: 'EUR' },
+            },
+          },
+        });
+        return { status: 201 };
+      },
+    ],
+    // Rules: `PUT /v1/operator/rules` (engagement). `min` is EUR, the service takes minor units. `cap` is the
+    // per-player grant limit. `per` ("per each N EUR") has no service field and is dropped (known-gaps G-4).
+    [
+      'POST',
+      /^\/api\/operator\/rules$/,
+      async (ctx) => {
+        const s = need(ctx.session);
+        const num = (v: unknown, name: string): number => {
+          if (typeof v !== 'number' || !Number.isInteger(v) || v <= 0)
+            throw new BffError(422, 'validation_error', `${name} must be a positive integer`);
+          return v;
+        };
+        const min = num(ctx.body.min, 'min');
+        await up('engagement', 'PUT', '/v1/operator/rules', {
+          token: token(s, 'engagement'),
+          body: {
+            name: 'Deposit rule',
+            min_amount_minor: min * 100,
+            currency: 'EUR',
+            spins: num(ctx.body.spins, 'spins'),
+            max_grants_per_player: num(ctx.body.cap, 'cap'),
+          },
+        });
+        return { status: 204 };
+      },
+    ],
+    // Wheel: `PUT /v1/operator/wheel`. The console edits the weights of its fixed eight coin segments; the
+    // service takes integer weights, so the (up to one decimal) console weights are sent times 10.
+    [
+      'POST',
+      /^\/api\/operator\/wheel\/publish$/,
+      async (ctx) => {
+        const s = need(ctx.session);
+        const w = ctx.body.weights;
+        if (
+          !Array.isArray(w) ||
+          w.length !== WHEEL_REWARDS.length ||
+          !w.every((x) => typeof x === 'number' && Number.isFinite(x) && x > 0)
+        )
+          throw new BffError(
+            422,
+            'validation_error',
+            'weights must be one positive number per segment',
+          );
+        await up('engagement', 'PUT', '/v1/operator/wheel', {
+          token: token(s, 'engagement'),
+          body: {
+            name: 'Daily Wheel',
+            segments: WHEEL_REWARDS.map((r, i) => ({
+              label: r.label,
+              weight: Math.max(1, Math.round((w[i] as number) * 10)),
+              reward: { type: 'coins', amount: r.coins },
+            })),
+          },
+        });
+        return { status: 204 };
       },
     ],
     [
@@ -513,6 +636,43 @@ export function createBff(deps: BffDeps) {
           schema: PaymentAttempt,
         });
         s.attemptId = attempt.id;
+        // Local stand-in for the payment provider (compose only: needs FAKE_PROVIDER_WEBHOOK_SECRET). The fake
+        // provider never calls back by itself (known-gaps G-12), so the BFF sends the signed callback the real
+        // provider would. A failure here leaves the attempt `processing`, as without the stand-in.
+        if (config.fakeProviderSecret && attempt.state === 'processing') {
+          try {
+            const op = await up<{ provider_subscription_id: string }>(
+              'payments',
+              'GET',
+              '/v1/operator/plan',
+              { token: pay },
+            );
+            const start = new Date(now());
+            const month = (d: Date) => new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), 1));
+            const next = new Date(Date.UTC(start.getUTCFullYear(), start.getUTCMonth() + 1, 1));
+            const payload = {
+              eventId: globalThis.crypto.randomUUID(),
+              tenantId: s.tenantId,
+              subscriptionId: op.provider_subscription_id,
+              status: 'active',
+              version: 1,
+              amountMinor: plan.price_minor,
+              currency: plan.currency,
+              periodStart: month(start).toISOString(),
+              periodEnd: next.toISOString(),
+            };
+            await up('payments', 'POST', '/v1/billing/webhooks', {
+              body: payload,
+              headers: {
+                'x-webhook-signature': createHmac('sha256', config.fakeProviderSecret)
+                  .update(JSON.stringify(payload))
+                  .digest('hex'),
+              },
+            });
+          } catch {
+            /* the attempt stays processing */
+          }
+        }
         return { status: 201, body: mapAttempt(attempt, new Map(plans.map((p) => [p.id, p]))) };
       },
     ],

@@ -172,7 +172,8 @@ export type Action =
   | { type: 'rules/save'; rules: Rules }
   | { type: 'wheel/publish'; weights: number[]; at?: string }
   | { type: 'catalog/price'; id: string; price: number }
-  | { type: 'catalog/visible'; id: string; on: boolean };
+  | { type: 'catalog/visible'; id: string; on: boolean }
+  | { type: 'catalog/add'; id: string; name: string; price: number };
 
 /** Deposit rule: how many spins a deposit earns (before the daily cap). */
 export function spinsForDeposit(r: Rules, eur: number): number {
@@ -376,6 +377,21 @@ export function reducer(s: State, a: Action): State {
     case 'catalog/visible':
       return patchO({
         catalog: o.catalog.map((i) => (i.id === a.id ? { ...i, visible: a.on } : i)),
+      });
+    case 'catalog/add':
+      if (!a.name.trim() || !Number.isInteger(a.price) || a.price < 1) return s;
+      return patchO({
+        catalog: [
+          ...o.catalog,
+          {
+            id: a.id,
+            name: a.name.trim(),
+            description: 'Bonus credited to the casino wallet',
+            priceCoins: a.price,
+            kind: 'cash_bonus',
+            visible: true,
+          },
+        ],
       });
   }
 }

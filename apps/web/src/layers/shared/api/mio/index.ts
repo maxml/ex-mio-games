@@ -5,6 +5,7 @@ export {
   isOutcomeUnknown,
   type MioApi,
   type MioApiErrorCode,
+  type NewStoreItem,
   type SignupInput,
 } from './api';
 export { createHttpApi } from './http';
