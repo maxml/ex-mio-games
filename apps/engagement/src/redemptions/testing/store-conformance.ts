@@ -34,11 +34,13 @@ export interface StoreHarness {
 const pid = (name: string): string =>
   `0190a1b2-c3d4-7e5f-8a6b-${Buffer.from(name).toString('hex').padStart(12, '0').slice(-12)}`;
 
-const player = (h: StoreHarness, id: string, sandbox = false): Scope => ({
+/** INV-ENV-INPUT: the environment is always stated. `player` is the PRODUCTION scope; `playerIn` takes it as a required argument. */
+const playerIn = (h: StoreHarness, id: string, sandbox: boolean): Scope => ({
   tenantId: h.tenantId,
   playerId: pid(id),
   sandbox,
 });
+const player = (h: StoreHarness, id: string): Scope => playerIn(h, id, false);
 
 const all = (...s: RedemptionState[]): RedemptionState[] => s;
 
@@ -80,9 +82,15 @@ async function walk(
 
 /** A fresh order for a fresh player; returns its id. */
 let seq = 0;
-async function order(
+const order = (
   h: StoreHarness,
-  o: { stock?: number | null; limit?: number | null; sandbox?: boolean; price?: number } = {},
+  o: { stock?: number | null; limit?: number | null; price?: number } = {},
+): Promise<{ id: string; itemId: string; scope: Scope }> => orderIn(h, false, o);
+
+async function orderIn(
+  h: StoreHarness,
+  sandbox: boolean,
+  o: { stock?: number | null; limit?: number | null; price?: number } = {},
 ): Promise<{ id: string; itemId: string; scope: Scope }> {
   seq += 1;
   const itemId = await h.addItem({
@@ -90,7 +98,7 @@ async function order(
     stock: o.stock === undefined ? null : o.stock,
     perPlayerLimit: o.limit ?? null,
   });
-  const scope = player(h, `p${seq}`, o.sandbox ?? false);
+  const scope = playerIn(h, `p${seq}`, sandbox);
   const { redemption } = await h.store.placeOrder(scope, { operationKey: `k${seq}`, itemId });
   return { id: redemption.id, itemId, scope };
 }
@@ -165,7 +173,7 @@ export function storeConformance(label: string, setup: () => Promise<StoreHarnes
       expect(ev.map((e) => e.type)).toEqual(['engagement.redemption.status_changed']);
       expect(ev[0]?.payload).toMatchObject({ from: null, to: 'REQUESTED' });
       expect('sandbox' in (ev[0]?.payload as object)).toBe(false); // X-13: the envelope holds it
-      expect(ev[0]?.sandbox).toBeUndefined(); // production: absent means production
+      expect(ev[0]?.sandbox).toBe(false); // INV-ENV-INPUT: production is stated, never absent
       const rec = await h.store.getForOperator(h.tenantId, id);
       // The coin reserve is a synchronous call (D-1): no hold command is written. If that call never
       // finished, the sweeper re-sends it 30 s later with the same key.
@@ -279,7 +287,7 @@ export function storeConformance(label: string, setup: () => Promise<StoreHarnes
         .filter((e) => e.type === 'engagement.redemption.status_changed');
       expect(changed).toHaveLength(1);
       expect('sandbox' in (changed[0]?.payload as object)).toBe(false);
-      expect(changed[0]?.sandbox).toBeUndefined();
+      expect(changed[0]?.sandbox).toBe(false);
     });
 
     it('apply rejects a pair outside the table', async () => {
@@ -704,7 +712,7 @@ export function storeConformance(label: string, setup: () => Promise<StoreHarnes
     });
 
     it('caller outbox messages are stamped with the redemption and the player; the sandbox flag goes on the envelope', async () => {
-      const { id, scope } = await order(h, { sandbox: true });
+      const { id, scope } = await orderIn(h, true);
       await h.store.apply(h.tenantId, id, {
         expectFrom: all('REQUESTED'),
         to: 'RESERVED',
@@ -773,7 +781,7 @@ export function storeConformance(label: string, setup: () => Promise<StoreHarnes
       expect(await h.store.getOwn(player(h, 'p1'), redemption.id)).not.toBeNull();
       expect(await h.store.getForOperator(h.tenantId, redemption.id)).not.toBeNull();
       expect(await h.store.getOwn(player(h, 'p2'), redemption.id)).toBeNull();
-      expect(await h.store.getOwn(player(h, 'p1', true), redemption.id)).toBeNull();
+      expect(await h.store.getOwn(playerIn(h, 'p1', true), redemption.id)).toBeNull();
       expect(
         await h.store.getOwn(
           { tenantId: h.otherTenantId, playerId: pid('p1'), sandbox: false },
@@ -801,7 +809,7 @@ export function storeConformance(label: string, setup: () => Promise<StoreHarnes
     // X-13/D-13. Mutation: put sandbox into a payload, or set the envelope flag from anything but the order.
     it('a sandbox order carries sandbox=true on its row and on the ENVELOPE of every event, never in a payload', async () => {
       const item = await h.addItem({ price: 10 });
-      const { redemption } = await h.store.placeOrder(player(h, 'p1', true), {
+      const { redemption } = await h.store.placeOrder(playerIn(h, 'p1', true), {
         operationKey: 'k',
         itemId: item,
       });

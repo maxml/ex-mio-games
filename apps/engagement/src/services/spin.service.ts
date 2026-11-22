@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import {
   ConflictException,
   Inject,
@@ -8,13 +9,14 @@ import {
 } from '@nestjs/common';
 import {
   createEvent,
-  uuidv7,
+  scopedKey,
+  ScopedKeyTooLong,
   type MySpinsResponse,
   type PublicWheel,
   type SpinConflictBody,
   type SpinResponse,
 } from '@ex-mio/contracts';
-import { Db, tryCurrentAuth } from '@ex-mio/service-kit';
+import { currentAuth, Db } from '@ex-mio/service-kit';
 import { currentTenant } from '@ex-mio/tenancy';
 import {
   SEEDS,
@@ -39,11 +41,20 @@ const IN_PROGRESS = (): ConflictException =>
 
 const UNIQUE_VIOLATION = '23505';
 
+/** A stable UUID (version 8 layout) derived from an environment-scoped key. */
+const uuidFromKey = (key: string): string => {
+  const b = createHash('sha256').update(key).digest().subarray(0, 16);
+  b[6] = ((b[6] ?? 0) & 0x0f) | 0x80;
+  b[8] = ((b[8] ?? 0) & 0x3f) | 0x80;
+  const hex = b.toString('hex');
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
+};
+
 export interface SpinInput {
   idempotencyKey: string;
   creditId?: string;
-  /** From the verified token's `sbx` claim (the controller); never from a body or a header. */
-  sandbox?: boolean;
+  /** From the verified token's `sbx` claim (the controller); never from a body or a header. Required. */
+  sandbox: boolean;
 }
 
 const toResponse = (s: SpinRecord): SpinResponse => ({
@@ -75,7 +86,25 @@ export class SpinService {
 
   async spin(input: SpinInput): Promise<SpinResponse> {
     const { tenantId, userId } = this.caller();
-    const flightKey = `${tenantId}|${userId}|${input.idempotencyKey}`;
+    // D-26: the environment is in every key (the token's `sbx` claim, never a request value).
+    const sandbox = input.sandbox;
+    // F4: the client's key is the only unbounded part. Both keys (flight here, spin in the tx) are
+    // built from it, so a key that escapes past the bound is refused here, as a 4xx, before either.
+    let flightKey: string;
+    try {
+      flightKey = scopedKey({
+        kind: 'flight',
+        tenantId,
+        sandbox,
+        parts: [userId, input.idempotencyKey],
+      });
+      scopedKey({ kind: 'spin', tenantId, sandbox, parts: [userId, input.idempotencyKey] });
+    } catch (err) {
+      if (err instanceof ScopedKeyTooLong) {
+        throw new UnprocessableEntityException('Idempotency-Key is too long once escaped');
+      }
+      throw err;
+    }
     if (this.inFlight.has(flightKey)) throw IN_PROGRESS();
     this.inFlight.add(flightKey);
     try {
@@ -95,10 +124,15 @@ export class SpinService {
     userId: string,
     input: SpinInput,
   ): Promise<SpinResponse> {
-    const existing = await this.spins.findByOperation(tx, {
-      userId,
-      operationId: input.idempotencyKey,
+    // The stored operation id is the environment-scoped key; the spin id is derived from it, so
+    // (tenant_id, id) is the dedupe key and a sandbox and a production request never collide (D-26).
+    const operationId = scopedKey({
+      kind: 'spin',
+      tenantId,
+      sandbox: input.sandbox,
+      parts: [userId, input.idempotencyKey],
     });
+    const existing = await this.spins.findByOperation(tx, { userId, operationId });
     if (existing) {
       // The same key with another credit_id is a different request: refused, nothing changes.
       if (input.creditId !== undefined && input.creditId !== existing.creditId) {
@@ -108,7 +142,7 @@ export class SpinService {
     }
 
     // Credits are per environment, like wallets (D-13): a sandbox token spends only sandbox credits.
-    const sandboxToken = input.sandbox === true;
+    const sandboxToken = input.sandbox;
     const credit = await this.credits.consume(tx, {
       userId,
       sandbox: sandboxToken,
@@ -130,7 +164,7 @@ export class SpinService {
     const table = await this.wheels.activeTable(tx, credit.wheelId);
     if (!table) throw new Error('no reward table for the credit wheel');
     const { version: seedVersion, seed } = this.seeds.current(tenantId);
-    const spinId = uuidv7();
+    const spinId = uuidFromKey(operationId);
     const picked = selectSegment({ seed, seedVersion, spinId, table });
     const rewardCoins = picked.segment.reward.type === 'coins' ? picked.segment.reward.amount : 0;
 
@@ -138,7 +172,7 @@ export class SpinService {
       id: spinId,
       userId,
       creditId: credit.id,
-      operationId: input.idempotencyKey,
+      operationId,
       seedVersion: picked.seedVersion,
       tableVersion: picked.tableVersion,
       hmac: picked.hmac,
@@ -150,14 +184,14 @@ export class SpinService {
     // X-3 / D-13: a spin is a sandbox spin when the token came through a sandbox credential or the
     // credit itself was granted from a sandbox deposit. Payments then credits the sandbox wallet and
     // meters nothing (X-2). The flag is on the envelope, never in the payload.
-    const sandbox = input.sandbox === true || credit.sandbox === true;
+    const sandbox = input.sandbox || credit.sandbox;
     // Also for a `nothing` segment (0 coins): payments and metering key on the spin.
     await this.db.publish(
       tx,
       createEvent({
         type: 'engagement.spin.completed',
         tenantId,
-        ...(sandbox ? { sandbox: true } : {}),
+        sandbox,
         payload: {
           spin_id: spinId,
           player_id: userId,
@@ -167,7 +201,7 @@ export class SpinService {
       }),
     );
     // After the commit: the spin happened, with its reward and the environment it ran in.
-    emitPlayerEventAfterCommit(tx, tenantId, userId, {
+    emitPlayerEventAfterCommit(tx, tenantId, userId, sandbox, {
       event: 'engagement.spin_completed',
       props: { reward_coins: rewardCoins, sandbox },
     });
@@ -178,7 +212,8 @@ export class SpinService {
   async availableSpins(): Promise<MySpinsResponse> {
     const { userId } = this.caller();
     // Credits are per environment (D-13): the verified token's `sbx` claim picks which are counted.
-    const sandbox = tryCurrentAuth()?.sandbox === true;
+    // `currentAuth()` throws without an auth context: fail closed, never default to production.
+    const sandbox = currentAuth().sandbox;
     const available = await this.db.tenantTx((tx) =>
       this.credits.countAvailable(tx, { userId, sandbox }),
     );

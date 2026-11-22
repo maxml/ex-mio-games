@@ -10,10 +10,21 @@ export interface CardProps extends Omit<HTMLAttributes<HTMLElement>, 'title'> {
   flush?: boolean;
 }
 
-export function Card({ title, description, actions, flush, className, children, ...rest }: CardProps) {
+export function Card({
+  title,
+  description,
+  actions,
+  flush,
+  className,
+  children,
+  ...rest
+}: CardProps) {
   return (
     <section
-      className={cn('min-w-0 rounded-lg border border-border bg-surface text-fg shadow-card', className)}
+      className={cn(
+        'min-w-0 rounded-lg border border-border bg-surface text-fg shadow-card',
+        className,
+      )}
       {...rest}
     >
       {(title || actions) && (

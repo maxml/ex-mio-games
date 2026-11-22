@@ -11,7 +11,7 @@ import {
 } from '@ex-mio/contracts';
 import * as tenancy from '@ex-mio/tenancy';
 import { currentTenant, jwtTenantResolver, TenantGuard, TenantInterceptor } from '@ex-mio/tenancy';
-import { createServiceTokenVerifier, createTokenVerifier, TokenRejectedError } from './auth';
+import { createServiceTokenVerifier, createTokenVerifier, TokenRejectedError } from './auth'; // RED: module does not exist yet
 import {
   accessClaims,
   b64url,

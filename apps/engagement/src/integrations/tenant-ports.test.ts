@@ -7,12 +7,12 @@ import {
   type CasinoRewardApiConfig,
 } from '@ex-mio/contracts';
 import type { Transport, TransportRequest } from './adapter';
-import { createDefaultRegistry } from './registry';
+import { createDefaultRegistry } from './registry'; // RED: module missing
 import {
   createCasinoPlayerPort,
   createRewardRequestBuilder,
   createTenantCasinoPorts,
-} from './tenant-ports';
+} from './tenant-ports'; // RED: module missing
 import type { TenantIntegration, TenantIntegrationPort } from './ports';
 
 /**
@@ -225,7 +225,8 @@ describe('the casino player port is backed by the identity player link', () => {
   const identity = {
     playerLink: async (tenantId: string, userId: string) => {
       calls.push([tenantId, userId]);
-      if (userId === U1) return PlayerLinkResponse.parse({ platform: 'casino-a', external_player_id: 'ext-777' });
+      if (userId === U1)
+        return PlayerLinkResponse.parse({ platform: 'casino-a', external_player_id: 'ext-777' });
       if (userId === 'down') throw new Error('identity unreachable');
       return undefined; // 404: never linked, or erased
     },

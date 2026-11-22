@@ -34,11 +34,13 @@ Modules are separated by Nx tags and import boundaries, so promoting a module to
 ### Consequences
 
 Good:
+
 - The ledger has a single writer, so its invariants are testable in one place.
 - Identity compromise surface is limited to one service.
 - A casino outage affects `engagement` only.
 
 Bad (the cost we accept):
+
 - No cross-service transaction. A redemption spans two databases and needs a saga with compensation (ADR 0006).
 - Every cross-service fact travels by event, with outbox and inbox on both sides (ADR 0003). That is more code and more failure modes than function calls.
 - Local setup needs more containers; clean-clone start time rises.

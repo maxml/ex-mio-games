@@ -1,6 +1,6 @@
 ---
 id: MIO-164
-title: "Alerts: DLQ not empty, reconciliation drift, issuance failure rate"
+title: 'Alerts: DLQ not empty, reconciliation drift, issuance failure rate'
 epic: EPIC-15
 priority: P2
 money_impact: direct

@@ -1,13 +1,13 @@
 ---
 id: MIO-146
-title: "Part C: tenant isolation suite"
+title: 'Part C: tenant isolation suite'
 epic: EPIC-14
 priority: P1
 money_impact: direct
 risk_class: isolation
 status: todo
 depends_on: [MIO-032, MIO-033]
-blocked_by: ["starter: tenancy package (context, RLS, isolation test kit)"]
+blocked_by: ['starter: tenancy package (context, RLS, isolation test kit)']
 size: M
 estimate_hours_base: 20
 estimate_hours: 24

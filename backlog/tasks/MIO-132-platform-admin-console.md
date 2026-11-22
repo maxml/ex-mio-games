@@ -1,6 +1,6 @@
 ---
 id: MIO-132
-title: "Platform admin console: tenants, revenue, usage"
+title: 'Platform admin console: tenants, revenue, usage'
 epic: EPIC-13
 priority: P1
 money_impact: direct

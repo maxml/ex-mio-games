@@ -26,14 +26,14 @@ p95 and p99 latency, sustained and burst throughput per tenant, sustained throug
 metric that measures it (from MIO-160), the error budget, and what happens on a breach. The first values
 are proposals for the first pilot and are replaced by the measured baseline of MIO-194:
 
-| Path | p95 / p99 | Per tenant (sustained / burst for 60 s) | Aggregate |
-|---|---|---|---|
-| Deposit ingest to spin credit: webhook acknowledged | 150 ms / 400 ms | 10 / 50 events per second | 50 events per second |
-| Deposit ingest to spin credit: `SpinGranted` visible to the player | 2 s / 5 s | queue drains within 120 s after a burst | same |
-| Spin (`POST /v1/spins`) | 200 ms / 500 ms | 5 per player, 20 per tenant | 100 per second |
-| Redemption to issuance: request acknowledged | 300 ms / 800 ms | 5 / 20 per second | 20 per second |
-| Redemption to issuance: final status with a casino reply under 500 ms | 2 s / 6 s | same | same |
-| Balance read | 50 ms / 150 ms | 50 / 200 per second | 500 per second |
+| Path                                                                  | p95 / p99       | Per tenant (sustained / burst for 60 s) | Aggregate            |
+| --------------------------------------------------------------------- | --------------- | --------------------------------------- | -------------------- |
+| Deposit ingest to spin credit: webhook acknowledged                   | 150 ms / 400 ms | 10 / 50 events per second               | 50 events per second |
+| Deposit ingest to spin credit: `SpinGranted` visible to the player    | 2 s / 5 s       | queue drains within 120 s after a burst | same                 |
+| Spin (`POST /v1/spins`)                                               | 200 ms / 500 ms | 5 per player, 20 per tenant             | 100 per second       |
+| Redemption to issuance: request acknowledged                          | 300 ms / 800 ms | 5 / 20 per second                       | 20 per second        |
+| Redemption to issuance: final status with a casino reply under 500 ms | 2 s / 6 s       | same                                    | same                 |
+| Balance read                                                          | 50 ms / 150 ms  | 50 / 200 per second                     | 500 per second       |
 
 - A budget split for the two longest paths: how much of the p95 each hop may use (webhook, inbox and
   outbox write, broker, consumer, ledger transaction, adapter call).

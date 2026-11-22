@@ -1,7 +1,15 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { PLANS, WHEEL_REWARDS } from '../mock/data';
 import { createInitialState, pickReward } from './reducer';
-import { PAYMENT_MS, cancelPayment, createStore, requestSpin, simulateDeposit, startPayment, startRedeem } from './store';
+import {
+  PAYMENT_MS,
+  cancelPayment,
+  createStore,
+  requestSpin,
+  simulateDeposit,
+  startPayment,
+  startRedeem,
+} from './store';
 
 const fresh = () => createStore(createInitialState());
 
@@ -69,7 +77,10 @@ describe('operator changes reach the player through the shared state', () => {
     const s = fresh();
     const before = s.get();
     s.dispatch({ type: 'wheel/publish', weights: [...before.operator.wheel.weights] });
-    s.dispatch({ type: 'wheel/publish', weights: before.operator.wheel.weights.map((w, i) => (i === 2 ? 0 : w)) });
+    s.dispatch({
+      type: 'wheel/publish',
+      weights: before.operator.wheel.weights.map((w, i) => (i === 2 ? 0 : w)),
+    });
     expect(s.get()).toBe(before);
   });
 
@@ -106,7 +117,10 @@ describe('redemption lifecycle', () => {
     s.dispatch({ type: 'player/casinoDown', on: down });
     const queue: Array<[() => void, number]> = [];
     const id = startRedeem('s1', s, (fn, ms) => queue.push([fn, ms]))!;
-    while (queue.length) queue.sort((a, b) => a[1] - b[1]).shift()![0]();
+    while (queue.length)
+      queue
+        .sort((a, b) => a[1] - b[1])
+        .shift()![0]();
     return { s, id };
   };
 
@@ -215,7 +229,10 @@ describe('payments: the attempt, its plan and amount, and its outcome live in th
     s.dispatch({ type: 'plan/select', id: 'starter' });
     startPayment('starter', '4242', s);
     vi.advanceTimersByTime(PAYMENT_MS);
-    expect([s.get().operator.paidPlan, s.get().operator.paidAmount]).toEqual(['starter', starter.price]);
+    expect([s.get().operator.paidPlan, s.get().operator.paidAmount]).toEqual([
+      'starter',
+      starter.price,
+    ]);
   });
 
   it('the plan cannot change while an attempt is in flight, nor after payment', () => {

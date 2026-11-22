@@ -85,18 +85,39 @@ describe('unknown outcome of a spin', () => {
   const lost = () => new MioApiError('network-or-server', 'reply lost');
 
   // Mutation: tell the player "Nothing was charged" (or "No spins left") for a lost reply.
+  //
+  // rc review: this flaked under load (1 in 4 runs at load 18) with `toBeInTheDocument()` failing on
+  // the element `findByText` had just returned. Cause, in the TEST: the re-query fired 20 ms after
+  // the toast rendered; `findByText` resolves only after its own drain `setTimeout(0)`, so on a
+  // starved event loop the 20 ms timer, the re-query and the re-render (toast cleared on success)
+  // all ran first and the returned node was already detached. The component is correct: the toast
+  // shows while the outcome is unknown and is cleared by the successful re-query. Now the re-query
+  // is held on a gate the test opens only after it has seen the toast, so no timer decides the order.
   it('says the result is unknown, re-queries, and shows the result when the re-query succeeds', async () => {
     const api = createIsolatedMockApi();
     const real = api.player.spin.bind(api.player);
+    let open: () => void = () => undefined;
+    const gate = new Promise<void>((r) => (open = r));
     const spin = vi
       .spyOn(api.player, 'spin')
       .mockRejectedValueOnce(lost())
-      .mockImplementation(() => real());
-    mount(api, { recheckDelaysMs: [20] });
+      .mockImplementation(async () => {
+        await gate;
+        return real();
+      });
+    mount(api, { recheckDelaysMs: [0] });
     fireEvent.click(await screen.findByRole('button', { name: 'Spin' }));
-    expect(await screen.findByText(/Result unknown/)).toBeInTheDocument();
-    await waitFor(() => expect(screen.getByTestId('result-live')).toHaveTextContent(/You won/));
+    await waitFor(() => expect(screen.getByText(/Result unknown/)).toBeInTheDocument());
+    // the re-query is in flight (held), and the outcome is still unknown on screen
+    await waitFor(() => expect(spin).toHaveBeenCalledTimes(2));
+    expect(screen.getByText(/Result unknown/)).toBeInTheDocument();
+    expect(screen.queryByText(/Nothing was charged|No spins left/)).not.toBeInTheDocument();
+    await act(async () => open());
+    await waitFor(() => expect(screen.getByTestId('result-live')).toHaveTextContent(/You won/), {
+      timeout: 5000,
+    });
     expect(spin).toHaveBeenCalledTimes(2);
+    expect(screen.queryByText(/Result unknown/)).not.toBeInTheDocument();
     expect(screen.queryByText(/Nothing was charged|No spins left/)).not.toBeInTheDocument();
   });
 

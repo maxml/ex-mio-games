@@ -63,7 +63,19 @@ const JSON_TEXT = new RegExp(
 );
 const EMAIL_TEXT = /^[ \t\n\r\f\v]*[^ \t\n\r\f\v@]+@[^ \t\n\r\f\v@]+\.[A-Za-z]{2,}[ \t\n\r\f\v]*$/;
 
-/** The props map: flat scalars, snake_case keys, no `varta_` prefix, no PII-shaped key, no email value. */
+// Final review, starter item 10: prop VALUES are an allow-list too. The old rule refused JSON text
+// and an exact email, and missed an email followed by a zero-width space or `#`, a percent-encoded
+// email in a nested URL, an Arabic-Indic phone number and a bearer token with commas. A text
+// value now passes only when every character is on this list. Stricter than the vendored Varta
+// schema on purpose: a stricter producer still conforms (D-19), and a refused key is dropped
+// with its event, never rewritten.
+const SAFE_PROP_TEXT = /^[A-Za-z0-9 _.:/[\]()-]{0,256}$/;
+const LONG_DIGITS = /[0-9]{9,}/;
+
+/**
+ * The props map: flat scalars, snake_case keys, no `varta_` prefix, no PII-shaped key, and text
+ * values from a closed character set (so no email, URL query, token or non-ASCII digits).
+ */
 export const ProductEventProps = z
   .record(z.union([z.string(), z.number(), z.boolean()]))
   .superRefine((props, ctx) => {
@@ -82,6 +94,11 @@ export const ProductEventProps = z
       if (PII_FLAG_KEY.test(key) && typeof value !== 'boolean') bad('a PII-named flag is boolean');
       if (typeof value === 'string' && (JSON_TEXT.test(value) || EMAIL_TEXT.test(value))) {
         bad('props value must not be JSON text or an email address');
+      }
+      if (typeof value === 'string' && !SAFE_PROP_TEXT.test(value)) {
+        bad('props text must be plain ASCII words (no @ # % , = ? & quotes, braces or non-ASCII)');
+      } else if (typeof value === 'string' && LONG_DIGITS.test(value.replace(/[ ()._/:-]/g, ''))) {
+        bad('props text must not carry a phone-, card- or id-length digit run');
       }
       if (typeof value === 'number' && !Number.isFinite(value)) bad('props number must be finite');
     }

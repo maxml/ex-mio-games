@@ -63,7 +63,15 @@ describe('broker connection loss (F-BUS-2)', () => {
 });
 
 describe('outbox: an event nobody consumes yet (F-BUS-1)', () => {
-  const UNCONSUMED = 'engagement.redemption.status_changed';
+  // rc review: feat/realtime binds `engagement.redemption.status_changed` (the gateway pushes it), and
+  // the precondition below caught it. The outcome events of a redemption still have no consumer; the
+  // redemption ends in exactly one of them (issued, rejected or needs_review), whichever the casino
+  // simulator answers, so the test follows whichever row this redemption wrote.
+  const UNCONSUMED = [
+    'engagement.redemption.issued',
+    'engagement.redemption.rejected',
+    'engagement.redemption.needs_review',
+  ];
 
   it('is retried with a growing delay per row, not republished in a loop', async () => {
     // Precondition, checked rather than assumed: no queue is bound to the event (a topic binding
@@ -72,9 +80,11 @@ describe('outbox: an event nobody consumes yet (F-BUS-1)', () => {
       await rabbitApi('/exchanges/%2F/mio.events/bindings/source')
     ).json()) as { routing_key: string }[];
     const matches = (pattern: string) =>
-      new RegExp(
-        `^${pattern.replace(/\./g, '\\.').replace(/\*/g, '[^.]+').replace(/#/g, '.*')}$`,
-      ).test(UNCONSUMED);
+      UNCONSUMED.some((type) =>
+        new RegExp(
+          `^${pattern.replace(/\./g, '\\.').replace(/\*/g, '[^.]+').replace(/#/g, '.*')}$`,
+        ).test(type),
+      );
     expect(bindings.length).toBeGreaterThan(0);
     expect(bindings.filter((b) => matches(b.routing_key))).toEqual([]);
 
@@ -114,15 +124,14 @@ describe('outbox: an event nobody consumes yet (F-BUS-1)', () => {
       const row = () =>
         db.query(
           `SELECT o.attempts, o.published_at, o.parked_at, o.next_attempt_at > now() AS delayed
-             FROM outbox o WHERE o.type = $1 AND o.envelope->'payload'->>'redemption_id' = $2
-              AND o.envelope->'payload'->>'to' = 'REQUESTED'`,
+             FROM outbox o WHERE o.type = ANY($1) AND o.envelope->'payload'->>'redemption_id' = $2`,
           [UNCONSUMED, redemptionId],
         );
       // nobody is bound to it: the broker returns it, the row backs off.
       const first = await eventually(async () => {
         const { rows } = await row();
         return rows[0]?.attempts >= 1 ? rows[0] : undefined;
-      }, 15_000);
+      }, 30_000);
       expect(first.published_at).toBeNull();
       expect(first.delayed).toBe(true);
       await sleep(6_000);

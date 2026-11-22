@@ -20,7 +20,7 @@ import {
 
 const U = '0190a1b2-c3d4-4e5f-8a6b-7c8d9e0f1a2b';
 
-// Contract tests: these pin the wire shapes. The behaviour tests of the
+// Contract tests: these pin the wire shapes and pass already. The RED tests of the
 // payments epic live in apps/payments (see docs/specs/payments.md).
 describe('payments contracts', () => {
   // Mutation: relax CoinAmount (drop .int(), .positive() or .max()) -> a row below goes red.
@@ -104,10 +104,11 @@ describe('payments contracts', () => {
     const e = createEvent({
       type: 'engagement.spin.completed',
       tenantId: U,
+      sandbox: false,
       payload: { spin_id: U, player_id: U, reward_coins: 5, table_version: 3 },
     });
     expect(parseEvent({ ...e, sandbox: true }).sandbox).toBe(true);
-    expect(parseEvent(e).sandbox).toBeUndefined();
+    expect(parseEvent(e).sandbox).toBe(false);
   });
 
   it('accepts the upper bound and rejects another currency', () => {
@@ -171,7 +172,7 @@ describe('payments contracts', () => {
       'payments.coins.released',
       'payments.coins.refunded',
     ] as const) {
-      const e = createEvent({ type, tenantId: U, payload });
+      const e = createEvent({ type, tenantId: U, sandbox: false, payload });
       expect(parseEvent(e).type).toBe(type);
       expect(() => parseEvent({ ...e, payload: { ...payload, amount: 0 } })).toThrow();
     }

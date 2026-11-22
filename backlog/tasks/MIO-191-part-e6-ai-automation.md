@@ -1,6 +1,6 @@
 ---
 id: MIO-191
-title: "Part E6: which parts of the development process to automate with AI"
+title: 'Part E6: which parts of the development process to automate with AI'
 epic: EPIC-17
 priority: P1
 money_impact: enabler

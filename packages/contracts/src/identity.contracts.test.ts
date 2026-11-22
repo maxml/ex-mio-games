@@ -511,6 +511,7 @@ describe('identity contracts (audit events, D-11 and D-14)', () => {
       occurred_at: acting.occurred_at,
       correlation_id: uuidv7(),
       causation_id: null,
+      sandbox: false,
       payload: acting,
     };
     expect(parseEvent(env).type).toBe('audit.acting_request');

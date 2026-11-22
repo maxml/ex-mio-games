@@ -7,6 +7,7 @@ import {
   newTenant,
   openHarness,
   spinCompleted,
+  spinCompletedIn,
   type Harness,
 } from '../testing/harness';
 import { previousPeriod } from './ledger-jobs.service';
@@ -26,7 +27,7 @@ afterAll(async () => h.close());
 async function activity(t: string, sandbox = false): Promise<string> {
   const p = newPlayer();
   if (sandbox) {
-    await h.consume(spinCompleted(t, p, 9, { sandbox: true }));
+    await h.consume(spinCompletedIn(true, t, p, 9));
   } else {
     await h.fund(t, p, 9);
   }
@@ -154,7 +155,7 @@ describe('INV-SBX-4 sandbox settlement stays on the sandbox system accounts (rev
   it('a sandbox capture moves coins to the sandbox redeemed account and leaves the production one at 0', async () => {
     const t = newTenant();
     const p = await activity(t); // production: 9 issued, 4 held
-    await h.consume(spinCompleted(t, p, 10, { sandbox: true }));
+    await h.consume(spinCompletedIn(true, t, p, 10));
     const id = uuidv7();
     await h.as(t, () =>
       h.ledger.reserve(
@@ -203,7 +204,11 @@ describe('INV-JOB3 the usage report of the last complete month goes out once per
       outcome: 'no_subscription',
     });
     expect(sent(paid)).toHaveLength(1);
-    expect(sent(paid)[0]).toMatchObject({ idempotencyKey: `usage:${paid}:2026-11`, quantity: 2 });
+    expect(sent(paid)[0]).toMatchObject({
+      // literal wire key (final review F2): never derived from scopedKey, the code under test
+      idempotencyKey: `usage:${paid}:prd:2026-11`,
+      quantity: 2,
+    });
     expect(sent(free)).toHaveLength(0);
 
     await h.jobs.runOnce(now);

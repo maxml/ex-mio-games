@@ -22,7 +22,7 @@ import {
   CoinAction,
   NO_COIN_EFFECT_KEY,
   NoCoinEffect,
-} from './controllers/coin-action';
+} from './controllers/coin-action'; // RED
 
 /*
  * Choke point (coordinator decision D-5, review finding F3): payments refuses any coin

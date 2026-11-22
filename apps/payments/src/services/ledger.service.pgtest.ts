@@ -13,6 +13,7 @@ import {
   newTenant,
   openHarness,
   spinCompleted,
+  spinCompletedIn,
   type Harness,
 } from '../testing/harness';
 import { withRowLocked } from '../testing/pg';
@@ -683,12 +684,10 @@ describe('INV-SBX sandbox effects use separate sandbox wallets', () => {
     const t = newTenant();
     const p = newPlayer();
     await h.fund(t, p, 10); // production
-    const d = await h.consume(
-      spinCompleted(t, p, 7, { at: '2026-11-05T10:00:00.000Z', sandbox: true }),
-    );
+    const d = await h.consume(spinCompletedIn(true, t, p, 7, { at: '2026-11-05T10:00:00.000Z' }));
     expect(d.outcome).toBe('applied');
     expect((await h.dbWallet(t, p)).available).toBe(10);
-    expect((await h.dbWallet(t, p, { sandbox: true })).available).toBe(7);
+    expect((await h.dbWalletIn(t, p, true)).available).toBe(7);
     expect(await count('wallets', t)).toBe(2);
     const { rows } = await h.admin.query(
       `SELECT count(*)::int AS n FROM usage_events WHERE tenant_id = $1 AND occurred_at >= '2026-11-01'`,
@@ -718,7 +717,7 @@ describe('INV-SBX sandbox effects use separate sandbox wallets', () => {
     const t = newTenant();
     const p = newPlayer();
     await h.fund(t, p, 10);
-    await h.consume(spinCompleted(t, p, 10, { at: '2026-11-05T10:00:00.000Z', sandbox: true }));
+    await h.consume(spinCompletedIn(true, t, p, 10, { at: '2026-11-05T10:00:00.000Z' }));
     const id = uuidv7();
     await h.as(t, () =>
       h.ledger.reserve(
@@ -726,12 +725,12 @@ describe('INV-SBX sandbox effects use separate sandbox wallets', () => {
         key('reserve'),
       ),
     );
-    expect(await h.dbWallet(t, p, { sandbox: true })).toMatchObject({ available: 6, held: 4 });
+    expect(await h.dbWalletIn(t, p, true)).toMatchObject({ available: 6, held: 4 });
     expect(await h.dbWallet(t, p)).toMatchObject({ available: 10, held: 0 });
     await h.as(t, () => h.ledger.capture({ reserve_id: id }, key('capture')));
-    expect(await h.dbWallet(t, p, { sandbox: true })).toMatchObject({ available: 6, held: 0 });
+    expect(await h.dbWalletIn(t, p, true)).toMatchObject({ available: 6, held: 0 });
     await h.as(t, () => h.ledger.refund({ reserve_id: id }, key('refund')));
-    expect(await h.dbWallet(t, p, { sandbox: true })).toMatchObject({ available: 10, held: 0 });
+    expect(await h.dbWalletIn(t, p, true)).toMatchObject({ available: 10, held: 0 });
     expect(await h.dbWallet(t, p)).toMatchObject({ available: 10, held: 0 });
   });
 });

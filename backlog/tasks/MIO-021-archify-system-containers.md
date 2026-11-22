@@ -1,6 +1,6 @@
 ---
 id: MIO-021
-title: "Architecture IR: system context and containers"
+title: 'Architecture IR: system context and containers'
 epic: EPIC-03
 priority: P2
 money_impact: none

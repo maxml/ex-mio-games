@@ -4,17 +4,17 @@
 
 ## What the AI got wrong
 
-| What went wrong | How it was caught | Evidence |
-| --- | --- | --- |
-| Tests that could not fail: a cache test that built a new verifier per call, a loop sized from the constant it claimed to pin, a row-level-security test over empty tables | The reviewer deleted one entry or one guard and watched the test stay green | `defects-found.md` case 10; `verification.md` |
-| A no-op left in place of a removed call, with a test that needed the no-op | The reviewer read the test against the decision and rewrote it | case study 5, `6d88297`, `11497e7` |
-| A failure only the real stack showed (acting answered 500) | A reviewer test run under compose | case study 3, `223c35f`, `11497e7` |
-| A money path nobody tested: sandbox token spends a production credit | End-to-end trace of one flag across four services | case study 1, `adb795a`, `1a810ae` |
-| A durable record that said the wrong thing: audit decision from the status code, a `provider_links` row for an account that never existed | A reader-side test: read the record and check what it says | case studies 2 and 5 |
-| Frozen tests that no correct code could pass: a token expected to be expired at +901 s after a 30 s leeway was decided | The reviewer built a reference implementation and ran the tests against it | `verification.md`, "Frozen tests that could not be satisfied" |
-| Reviewer's own test was vacuous: it went green with the guard removed because it failed on a different guard first | A later round re-applied the mutation | `verification.md`, "A reviewer's own spec was vacuous too" |
-| A mutation claim that was false (dropping a row lock) | 30 runs, no failure; the claim was withdrawn | `verification.md` |
-| The same one-token SQL mistake in a helper and again in a test (`name[]` not cast) | Compose runs of the integrated tree | case study 4, `0335cea`, `8bb4701` |
+| What went wrong                                                                                                                                                           | How it was caught                                                           | Evidence                                                      |
+| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------- | ------------------------------------------------------------- |
+| Tests that could not fail: a cache test that built a new verifier per call, a loop sized from the constant it claimed to pin, a row-level-security test over empty tables | The reviewer deleted one entry or one guard and watched the test stay green | `defects-found.md` case 10; `verification.md`                 |
+| A no-op left in place of a removed call, with a test that needed the no-op                                                                                                | The reviewer read the test against the decision and rewrote it              | case study 5, `6d88297`, `11497e7`                            |
+| A failure only the real stack showed (acting answered 500)                                                                                                                | A reviewer test run under compose                                           | case study 3, `223c35f`, `11497e7`                            |
+| A money path nobody tested: sandbox token spends a production credit                                                                                                      | End-to-end trace of one flag across four services                           | case study 1, `adb795a`, `1a810ae`                            |
+| A durable record that said the wrong thing: audit decision from the status code, a `provider_links` row for an account that never existed                                 | A reader-side test: read the record and check what it says                  | case studies 2 and 5                                          |
+| Frozen tests that no correct code could pass: a token expected to be expired at +901 s after a 30 s leeway was decided                                                    | The reviewer built a reference implementation and ran the tests against it  | `verification.md`, "Frozen tests that could not be satisfied" |
+| Reviewer's own test was vacuous: it went green with the guard removed because it failed on a different guard first                                                        | A later round re-applied the mutation                                       | `verification.md`, "A reviewer's own spec was vacuous too"    |
+| A mutation claim that was false (dropping a row lock)                                                                                                                     | 30 runs, no failure; the claim was withdrawn                                | `verification.md`                                             |
+| The same one-token SQL mistake in a helper and again in a test (`name[]` not cast)                                                                                        | Compose runs of the integrated tree                                         | case study 4, `0335cea`, `8bb4701`                            |
 
 ## Fixes that moved the defect instead of removing it
 

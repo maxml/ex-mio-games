@@ -5,6 +5,7 @@ import { seedCoins, seedCoinsMany } from './seed-coins';
 
 /*
  * Store and redemption API against the live stack (real Postgres, RLS, the real HTTP layer).
+ * RED today: the engagement service has no /v1/store or /v1/redemptions routes (404).
  * Spec: docs/specs/engagement-store.md §7. Run: `pnpm test:compose` with the stack up.
  *
  * Authentication is real everywhere (D-4, D-12, X-9): operators and players are created through
@@ -188,7 +189,9 @@ describe('bonus store (engagement) against real Postgres', () => {
   it('I-ISO-2 the service role itself reads no store rows without a tenant', async () => {
     const db = await pgAs('engagement_app');
     try {
-      // (`redemption_work_queue` is intentionally RLS-free: ids and times only.)
+      // rc review: `redemption_work_queue` has FORCE RLS since int/all-fix (D-24). It is NOT counted
+      // here: the queue is usually empty, so a zero proves nothing (measured: green with RLS disabled).
+      // review-rc.compose WQ-SCAN-2 seeds a row first and pins it.
       for (const table of ['store_items', 'redemptions', 'redemption_history']) {
         const { rows } = await db.query(`SELECT count(*)::int AS n FROM ${table}`);
         expect(rows[0].n).toBe(0);

@@ -25,6 +25,7 @@ const PAYMENTS_USER_ROUTE = `${urls.payments}/v1/players/00000000-0000-4000-8000
 /*
  * Database and cross-service twins of the identity invariants (docs/specs/identity.md,
  * "Compose tests"). They need the migrated identity schema and the running stack.
+ * RED today: the tables do not exist, the JWKS route does not exist.
  *
  * Every DB test runs in a transaction that is rolled back, so the shared
  * database is left as it was found.
@@ -175,7 +176,7 @@ describe('INV-DB: identity schema enforces the invariants even if the applicatio
       await insertTenant(c, a, 'operator', `a-${a}`);
       const put = () =>
         c.query(
-          `INSERT INTO launch_jti (tenant_id, jti, expires_at) VALUES ($1, 'nonce-1', now() + interval '5 minutes')`,
+          `INSERT INTO launch_jti (tenant_id, jti, expires_at, sandbox) VALUES ($1, 'nonce-1', now() + interval '5 minutes', false)`,
           [a],
         );
       await put();
@@ -694,7 +695,7 @@ describe('INV-STACK-6 launch and player mapping hold under real concurrency (F16
     const a = await operator('identity');
     const issued = await call('POST', urls.identity, '/v1/credentials', {
       headers: bearer(a.token),
-      body: { platform: 'sim-casino' },
+      body: { platform: 'sim-casino', environment: 'production' },
     });
     expect(issued.status).toBe(201);
     return { a, key: CredentialIssued.parse(issued.json) };

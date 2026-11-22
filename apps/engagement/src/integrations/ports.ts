@@ -42,6 +42,8 @@ export interface PlayerDirectoryPort {
 
 export interface InboundEventRow {
   tenantId: string;
+  /** D-26: the environment of the credential that verified the webhook; part of the dedupe key. */
+  sandbox: boolean;
   source: string;
   externalEventId: string;
   /**
@@ -55,7 +57,7 @@ export interface InboundEventRow {
   occurredAt: string;
 }
 
-/** Model layer. UNIQUE (tenant_id, source, external_event_id) lives in its migration. */
+/** Model layer. UNIQUE (tenant_id, sandbox, source, external_event_id) lives in its migration. */
 export abstract class InboundEventsRepository {
   /** INSERT ... ON CONFLICT DO NOTHING; on conflict returns the existing row's id. */
   abstract insertIfAbsent(tx: Tx, row: InboundEventRow): Promise<{ inserted: boolean; id: string }>;

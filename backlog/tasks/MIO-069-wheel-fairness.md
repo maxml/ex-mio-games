@@ -1,6 +1,6 @@
 ---
 id: MIO-069
-title: "Wheel fairness: seed management and the anti-manipulation write-up"
+title: 'Wheel fairness: seed management and the anti-manipulation write-up'
 epic: EPIC-07
 priority: P1
 money_impact: enabler

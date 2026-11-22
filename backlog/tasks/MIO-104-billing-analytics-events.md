@@ -1,6 +1,6 @@
 ---
 id: MIO-104
-title: "Billing events: subscription changes and daily MRR snapshot"
+title: 'Billing events: subscription changes and daily MRR snapshot'
 epic: EPIC-10
 priority: P1
 money_impact: direct

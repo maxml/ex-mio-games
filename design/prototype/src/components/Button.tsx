@@ -25,7 +25,17 @@ const SIZES: Record<ButtonSize, string> = {
 };
 
 export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button(
-  { variant = 'primary', size = 'md', loading = false, disabled, className, children, type = 'button', onClick, ...rest },
+  {
+    variant = 'primary',
+    size = 'md',
+    loading = false,
+    disabled,
+    className,
+    children,
+    type = 'button',
+    onClick,
+    ...rest
+  },
   ref,
 ) {
   // A busy button stays focusable (aria-disabled, not `disabled`) so keyboard focus is not thrown

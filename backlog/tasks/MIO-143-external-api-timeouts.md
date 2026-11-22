@@ -1,6 +1,6 @@
 ---
 id: MIO-143
-title: "Part C: external API timeouts"
+title: 'Part C: external API timeouts'
 epic: EPIC-14
 priority: P1
 money_impact: direct

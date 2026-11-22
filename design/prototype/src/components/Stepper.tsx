@@ -36,8 +36,18 @@ export function Stepper({ steps, current, onSelect, className }: StepperProps) {
               >
                 {done ? '✓' : i + 1}
               </span>
-              <span className={cn('text-sm', active ? 'font-semibold text-fg' : 'text-fg-muted')}>{s.label}</span>
-              <span className="sr-only">{[done && '(complete)', active && '(current step)', !done && !active && '(not done)'].filter(Boolean).join(' ')}</span>
+              <span className={cn('text-sm', active ? 'font-semibold text-fg' : 'text-fg-muted')}>
+                {s.label}
+              </span>
+              <span className="sr-only">
+                {[
+                  done && '(complete)',
+                  active && '(current step)',
+                  !done && !active && '(not done)',
+                ]
+                  .filter(Boolean)
+                  .join(' ')}
+              </span>
             </>
           );
           return (
@@ -52,7 +62,10 @@ export function Stepper({ steps, current, onSelect, className }: StepperProps) {
                   {body}
                 </button>
               ) : (
-                <span aria-current={active ? 'step' : undefined} className="inline-flex items-center gap-2 px-2 py-1">
+                <span
+                  aria-current={active ? 'step' : undefined}
+                  className="inline-flex items-center gap-2 px-2 py-1"
+                >
                   {body}
                 </span>
               )}

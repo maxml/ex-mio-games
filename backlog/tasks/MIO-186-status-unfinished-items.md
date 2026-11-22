@@ -1,6 +1,6 @@
 ---
 id: MIO-186
-title: "`docs/status.md`: unfinished items and priorities"
+title: '`docs/status.md`: unfinished items and priorities'
 epic: EPIC-17
 priority: P1
 money_impact: none

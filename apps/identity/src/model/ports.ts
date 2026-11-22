@@ -129,8 +129,11 @@ export interface PlayersRepo {
 }
 
 export interface LaunchJtiRepo {
-  /** Throws UniqueViolationError when the nonce was already recorded for this tenant. */
-  insert(tx: Tx, tenantId: string, jti: string, expiresAt: number): Promise<void>;
+  /**
+   * Throws UniqueViolationError when the nonce was already recorded for this tenant in this
+   * environment (D-26: a sandbox jti never burns a production one).
+   */
+  insert(tx: Tx, tenantId: string, jti: string, expiresAt: number, sandbox: boolean): Promise<void>;
 }
 
 export interface CredentialsRepo {

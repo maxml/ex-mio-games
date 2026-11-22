@@ -25,7 +25,10 @@ const P = PLAYER;
 
 const KEY = { 'idempotency-key': 'key-12345678' };
 const service = { ...bearer(tokens.service()), ...KEY };
-const operator = (extra: Record<string, string> = {}) => ({ ...bearer(tokens.operator()), ...extra });
+const operator = (extra: Record<string, string> = {}) => ({
+  ...bearer(tokens.operator()),
+  ...extra,
+});
 const player = bearer(tokens.player());
 
 const body = {
@@ -98,9 +101,9 @@ describe('payments HTTP layer', () => {
         ].sort(),
       );
       // the one internal read is the balance
-      expect(built.routes.filter((r) => /\/internal\/v1\//.test(r) && r.startsWith('GET '))).toEqual(
-        [PAYMENTS_INTERNAL_ROUTES.balance],
-      );
+      expect(
+        built.routes.filter((r) => /\/internal\/v1\//.test(r) && r.startsWith('GET ')),
+      ).toEqual([PAYMENTS_INTERNAL_ROUTES.balance]);
     });
 
     it('no route of any method can credit, mint, adjust or accept a sandbox flag in a URL', () => {
@@ -158,15 +161,18 @@ describe('payments HTTP layer', () => {
 
     // X-18. Mutation: check `aud` only, not the caller. svc:identity may hold a payments token and
     // must still be refused: only svc:engagement is in SERVICE_CALL_POLICY for these routes.
-    it.each(COMMANDS)('%s from svc:identity with aud=payments is 403 SERVICE_CALL_FORBIDDEN', async (cmd) => {
-      const res = await send(cmd, body[cmd], {
-        ...bearer(tokens.service('identity', 'payments')),
-        ...KEY,
-      });
-      expect(res.statusCode).toBe(403);
-      expect(res.json()).toMatchObject({ code: 'SERVICE_CALL_FORBIDDEN' });
-      expect(none()).toBe(true);
-    });
+    it.each(COMMANDS)(
+      '%s from svc:identity with aud=payments is 403 SERVICE_CALL_FORBIDDEN',
+      async (cmd) => {
+        const res = await send(cmd, body[cmd], {
+          ...bearer(tokens.service('identity', 'payments')),
+          ...KEY,
+        });
+        expect(res.statusCode).toBe(403);
+        expect(res.json()).toMatchObject({ code: 'SERVICE_CALL_FORBIDDEN' });
+        expect(none()).toBe(true);
+      },
+    );
 
     // X-4/D-4. Mutation: take the tenant from the body or a header instead of the path.
     it('the tenant of a command is the tenant in the path; a body tenant_id is 400', async () => {
@@ -186,7 +192,13 @@ describe('payments HTTP layer', () => {
     // pinned in acting-ban.test.ts and wiring.test.ts (identity epic, INV-ACTBAN, INV-WIRE).
     // Mutation: add a user-mode route that moves coins, or add/drop an action in the list.
     it('the pinned list of coin-value actions is exactly these five (a literal, not the constant)', () => {
-      expect([...COIN_VALUE_ACTIONS]).toEqual(['credit', 'reserve', 'capture', 'release', 'refund']);
+      expect([...COIN_VALUE_ACTIONS]).toEqual([
+        'credit',
+        'reserve',
+        'capture',
+        'release',
+        'refund',
+      ]);
     });
 
     it('every state-changing user-mode route is in a reviewed list, and every coin route is internal', () => {
@@ -253,7 +265,12 @@ describe('payments HTTP layer', () => {
     it.each(['capture', 'release', 'refund'] as const)(
       '%s names the reserve in the path: a path that is not a uuid is 400',
       async (cmd) => {
-        const res = await send(cmd, {}, service, `/internal/v1/tenants/${T}/reserves/not-a-uuid/${cmd}`);
+        const res = await send(
+          cmd,
+          {},
+          service,
+          `/internal/v1/tenants/${T}/reserves/not-a-uuid/${cmd}`,
+        );
         expect(res.statusCode).toBe(400);
         expect(none()).toBe(true);
       },
@@ -270,7 +287,12 @@ describe('payments HTTP layer', () => {
     );
 
     it('a tenant that is not a uuid is 400 and reaches no service', async () => {
-      const res = await send('reserve', body.reserve, service, '/internal/v1/tenants/acme/reserves');
+      const res = await send(
+        'reserve',
+        body.reserve,
+        service,
+        '/internal/v1/tenants/acme/reserves',
+      );
       expect(res.statusCode).toBe(400);
       expect(none()).toBe(true);
     });

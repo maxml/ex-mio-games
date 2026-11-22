@@ -14,13 +14,13 @@ know when to scale out. Before this epic nothing was measured and there were no 
 
 ## Tasks
 
-| ID | Title | Priority |
-|---|---|---|
-| MIO-193 | SLOs and a performance budget for the four critical paths | P1 |
-| MIO-194 | Load-test harness with k6 and the first committed report | P1 |
-| MIO-195 | Performance regression gate in CI | P1 |
-| MIO-196 | Capacity model and scale-out triggers | P1 |
-| MIO-197 | Soak test | P2 |
+| ID      | Title                                                     | Priority |
+| ------- | --------------------------------------------------------- | -------- |
+| MIO-193 | SLOs and a performance budget for the four critical paths | P1       |
+| MIO-194 | Load-test harness with k6 and the first committed report  | P1       |
+| MIO-195 | Performance regression gate in CI                         | P1       |
+| MIO-196 | Capacity model and scale-out triggers                     | P1       |
+| MIO-197 | Soak test                                                 | P2       |
 
 ## Boundaries
 

@@ -47,7 +47,7 @@ export async function publishSpinCompleted(
   const env = createEvent({
     type: 'engagement.spin.completed',
     tenantId,
-    sandbox: sandbox || undefined,
+    sandbox,
     payload: { spin_id: spinId, player_id: playerId, reward_coins: coins, table_version: 1 },
   });
   const conn = await connect(urls.amqp);

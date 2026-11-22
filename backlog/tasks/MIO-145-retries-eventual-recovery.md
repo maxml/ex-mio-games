@@ -1,6 +1,6 @@
 ---
 id: MIO-145
-title: "Part C: retries and eventual recovery"
+title: 'Part C: retries and eventual recovery'
 epic: EPIC-14
 priority: P1
 money_impact: direct
@@ -27,6 +27,6 @@ Prove that the system converges to the right state after crashes and outages, an
 - All of the above run as one chaos test suite in CI (`pnpm test:chaos`) against compose.
 - **Ambiguous external result, live:** `pnpm demo --faults` runs the demo with (a) a casino `timeout`
   where the reward was in fact issued, which the output shows going `ISSUING → UNKNOWN → ISSUED →
-  COMPLETED` with exactly one reward in the simulator, and (b) a final `reject`, which ends `RELEASED`
+COMPLETED` with exactly one reward in the simulator, and (b) a final `reject`, which ends `RELEASED`
   with the coins back. The run ends by printing the ledger conservation report (MIO-084) and fails if
   the identity does not hold.

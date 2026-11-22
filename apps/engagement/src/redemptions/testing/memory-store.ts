@@ -122,9 +122,12 @@ export class MemoryStore implements RedemptionStore {
     if (!item.active) throw new StoreRejection('item_inactive');
     const usedKey = `${scope.tenantId}:${scope.playerId}:${item.id}`;
     const used = this.used.get(usedKey) ?? 0;
-    if (item.perPlayerLimit !== null && used >= item.perPlayerLimit)
-      throw new StoreRejection('limit_reached');
-    if (item.stock !== null && item.stock <= 0) throw new StoreRejection('out_of_stock');
+    // D-28, like Postgres (redemption.store.ts): stock and the per-player limit are production-only.
+    if (!scope.sandbox) {
+      if (item.perPlayerLimit !== null && used >= item.perPlayerLimit)
+        throw new StoreRejection('limit_reached');
+      if (item.stock !== null && item.stock <= 0) throw new StoreRejection('out_of_stock');
+    }
     const at = this.now();
     const rec: RedemptionRecord = {
       id: uuidv7(),
@@ -162,8 +165,10 @@ export class MemoryStore implements RedemptionStore {
       rec.sandbox,
     );
     // every check and every envelope is done: mutate
-    if (item.stock !== null) item.stock -= 1;
-    this.used.set(usedKey, used + 1);
+    if (!scope.sandbox) {
+      if (item.stock !== null) item.stock -= 1;
+      this.used.set(usedKey, used + 1);
+    }
     this.redemptions.set(rec.id, rec);
     this.outbox.push(row);
     return { redemption: structuredClone(rec), created: true };
@@ -199,7 +204,8 @@ export class MemoryStore implements RedemptionStore {
     if (change.nextAttemptAt !== undefined) next.nextAttemptAt = change.nextAttemptAt;
     if (change.casinoReference !== undefined) next.casinoReference = change.casinoReference;
     if (change.failureReason !== undefined) next.failureReason = change.failureReason;
-    if (change.rewardRequest !== undefined) next.rewardRequest = structuredClone(change.rewardRequest);
+    if (change.rewardRequest !== undefined)
+      next.rewardRequest = structuredClone(change.rewardRequest);
     if (change.to === 'ISSUING' && next.firstIssuingAt === null) next.firstIssuingAt = at;
     if (change.to === 'UNKNOWN' && next.unknownSince === null) next.unknownSince = at;
     if (change.to === 'ISSUED' || change.to === 'REJECTED' || change.to === 'NEEDS_REVIEW')
@@ -252,7 +258,7 @@ export class MemoryStore implements RedemptionStore {
     // commit
     if (dedupeKey) this.inbox.add(dedupeKey);
     this.redemptions.set(rec.id, next);
-    if (restoreStock) {
+    if (restoreStock && !rec.sandbox) {
       const item = this.items.get(rec.itemId);
       if (item && item.stock !== null) item.stock += 1;
       const k = `${rec.tenantId}:${rec.playerId}:${rec.itemId}`;

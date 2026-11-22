@@ -19,8 +19,8 @@ export interface NewCredit {
   ruleId: string;
   ruleVersion: number;
   seq: number;
-  /** X-3 / D-13: true when the credit came from a deposit through a sandbox credential. */
-  sandbox?: boolean;
+  /** X-3 / D-13: true when the credit came from a deposit through a sandbox credential. Required. */
+  sandbox: boolean;
 }
 
 export interface SpinCredit {
@@ -28,8 +28,8 @@ export interface SpinCredit {
   userId: string;
   wheelId: string;
   status: 'available' | 'used';
-  /** The credit's own flag; a spin on a sandbox credit is a sandbox spin. */
-  sandbox?: boolean;
+  /** The credit's own flag; a spin on a sandbox credit is a sandbox spin. Required. */
+  sandbox: boolean;
 }
 
 export interface RewardTableVersion {

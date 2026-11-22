@@ -1,4 +1,5 @@
 export * from './audit-intents';
+export * from './authorization-refused';
 export * from './bootstrap';
 export * from './config';
 export * from './cors';

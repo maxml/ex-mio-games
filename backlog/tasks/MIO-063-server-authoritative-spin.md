@@ -21,7 +21,7 @@ configured weighted table.
 
 - `POST /v1/spins` with an `Idempotency-Key`; the body names nothing but the credit id (optional).
 - Atomic consume: `UPDATE spin_credits SET status='used' WHERE id=$1 AND user_id=$2 AND
-  status='available' RETURNING *`; zero rows means 409.
+status='available' RETURNING *`; zero rows means 409.
 - Outcome = `HMAC(server_seed[version], spin_id)` mapped onto the cumulative weights of the table version.
   The spin row stores seed version, table version, the HMAC value and the segment.
 - Spin result and the coin-credit command (MIO-064) are written in one transaction with the outbox.

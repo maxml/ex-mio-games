@@ -13,7 +13,11 @@ const SERVICE_SECRETS = {
   engagement: 'engagement-test-secret-0001',
   payments: 'payments-test-secret-00001',
 };
-const BODY = { base_url: 'http://casino-sim:4004', api_key: 'sim-signing-secret-a' };
+const BODY = {
+  environment: 'production',
+  base_url: 'http://casino-sim:4004',
+  api_key: 'sim-signing-secret-a',
+};
 
 async function world() {
   const ctx = await createTestApp({ serviceClients: SERVICE_SECRETS });
@@ -43,8 +47,8 @@ async function world() {
   expect(invited.statusCode).toBe(201);
   const staffA = await login(a.tenant.id, 'staff@a.test');
   // A credential per tenant: the integration exists only for a tenant with a live credential.
-  await k.credentials.issue(a.tenant.id, 'casino-a');
-  await k.credentials.issue(b.tenant.id, 'casino-a');
+  await k.credentials.issue(a.tenant.id, 'casino-a', { environment: 'production' });
+  await k.credentials.issue(b.tenant.id, 'casino-a', { environment: 'production' });
   const put = (token: string, casino: string, payload: unknown) =>
     ctx.app.inject({
       method: 'PUT',
@@ -115,7 +119,11 @@ describe('D-27 reward API of an operator integration', () => {
   it('tenant isolation: an operator sets and is served its own reward API only; the path and body name no tenant', async () => {
     const w = await world();
     expect((await w.put(w.adminA, 'casino-a', BODY)).statusCode).toBe(200);
-    const bOwn = { base_url: 'https://b.example', api_key: 'b-secret' };
+    const bOwn = {
+      environment: 'production',
+      base_url: 'https://b.example',
+      api_key: 'b-secret',
+    };
     expect((await w.put(w.adminB, 'casino-a', bOwn)).statusCode).toBe(200);
     // A repository that returned every tenant's rows (a missing WHERE, a missing RLS) must not leak.
     const real = w.k.store.repos().rewardApis;
@@ -174,7 +182,7 @@ describe('D-27 reward API of an operator integration', () => {
     expect((await w.put(w.adminA, 'casino-a', sandbox)).statusCode).toBe(400);
     expect((await w.put(w.adminA, 'casino-a', BODY)).statusCode).toBe(200);
     expect((await w.put(w.adminA, 'casino-a', sandbox)).statusCode).toBe(200);
-    const next = { base_url: 'http://casino-sim:5000' };
+    const next = { environment: 'production', base_url: 'http://casino-sim:5000' };
     expect((await w.put(w.adminA, 'casino-a', next)).statusCode).toBe(200);
     const integration = await w.k.credentials.integration(w.a.tenant.id);
     expect(integration.reward_api?.base_url).toBe('http://casino-sim:5000');

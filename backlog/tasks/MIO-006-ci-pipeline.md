@@ -1,13 +1,13 @@
 ---
 id: MIO-006
-title: "CI pipeline: lint, typecheck, test, build on affected projects"
+title: 'CI pipeline: lint, typecheck, test, build on affected projects'
 epic: EPIC-01
 priority: P1
 money_impact: enabler
 risk_class: none
 status: todo
 depends_on: [MIO-001]
-blocked_by: ["starter: CI presets"]
+blocked_by: ['starter: CI presets']
 size: S
 estimate_hours_base: 8
 estimate_hours: 10

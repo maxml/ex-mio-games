@@ -135,6 +135,23 @@ launch_token() { # key_id secret platform external_player_id
 auth() { printf 'authorization: Bearer %s' "$1"; }
 spins_of() { quiet "$ENG/v1/me/spins" -H "$(auth "$1")" | jq -r '.available // empty'; }
 balance_of() { quiet "$PAY/v1/me/balance" -H "$(auth "$1")" | jq -r '.available // empty'; }
+# stable_balance TOKEN: credits arrive over the bus, so a baseline read right after a spin can be stale.
+# Polls until two reads 1 s apart are equal (15 s timeout) and prints that value.
+stable_balance() {
+  local prev cur end=$((SECONDS + 15))
+  prev="$(balance_of "$1")"
+  while :; do
+    sleep 1
+    cur="$(balance_of "$1")"
+    if [ -n "$cur" ] && [ "$cur" = "$prev" ]; then printf '%s' "$cur"; return 0; fi
+    if [ "$SECONDS" -ge "$end" ]; then
+      fail "balance did not settle within 15s (last reads '$prev' then '$cur')" >&2
+      printf '%s' "$cur"
+      return 0
+    fi
+    prev="$cur"
+  done
+}
 redemption_state() { quiet "$ENG/v1/redemptions/$2" -H "$(auth "$1")" | jq -r '.state // empty'; }
 is_final() { [ "$1" = ISSUED ] || [ "$1" = COMPLETED ]; }
 
@@ -233,7 +250,7 @@ for X in A B; do
   expect_jq '.status=="active"'
 
   heading "Casino $X integration credentials (key id, API key, HMAC secret shown once)"
-  call POST "$IDN/v1/credentials" -H 'content-type: application/json' -H "$(auth "${TOK_ID[$X]}")" -d "$(jq -nc --arg p "${PLAT[$X]}" '{platform:$p}')"
+  call POST "$IDN/v1/credentials" -H 'content-type: application/json' -H "$(auth "${TOK_ID[$X]}")" -d "$(jq -nc --arg p "${PLAT[$X]}" '{platform:$p,environment:"production"}')"
   expect_status 201
   expect_jq '(.key_id|length)>0 and (.hmac_secret|length)>0 and (.api_key|length)>0'
   KEY_ID[$X]="$(jqr .key_id)"
@@ -486,7 +503,7 @@ call GET "$ENG/v1/me/spins" -H "$(auth "$PA_ENG")"
 expect_jq '.available==0'
 
 heading "Part C-3. Duplicate redemption: the same Idempotency-Key 5 times in parallel debits the coins once"
-BAL0="$(balance_of "$PA_PAY")"
+BAL0="$(stable_balance "$PA_PAY")"
 printf '  > 5 x POST /v1/redemptions (same Idempotency-Key, in parallel)\n'
 OUT="$(seq 1 5 | xargs -P 5 -I@@ curl -s -m 30 -X POST "$ENG/v1/redemptions" -H 'content-type: application/json' \
   -H "authorization: Bearer $PA_ENG" -H "idempotency-key: redeem-a-$SUF-dup" -d "{\"item_id\":\"$ITEM_A\"}" -w '\n%{http_code}\n')"
@@ -520,7 +537,12 @@ done
 call GET "$ENG/v1/redemptions/$TO_ID" -H "$(auth "$PA_ENG")"
 expect_status 200
 expect_jq '.status=="issued"'
+expect_jq '.history==[]'
+note "players get no history (its causes carry operator detail); the operator route shows the path"
+call GET "$ENG/v1/operator/redemptions/$TO_ID" -H "$(auth "${OP_ENG[A]}")"
+expect_status 200
 expect_jq '[.history[].to]|index("UNKNOWN")!=null'
+expect_jq '[.history[]|"\(.from)->\(.to)"] as $p | ($p|index("UNKNOWN->ISSUED"))!=null and ([$p[]|select(endswith("->ISSUED"))]|length)==1 and ([$p[]|select(endswith("->COMPLETED"))]|length)<=1 and ([$p[]|select(test("->(REJECTED|RELEASED|NEEDS_REVIEW)$"))]|length)==0'
 call GET "$SIM/__issued?casino=a"
 expect_jq "[.[]|select(.player_id==\"A-PLAYER-77\")]|length==3"
 note "three redemptions, three issued rewards on the casino: the timeout produced no second reward"
@@ -575,6 +597,89 @@ call POST "$ENG/v1/integrations/${SLUG[B]}/events" -H 'content-type: application
 expect_status 401
 call GET "$ENG/v1/tenant-projection" -H "$(auth "${OP_ENG[B]}")"
 expect_jq ".slug==\"${SLUG[B]}\""
+
+# Part C-8 runs on casino B: its `reject` fault answers 202 with a ticket that fails only when settled,
+# so the order sits in UNKNOWN (casino `pending`) with the coins held for as long as the script wants.
+# That window is what makes both mutations below visible; casino A's 422 is decided within one sweep.
+# Mutations that must turn this step red:
+#  - release on `unknown`: the saga releases the coins on an `unknown`/`pending` answer (for example the
+#    `pending` branch of the issue step applies REJECTED, or `inquire` treats `pending` as `rejected`)
+#    -> the balance is back at the baseline (or the state leaves UNKNOWN) BEFORE the casino settles;
+#  - no release on `rejected`: `releaseCoins` applies REJECTED -> RELEASED without calling payments
+#    `release`, or the adapter maps a FAILED ticket to `unknown` -> the balance stays at baseline - price
+#    (held 50) or the order never reaches RELEASED.
+# A second release (stock or coins returned twice) shows as stock 2 or balance baseline + price.
+heading "Part C-8. Failed reward issuance: the casino rejects the bonus -> REJECTED/RELEASED, coins come back exactly once, stock is released"
+call POST "$ENG/v1/store/items" -H 'content-type: application/json' -H "$(auth "${OP_ENG[B]}")" \
+  -d '{"name":"Limited 5 EUR bonus","description":"One unit, one per player","price":50,"stock":1,"per_player_limit":1,"reward":{"type":"bonus","params":{"amount_minor":500,"currency":"EUR"}}}'
+expect_status 201
+expect_jq '.stock==1 and .per_player_limit==1 and .price==50'
+ITEM_C8="$(jqr .id)"
+item_stock() { quiet "$ENG/v1/store/items" -H "$(auth "$PB_ENG")" | jq -r --arg id "$ITEM_C8" '.[]|select(.id==$id)|.stock'; }
+call POST "$SIM/__faults" -H 'content-type: application/json' -d "{\"casino\":\"b\",\"kind\":\"reject\",\"times\":1,\"player_id\":\"$EXT_B\"}"
+expect_status 200
+expect_jq '.ok==true'
+BASE_C8="$(stable_balance "$PB_PAY")"
+note "player B's stable balance before the redemption: $BASE_C8"
+[ "${BASE_C8:-0}" -ge 50 ] || fail "player B needs at least 50 coins for this step, has '$BASE_C8'"
+call POST "$ENG/v1/redemptions" -H 'content-type: application/json' -H "$(auth "$PB_ENG")" -H "idempotency-key: redeem-b-$SUF-reject" -d "{\"item_id\":\"$ITEM_C8\"}"
+expect_status 202
+expect_jq '.state=="RESERVED" and .price==50'
+REJ_ID="$(jqr .id)"
+note "casino B takes the request and answers with a ticket (pending): the order waits in UNKNOWN with the coins held"
+wait_for "rejected order waiting on the casino (UNKNOWN)" 40 '[ "$(redemption_state "$PB_ENG" "$REJ_ID")" = UNKNOWN ]' 'call GET "$ENG/v1/operator/redemptions/$REJ_ID" -H "$(auth "${OP_ENG[B]}")"'
+expect_eq "coins debited (held) while the casino has not answered" "$(stable_balance "$PB_PAY")" "$((BASE_C8 - 50))"
+expect_eq "stock unit reserved by the order" "$(item_stock)" "0"
+sleep 7 # more than one sweeper period: `pending` must not release anything
+call GET "$ENG/v1/redemptions/$REJ_ID" -H "$(auth "$PB_ENG")"
+expect_status 200
+expect_jq '.state=="UNKNOWN" and .status=="pending"'
+call GET "$PAY/v1/me/balance" -H "$(auth "$PB_PAY")"
+expect_status 200
+expect_jq ".available==$((BASE_C8 - 50)) and .held==50"
+call POST "$SIM/casino-b/__settle"
+expect_status 200
+expect_jq '.settled==1'
+note "the ticket is now FAILED (code rejected); MIO reads it on its next poll (at most 60 s) and releases the coins"
+wait_for "rejected order RELEASED" 100 '[ "$(redemption_state "$PB_ENG" "$REJ_ID")" = RELEASED ]' 'call GET "$ENG/v1/operator/redemptions/$REJ_ID" -H "$(auth "${OP_ENG[B]}")"'
+call GET "$ENG/v1/redemptions/$REJ_ID" -H "$(auth "$PB_ENG")"
+expect_status 200
+expect_jq '.status=="failed_refunded" and .state=="RELEASED" and (.failure_reason|startswith("casino_rejected:")) and .history==[]'
+call GET "$ENG/v1/operator/redemptions/$REJ_ID" -H "$(auth "${OP_ENG[B]}")"
+expect_status 200
+expect_jq '[.history[]|"\(.from)->\(.to)"] as $p | ($p|index("UNKNOWN->REJECTED"))!=null and ($p|index("REJECTED->RELEASED"))!=null and ([$p[]|select(endswith("->RELEASED"))]|length)==1 and ([$p[]|select(endswith("->ISSUED"))]|length)==0'
+expect_jq '.attempts==1'
+expect_eq "balance after the release (exactly the baseline, not baseline + price)" "$(stable_balance "$PB_PAY")" "$BASE_C8"
+sleep 7 # one more sweeper period: a second release would show now
+expect_eq "balance on a second stable read" "$(stable_balance "$PB_PAY")" "$BASE_C8"
+call GET "$PAY/v1/me/balance" -H "$(auth "$PB_PAY")"
+expect_jq ".available==$BASE_C8 and .held==0"
+call GET "$SIM/__issued?casino=b"
+expect_status 200
+expect_jq "[.[]|select(.player_id==\"$EXT_B\")]|length==1"
+note "casino B issued only the earlier bonus of step 'Casino B ... settles'; the rejected one was never issued"
+call GET "$ENG/v1/store/items" -H "$(auth "$PB_ENG")"
+expect_status 200
+expect_jq "[.[]|select(.id==\"$ITEM_C8\")][0].stock==1"
+note "the per-player limit (1) has no read route: a second redemption of the same item proves its slot is back"
+call POST "$ENG/v1/redemptions" -H 'content-type: application/json' -H "$(auth "$PB_ENG")" -H "idempotency-key: redeem-b-$SUF-after-reject" -d "{\"item_id\":\"$ITEM_C8\"}"
+expect_status 202
+expect_jq '.state=="RESERVED"'
+AGAIN_ID="$(jqr .id)"
+expect_eq "stock unit taken again" "$(item_stock)" "0"
+note "the reject fault was armed for one use, so this issuance goes through: settle it and wait for the final status"
+wait_for "second order waiting on the casino (UNKNOWN)" 40 '[ "$(redemption_state "$PB_ENG" "$AGAIN_ID")" = UNKNOWN ]' 'call GET "$ENG/v1/operator/redemptions/$AGAIN_ID" -H "$(auth "${OP_ENG[B]}")"'
+call POST "$SIM/casino-b/__settle"
+expect_status 200
+wait_for "second order final" 100 'is_final "$(redemption_state "$PB_ENG" "$AGAIN_ID")"' 'call GET "$ENG/v1/operator/redemptions/$AGAIN_ID" -H "$(auth "${OP_ENG[B]}")"'
+call GET "$ENG/v1/redemptions/$AGAIN_ID" -H "$(auth "$PB_ENG")"
+expect_status 200
+expect_jq '.status=="issued"'
+expect_eq "balance after the second (issued) redemption" "$(stable_balance "$PB_PAY")" "$((BASE_C8 - 50))"
+note "clear every casino-sim fault (global reset) so a later step or a re-run starts without an armed fault"
+call POST "$SIM/__reset"
+expect_status 200
+expect_jq '.ok==true'
 
 printf '\n=== DONE: %d steps, %d assertions passed, %d recorded failure(s)\n' "$STEP" "$PASSES" "$SOFT_FAILS"
 if [ "$SOFT_FAILS" != 0 ]; then

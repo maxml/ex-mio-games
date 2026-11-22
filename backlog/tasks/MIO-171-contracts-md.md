@@ -1,6 +1,6 @@
 ---
 id: MIO-171
-title: "`CONTRACTS.md`: one place for every contract"
+title: '`CONTRACTS.md`: one place for every contract'
 epic: EPIC-16
 priority: P1
 money_impact: enabler

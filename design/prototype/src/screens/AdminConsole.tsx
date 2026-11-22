@@ -14,7 +14,12 @@ export function AdminScreen() {
         <StatTile label="MRR" value={`${mrr.toLocaleString('en-US')} EUR`} delta={8.2} />
         <StatTile label="Paying operators" value={`${paying} of ${TENANTS.length}`} />
         <StatTile label="Spins this month" value={spins.toLocaleString('en-US')} delta={14.9} />
-        <StatTile label="Signup to paid" value={`${((FUNNEL[5].value / top) * 100).toFixed(0)}%`} hint="last 30 days" delta={-1.3} />
+        <StatTile
+          label="Signup to paid"
+          value={`${((FUNNEL[5].value / top) * 100).toFixed(0)}%`}
+          hint="last 30 days"
+          delta={-1.3}
+        />
       </div>
       <Card className="mt-4" title="Operators" description="Usage per operator, this month." flush>
         <Table
@@ -22,16 +27,36 @@ export function AdminScreen() {
           rowKey={(t) => t.id}
           rows={TENANTS}
           columns={[
-            { key: 'n', header: 'Operator', render: (t) => <span className="font-semibold">{t.name}</span> },
+            {
+              key: 'n',
+              header: 'Operator',
+              render: (t) => <span className="font-semibold">{t.name}</span>,
+            },
             { key: 'p', header: 'Plan', render: (t) => t.plan, hideOnMobile: true },
             { key: 's', header: 'Status', render: (t) => <StatusPill status={t.status} /> },
             { key: 'm', header: 'MRR (EUR)', align: 'right', render: (t) => t.mrr },
-            { key: 'u', header: 'Spins', align: 'right', render: (t) => t.spins.toLocaleString('en-US'), hideOnMobile: true },
-            { key: 'd', header: 'Depositors', align: 'right', render: (t) => t.depositors.toLocaleString('en-US'), hideOnMobile: true },
+            {
+              key: 'u',
+              header: 'Spins',
+              align: 'right',
+              render: (t) => t.spins.toLocaleString('en-US'),
+              hideOnMobile: true,
+            },
+            {
+              key: 'd',
+              header: 'Depositors',
+              align: 'right',
+              render: (t) => t.depositors.toLocaleString('en-US'),
+              hideOnMobile: true,
+            },
           ]}
         />
       </Card>
-      <Card className="mt-4" title="Operator funnel" description="Where operators drop out between signup and first payment.">
+      <Card
+        className="mt-4"
+        title="Operator funnel"
+        description="Where operators drop out between signup and first payment."
+      >
         <ol className="grid gap-3">
           {FUNNEL.map((f, i) => (
             <li key={f.step}>
@@ -39,11 +64,19 @@ export function AdminScreen() {
                 <span>{f.step}</span>
                 <span className="tabular-nums">
                   {f.value}
-                  {i > 0 && <span className="text-fg-muted"> ({((f.value / FUNNEL[i - 1].value) * 100).toFixed(0)}% of previous)</span>}
+                  {i > 0 && (
+                    <span className="text-fg-muted">
+                      {' '}
+                      ({((f.value / FUNNEL[i - 1].value) * 100).toFixed(0)}% of previous)
+                    </span>
+                  )}
                 </span>
               </div>
               <div className="mt-1 h-3 rounded-sm bg-surface-2">
-                <div className="h-3 rounded-sm bg-primary" style={{ width: `${(f.value / top) * 100}%` }} />
+                <div
+                  className="h-3 rounded-sm bg-primary"
+                  style={{ width: `${(f.value / top) * 100}%` }}
+                />
               </div>
             </li>
           ))}

@@ -1,6 +1,6 @@
 ---
 id: MIO-003
-title: "Clean-clone check in CI: clone, compose up, demo passes, no accounts"
+title: 'Clean-clone check in CI: clone, compose up, demo passes, no accounts'
 epic: EPIC-01
 priority: P1
 money_impact: direct

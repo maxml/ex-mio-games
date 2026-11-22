@@ -11,6 +11,8 @@
 
 interface QueryRunnerLike {
   isTransactionActive: boolean;
+  /** TypeORM's nesting depth: 1 in the outer transaction, +1 per savepoint. */
+  transactionDepth?: number | undefined;
   connection: { subscribers: unknown[] };
 }
 
@@ -20,8 +22,13 @@ export interface TxLike {
 }
 
 type Effect = () => void;
+/** An effect and the transaction depth it was queued at (a savepoint is one level deeper). */
+interface Queued {
+  effect: Effect;
+  depth: number;
+}
 
-const pending = new WeakMap<object, Effect[]>();
+const pending = new WeakMap<object, Queued[]>();
 const subscribed = new WeakSet<object>();
 
 interface TransactionEvent {
@@ -34,7 +41,7 @@ const subscriber = {
     if (event.queryRunner.isTransactionActive) return;
     const effects = pending.get(event.queryRunner);
     pending.delete(event.queryRunner);
-    for (const effect of effects ?? []) {
+    for (const { effect } of effects ?? []) {
       try {
         effect();
       } catch {
@@ -43,8 +50,17 @@ const subscriber = {
     }
   },
   afterTransactionRollback(event: TransactionEvent): void {
-    if (event.queryRunner.isTransactionActive) return;
-    pending.delete(event.queryRunner);
+    const runner = event.queryRunner;
+    if (!runner.isTransactionActive) {
+      pending.delete(runner); // the outer transaction rolled back: nothing leaves
+      return;
+    }
+    // A savepoint rolled back while the outer transaction goes on. TypeORM has already lowered the
+    // depth, so whatever was queued deeper than that belonged to the rolled-back savepoint.
+    const depth = runner.transactionDepth;
+    if (depth === undefined) return;
+    const kept = (pending.get(runner) ?? []).filter((q) => q.depth <= depth);
+    pending.set(runner, kept);
   },
 };
 
@@ -59,6 +75,6 @@ export function afterCommit(tx: TxLike, effect: Effect): void {
     subscribed.add(runner.connection);
   }
   const list = pending.get(runner) ?? [];
-  list.push(effect);
+  list.push({ effect, depth: runner.transactionDepth ?? 1 });
   pending.set(runner, list);
 }

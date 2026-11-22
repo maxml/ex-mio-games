@@ -1,6 +1,6 @@
 ---
 id: MIO-054
-title: "Webhook ingestion: signature, timestamp window, per-tenant secret, schema validation"
+title: 'Webhook ingestion: signature, timestamp window, per-tenant secret, schema validation'
 epic: EPIC-06
 priority: P0
 money_impact: direct

@@ -7,14 +7,14 @@ review by a stronger model that re-applies mutations itself, and the question as
 "what did this fix move?". `defects-found.md` holds more, smaller cases; `limits.md` lists what the
 process got wrong.
 
-| # | Defect | Caught by | Fix | Pinning test |
-| --- | --- | --- | --- | --- |
-| 1 | A sandbox token spent a production spin credit | reviewer of the integrated tree, red test before the fix | `1a810ae` | `INV-SPIN-ENV-DB` |
-| 2 | Audit decision taken from the HTTP status | same review, at the choke point | `1a810ae`, `63b43c9` | `D-24 a later guard that refuses...` |
-| 3 | Acting returned 500 on the real stack, unit tests green | reviewer ran compose | `11497e7` | `M1 reader: the final audit record is consumed...` |
-| 4 | An unparsed `name[]` column in the tenant-key helper | reviewer's verify round on compose | `0335cea`, `8bb4701` | `INV-ENGAGEMENT-SCHEMA-DB` |
-| 5 | A test that passed only because a no-op was still called | mutation re-applied by the reviewer | `6d88297`, `11497e7` | `INV-LAUNCH-1` |
-| 6 | Websocket pushes could leave before the commit | review of the realtime gateway | `8098819`, `a83c8be` | `COMMIT-ONLY` (2 tests) |
+| #   | Defect                                                   | Caught by                                                | Fix                  | Pinning test                                       |
+| --- | -------------------------------------------------------- | -------------------------------------------------------- | -------------------- | -------------------------------------------------- |
+| 1   | A sandbox token spent a production spin credit           | reviewer of the integrated tree, red test before the fix | `1a810ae`            | `INV-SPIN-ENV-DB`                                  |
+| 2   | Audit decision taken from the HTTP status                | same review, at the choke point                          | `1a810ae`, `63b43c9` | `D-24 a later guard that refuses...`               |
+| 3   | Acting returned 500 on the real stack, unit tests green  | reviewer ran compose                                     | `11497e7`            | `M1 reader: the final audit record is consumed...` |
+| 4   | An unparsed `name[]` column in the tenant-key helper     | reviewer's verify round on compose                       | `0335cea`, `8bb4701` | `INV-ENGAGEMENT-SCHEMA-DB`                         |
+| 5   | A test that passed only because a no-op was still called | mutation re-applied by the reviewer                      | `6d88297`, `11497e7` | `INV-LAUNCH-1`                                     |
+| 6   | Websocket pushes could leave before the commit           | review of the realtime gateway                           | `8098819`, `a83c8be` | `COMMIT-ONLY` (2 tests)                            |
 
 ## 1. A sandbox token spent a production spin credit
 

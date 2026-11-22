@@ -1,6 +1,6 @@
 ---
 id: MIO-192
-title: "Pre-publication privacy gate: inspect files, history and AI artifacts before anything is public"
+title: 'Pre-publication privacy gate: inspect files, history and AI artifacts before anything is public'
 epic: EPIC-17
 priority: P1
 money_impact: none

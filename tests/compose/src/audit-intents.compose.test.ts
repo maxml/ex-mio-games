@@ -50,6 +50,7 @@ const event = (): EventEnvelope =>
   createEvent({
     type: 'audit.acting_request',
     tenantId: PLATFORM_TENANT_ID,
+    sandbox: false,
     payload: {
       actor_user_id: '0190a1b2-c3d4-7e5f-8a6b-7c8d9e0f1a2c',
       actor_tenant_id: PLATFORM_TENANT_ID,
@@ -199,10 +200,15 @@ const call = (
 const bearer = (t: string) => ({ authorization: `Bearer ${t}` });
 
 describe('M1 reader: the final audit record is consumed and described correctly (D-11, D-21)', () => {
-  // Mutation: identity_app without inbox rights (today), the consumer drops audit events, or the
-  // record keeps the provisional decision.
-  it('an allowed and a refused acting request on identity itself show in GET /v1/audit with their real decisions', async () => {
-    const slug = `aud${Date.now().toString(36)}`;
+  /*
+   * rc review, D-24: the audit decision is the AUTHORIZATION outcome. The old "refused" leg was a
+   * 404 from the handler; under D-24 that is an `allowed` call carrying status 404, so it moved to
+   * the first test. The refused leg is now a real authorization refusal (an acting session may not
+   * start acting, ACTING_FORBIDDEN). RED at fc5bf59: identity decides it inside the handler and the
+   * entry point records every handler answer as `allowed` (rc review INV-ID-AUD-2, the unit pin).
+   */
+  const actingOnIdentity = async () => {
+    const slug = `aud${Date.now().toString(36)}${Math.random().toString(36).slice(2, 5)}`;
     const signup = await call('POST', '/v1/operators/signup', {
       host: 'localhost',
       body: {
@@ -229,19 +235,28 @@ describe('M1 reader: the final audit record is consumed and described correctly 
       body: { tenant_id: tenantId, reason: 'compose review ticket', audience: 'identity' },
     });
     expect(acting.status).toBe(200);
-    const allowed = await call('GET', '/v1/staff', { headers: bearer(acting.json.access_token) });
+    const auditRows = (n: number) =>
+      eventually(async () => {
+        const r = await call('GET', '/v1/audit', { headers: bearer(op.json.access_token) });
+        const list = (r.json as Array<Record<string, unknown>>).filter(
+          (e) => e.action === 'acting.request',
+        );
+        return list.length >= n ? list : undefined;
+      }, 30_000);
+    return { tenantId, actingToken: acting.json.access_token as string, auditRows };
+  };
+
+  // Mutation: identity_app without inbox rights, the consumer drops audit events, the record keeps
+  // the provisional decision, or the decision is taken from the HTTP status (404 -> refused).
+  it('an allowed acting request and a handler 404 on identity show in GET /v1/audit as `allowed` (D-24)', async () => {
+    const w = await actingOnIdentity();
+    const allowed = await call('GET', '/v1/staff', { headers: bearer(w.actingToken) });
     expect(allowed.status).toBe(200);
-    const refused = await call('GET', '/v1/players/0190a1b2-c3d4-7e5f-8a6b-7c8d9e0f1a2f', {
-      headers: bearer(acting.json.access_token),
+    const notFound = await call('GET', '/v1/players/0190a1b2-c3d4-7e5f-8a6b-7c8d9e0f1a2f', {
+      headers: bearer(w.actingToken),
     });
-    expect(refused.status).toBe(404);
-    const rows = await eventually(async () => {
-      const r = await call('GET', '/v1/audit', { headers: bearer(op.json.access_token) });
-      const list = (r.json as Array<Record<string, unknown>>).filter(
-        (e) => e.action === 'acting.request',
-      );
-      return list.length >= 2 ? list : undefined;
-    }, 30_000);
+    expect(notFound.status).toBe(404);
+    const rows = await w.auditRows(2);
     expect(rows).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
@@ -252,6 +267,26 @@ describe('M1 reader: the final audit record is consumed and described correctly 
         expect.objectContaining({
           service: 'identity',
           route: 'GET /v1/players/:userId',
+          decision: 'allowed',
+        }),
+      ]),
+    );
+  });
+
+  // Mutation: none needed today (RED). After the fix: drop the identity refusal marker -> red.
+  it('a refused acting request on identity (ACTING_FORBIDDEN) shows in GET /v1/audit as `refused` (D-24)', async () => {
+    const w = await actingOnIdentity();
+    const refused = await call('POST', '/v1/auth/acting', {
+      headers: bearer(w.actingToken),
+      body: { tenant_id: w.tenantId, reason: 'compose review ticket', audience: 'identity' },
+    });
+    expect(refused.status).toBe(403);
+    const rows = await w.auditRows(1);
+    expect(rows).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          service: 'identity',
+          route: 'POST /v1/auth/acting',
           decision: 'refused',
         }),
       ]),

@@ -1,6 +1,6 @@
 ---
 id: MIO-130
-title: "Player widget: wheel, balance, store, reward status, history"
+title: 'Player widget: wheel, balance, store, reward status, history'
 epic: EPIC-13
 priority: P0
 money_impact: direct

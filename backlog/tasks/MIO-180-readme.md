@@ -1,6 +1,6 @@
 ---
 id: MIO-180
-title: "README: setup, assumptions, priorities"
+title: 'README: setup, assumptions, priorities'
 epic: EPIC-17
 priority: P1
 money_impact: direct

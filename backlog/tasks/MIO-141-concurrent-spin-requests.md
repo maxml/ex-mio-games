@@ -1,6 +1,6 @@
 ---
 id: MIO-141
-title: "Part C: concurrent spin requests"
+title: 'Part C: concurrent spin requests'
 epic: EPIC-14
 priority: P1
 money_impact: direct

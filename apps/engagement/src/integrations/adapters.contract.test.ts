@@ -8,7 +8,7 @@ import type {
   TransportRequest,
 } from './adapter';
 import { IssueDeadlineMs, IssueResult, RewardStatus } from '@ex-mio/contracts'; // the single port (D-2)
-import { createAdapterRegistry, createDefaultRegistry } from './registry';
+import { createAdapterRegistry, createDefaultRegistry } from './registry'; // RED: module missing
 
 /**
  * Shared adapter contract suite (MIO-050, MIO-057). One parameterised body runs against EVERY entry
@@ -224,6 +224,7 @@ const cfg = (transport: Transport, extra: Partial<AdapterConfig> = {}): AdapterC
   baseUrl: 'http://casino.test',
   transport,
   timeoutMs: 50,
+  sandbox: false, // required (INV-ENV-INPUT); a test that needs the other environment overrides it
   ...extra,
 });
 

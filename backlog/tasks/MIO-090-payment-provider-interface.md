@@ -1,6 +1,6 @@
 ---
 id: MIO-090
-title: "`PaymentProvider` interface: `fake` default, `stripe` behind a key"
+title: '`PaymentProvider` interface: `fake` default, `stripe` behind a key'
 epic: EPIC-09
 priority: P0
 money_impact: direct

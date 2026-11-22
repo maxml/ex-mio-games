@@ -1,13 +1,13 @@
 ---
 id: MIO-111
-title: "Resilient client: reconnect with backoff, resubscribe, heartbeat, catch-up"
+title: 'Resilient client: reconnect with backoff, resubscribe, heartbeat, catch-up'
 epic: EPIC-11
 priority: P1
 money_impact: enabler
 risk_class: none
 status: todo
 depends_on: [MIO-110, MIO-112]
-blocked_by: ["starter: resilient websocket"]
+blocked_by: ['starter: resilient websocket']
 size: M
 estimate_hours_base: 20
 estimate_hours: 24

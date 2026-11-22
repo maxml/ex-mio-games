@@ -77,6 +77,8 @@ describe('INV-SCAN: no header-based tenant code remains anywhere', () => {
         'INV-ACTBAN-6: an x-acting-tenant header changes nothing, the act claim decides (D-5)',
       'apps/payments/src/coin-action.test.ts':
         'the coin-action route probe sends x-acting-tenant and asserts the claim decides (D-5)',
+      'apps/payments/src/controllers/operator-plan.controller.test.ts':
+        'GET /v1/operator/plan: a forged x-tenant-id naming another tenant changes nothing (D-4, D-27)',
       'apps/payments/src/controllers/coins.controller.test.ts':
         'x-sandbox: 0 on a sandbox token still reads the sandbox wallet (X-2, D-13)',
       'apps/engagement/src/controllers/ingest.controller.test.ts':
