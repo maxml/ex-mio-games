@@ -86,3 +86,40 @@ own_slot() {
 
 # compose_args SLOT: the one place the compose argument list is built.
 compose_args() { echo docker compose -p "mio-s$1" --env-file "$WORKTREE/.env.stack"; }
+
+# ---- shared images -----------------------------------------------------------------------------
+# Every slot at the same code runs the same ex-mio/<service>:<tag> images (see docker-compose.yml).
+BUILT_SERVICES=(identity engagement payments casino-sim web firebase-auth)
+BUILD_INPUTS=(apps packages docker pnpm-lock.yaml pnpm-workspace.yaml package.json nx.json
+  tsconfig.base.json tsconfig.json)
+
+# image_tag: 12 hex chars from the content of what the Dockerfiles copy. Tracked paths go in by
+# git tree/blob id; a dirty worktree adds the diff and every untracked file, so an edit changes
+# the tag and a clean checkout of the same code gives the same tag in every worktree.
+image_tag() {
+  {
+    git -C "$WORKTREE" rev-parse $(printf 'HEAD:%s ' "${BUILD_INPUTS[@]}")
+    git -C "$WORKTREE" diff HEAD -- "${BUILD_INPUTS[@]}"
+    git -C "$WORKTREE" ls-files -o --exclude-standard -z -- "${BUILD_INPUTS[@]}" |
+      (cd "$WORKTREE" && xargs -0 -r git hash-object --)
+  } | sha1sum | cut -c1-12
+}
+
+# ensure_images SLOT TAG: builds only the images that are missing, one at a time, serialised
+# between worktrees by a lock (the second caller finds the first one's images and builds nothing).
+# MIO_HEAVY, if set, is the machine's heavy-step wrapper and prefixes each build.
+ensure_images() {
+  (
+    flock 9
+    local s
+    for s in "${BUILT_SERVICES[@]}"; do
+      if docker image inspect "ex-mio/$s:$2" >/dev/null 2>&1; then
+        echo "stack: image ex-mio/$s:$2 exists, no build"
+      else
+        echo "stack: building ex-mio/$s:$2"
+        # shellcheck disable=SC2046,SC2086
+        COMPOSE_PARALLEL_LIMIT=1 ${MIO_HEAVY:-} $(compose_args "$1") build "$s"
+      fi
+    done
+  ) 9>"$LEDGER/build.lock"
+}

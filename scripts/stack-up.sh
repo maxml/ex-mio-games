@@ -5,7 +5,8 @@
 # Picks the lowest free slot from the ledger shared by all worktrees of this clone, probes every
 # port of the slot with a real bind (refusing, with who holds it, rather than overlapping another
 # project), writes .env.stack, and runs `docker compose up -d --wait`. Slot 0 is the default ports.
-# An image build should go through the machine's heavy-step wrapper: run this script under it.
+# Images are shared: ex-mio/<service>:<tag>, the tag a hash of the build inputs. Only missing
+# images are built, one at a time; set MIO_HEAVY to a wrapper command to prefix each build.
 set -euo pipefail
 . "$(dirname "${BASH_SOURCE[0]}")/stack-lib.sh"
 cd "$WORKTREE"
@@ -39,17 +40,20 @@ else
   [ -n "$slot" ] || die "no free slot in 0..$MAX_SLOT"
 fi
 
+tag="$(image_tag)"
 {
   echo "# Written by scripts/stack-up.sh for slot $slot. Do not commit."
   echo "COMPOSE_PROJECT_NAME=mio-s$slot"
   echo "COMPOSE_PROJECT=mio-s$slot"
   echo "MIO_SLOT=$slot"
+  echo "MIO_IMAGE_TAG=$tag"
   for i in "${!PORT_VARS[@]}"; do echo "${PORT_VARS[$i]}=$(slot_port "$slot" "$i")"; done
 } >.env.stack
 
+ensure_images "$slot" "$tag" || die "image build failed (slot $slot stays claimed; scripts/stack-down.sh frees it)"
 # $(compose_args) is word-split on purpose: the list has no spaces in any element.
 # shellcheck disable=SC2046
-$(compose_args "$slot") up -d --wait --wait-timeout 600 || die "compose up failed (slot $slot stays claimed; scripts/stack-down.sh frees it)"
+$(compose_args "$slot") up -d --no-build --wait --wait-timeout 600 || die "compose up failed (slot $slot stays claimed; scripts/stack-down.sh frees it)"
 
 echo
 echo "Slot $slot is up (project mio-s$slot). Web http://localhost:$(slot_port "$slot" 9)"

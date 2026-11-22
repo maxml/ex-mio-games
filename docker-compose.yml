@@ -13,6 +13,9 @@
 # THE TRAP: `--env-file` is read only when passed, so bring a slot up and down through the
 # scripts, which build the one argument list. The two host URLs baked into service config
 # (PUBLIC_REALTIME_URL, REALTIME_ALLOWED_ORIGINS) are derived from the same variables below.
+# Built services use one shared image name, ex-mio/<service>:${MIO_IMAGE_TAG:-dev}. stack-up.sh
+# sets the tag from the content of the build inputs, so every slot at the same code runs the
+# same images and builds only what is missing.
 
 x-node-health: &node-health
   interval: 5s
@@ -83,6 +86,7 @@ services:
       retries: 20
 
   firebase-auth:
+    image: ex-mio/firebase-auth:${MIO_IMAGE_TAG:-dev}
     build:
       context: ./docker/firebase-emulator
     restart: unless-stopped
@@ -102,6 +106,7 @@ services:
       start_period: 20s
 
   identity:
+    image: ex-mio/identity:${MIO_IMAGE_TAG:-dev}
     build:
       context: .
       dockerfile: apps/identity/Dockerfile
@@ -144,6 +149,7 @@ services:
         - "fetch('http://127.0.0.1:4001/healthz/ready').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
 
   engagement:
+    image: ex-mio/engagement:${MIO_IMAGE_TAG:-dev}
     build:
       context: .
       dockerfile: apps/engagement/Dockerfile
@@ -182,6 +188,7 @@ services:
         - "fetch('http://127.0.0.1:4002/healthz/ready').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
 
   payments:
+    image: ex-mio/payments:${MIO_IMAGE_TAG:-dev}
     build:
       context: .
       dockerfile: apps/payments/Dockerfile
@@ -218,6 +225,7 @@ services:
         - "fetch('http://127.0.0.1:4003/healthz/ready').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
 
   casino-sim:
+    image: ex-mio/casino-sim:${MIO_IMAGE_TAG:-dev}
     build:
       context: .
       dockerfile: apps/casino-sim/Dockerfile
@@ -242,6 +250,7 @@ services:
         - "fetch('http://127.0.0.1:4004/healthz/ready').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
 
   web:
+    image: ex-mio/web:${MIO_IMAGE_TAG:-dev}
     build:
       context: .
       dockerfile: apps/web/Dockerfile

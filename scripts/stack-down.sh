@@ -18,4 +18,14 @@ else
   echo "stack: this worktree has no slot"
 fi
 recover_stale
-echo "ledger: $(ls "$LEDGER" | tr '\n' ' ')(end)"
+left="$(find "$LEDGER" -mindepth 1 -maxdepth 1 -type d)"
+echo "ledger: ${left:-empty}"
+# Shared images are never removed here. When no slot is left, show what the prune would delete
+# (dry run) and, at a terminal, offer to do it.
+if [ -z "$left" ]; then
+  "$(dirname "${BASH_SOURCE[0]}")/stack-prune.sh" || true
+  if [ -t 0 ]; then
+    read -r -p "Delete the images listed above? [y/N] " ans
+    [ "$ans" = y ] && "$(dirname "${BASH_SOURCE[0]}")/stack-prune.sh" --yes
+  fi
+fi
