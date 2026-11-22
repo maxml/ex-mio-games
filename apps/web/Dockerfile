@@ -10,7 +10,7 @@
 # `--build-arg NEXT_PUBLIC_API_URL=https://api.example.com` ONLY to bake an
 # absolute browser API URL (e.g. a `single_host: false` / cross-origin setup).
 
-FROM node:24-alpine AS builder
+FROM node:26-alpine AS builder
 RUN corepack enable && apk add --no-cache openssl
 WORKDIR /repo
 COPY . .
@@ -38,7 +38,7 @@ ARG NEXT_PUBLIC_MIO_API=http
 ENV NEXT_PUBLIC_MIO_API=$NEXT_PUBLIC_MIO_API
 RUN pnpm --filter @ex-mio/web build
 
-FROM node:24-alpine AS runner
+FROM node:26-alpine AS runner
 WORKDIR /app
 ENV NODE_ENV=production
 ENV PORT=3000
