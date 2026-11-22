@@ -4,6 +4,9 @@ import { key, newPlayer, newTenant, openHarness, type Harness } from '../testing
 
 // Choke point: `BalanceService` (read path and Redis projection). Spec: docs/specs/payments.md, section 6.
 // Funding goes through the inbox (`h.fund`); only this file reads balances through BalanceService.
+// INV-ENV-INPUT (D-29): `readByPlayer` takes the environment as a required argument, with no default.
+// `h.fund` credits the PRODUCTION wallet, so every read here names production explicitly.
+const PROD = { sandbox: false } as const;
 
 let h: Harness;
 beforeAll(async () => {
@@ -23,7 +26,7 @@ describe('INV-B1 a balance read is fresh after a change, and survives Redis bein
     const p = newPlayer();
     await h.fund(t, p, 5);
     const wallet = await h.dbWallet(t, p);
-    expect(await h.as(t, () => h.balances.readByPlayer(p))).toMatchObject({ available: 5 });
+    expect(await h.as(t, () => h.balances.readByPlayer(p, PROD))).toMatchObject({ available: 5 });
     const { spinId } = await h.fund(t, p, 7);
     const { rows } = await h.admin.query(
       `SELECT id FROM journal_transactions WHERE tenant_id = $1 AND operation_id = $2`,
@@ -39,7 +42,7 @@ describe('INV-B1 a balance read is fresh after a change, and survives Redis bein
         }),
       ),
     );
-    expect(await h.as(t, () => h.balances.readByPlayer(p))).toMatchObject({
+    expect(await h.as(t, () => h.balances.readByPlayer(p, PROD))).toMatchObject({
       available: 12,
       wallet_id: wallet.wallet_id,
     });
@@ -51,7 +54,7 @@ describe('INV-B1 a balance read is fresh after a change, and survives Redis bein
     const p = newPlayer();
     await h.fund(t, p, 5);
     h.cache.down = true;
-    expect(await h.as(t, () => h.balances.readByPlayer(p))).toMatchObject({ available: 5 });
+    expect(await h.as(t, () => h.balances.readByPlayer(p, PROD))).toMatchObject({ available: 5 });
   });
 });
 
@@ -66,9 +69,11 @@ describe('INV-B2 the cache is tenant-scoped and never used by a command (decisio
     await h.fund(tA, a, 5);
     await h.fund(tA, b, 9);
     await h.fund(tB, c, 100);
-    const wa = (await h.as(tA, () => h.balances.readByPlayer(a))).wallet_id; // warms A
-    expect(await h.as(tA, () => h.balances.readByPlayer(b))).toMatchObject({ available: 9 });
-    expect(await h.as(tB, () => h.balances.readByPlayer(c))).toMatchObject({ available: 100 });
+    const wa = (await h.as(tA, () => h.balances.readByPlayer(a, PROD))).wallet_id; // warms A
+    expect(await h.as(tA, () => h.balances.readByPlayer(b, PROD))).toMatchObject({ available: 9 });
+    expect(await h.as(tB, () => h.balances.readByPlayer(c, PROD))).toMatchObject({
+      available: 100,
+    });
     expect(h.cache.store.has(tenantCacheKey(tA, 'balance', wa))).toBe(true);
     for (const k of h.cache.store.keys()) expect(k).toMatch(/^t:[0-9a-f-]{36}:balance:/);
   });
@@ -123,14 +128,14 @@ describe('INV-B3 a balance is readable only inside its own tenant', () => {
     const tB = newTenant();
     const p = newPlayer();
     await h.fund(tA, p, 5);
-    await expect(h.as(tB, () => h.balances.readByPlayer(p))).rejects.toMatchObject({
+    await expect(h.as(tB, () => h.balances.readByPlayer(p, PROD))).rejects.toMatchObject({
       code: 'wallet_not_found',
     });
   });
 
   it('an unknown player is wallet_not_found, not an empty balance', async () => {
     await expect(
-      h.as(newTenant(), () => h.balances.readByPlayer(newPlayer())),
+      h.as(newTenant(), () => h.balances.readByPlayer(newPlayer(), PROD)),
     ).rejects.toMatchObject({
       code: 'wallet_not_found',
     });

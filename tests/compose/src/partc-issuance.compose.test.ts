@@ -41,7 +41,7 @@ const TERMINAL = ['COMPLETED', 'RELEASED', 'REFUNDED', 'REJECTED_FUNDS', 'NEEDS_
  *
  * Product behaviour these tests assume (apps/engagement/src/services/redemption-saga.service.ts):
  *  - POST /v1/redemptions reserves the coins inline (202, state RESERVED); the sweeper (every 5 s)
- *    moves RESERVED -> ISSUING and calls the casino-a adapter with key `redeem:<order id>`;
+ *    moves RESERVED -> ISSUING and calls the casino-a adapter with key `redeem:<tenant>:prd:<order id>` (D-26 scoped key, D-30);
  *  - an adapter call that outlives 5 s is `unknown`: ISSUING -> UNKNOWN (cause `casino_unknown`);
  *  - UNKNOWN asks the casino by our key (GET /casino-a/bonuses?idempotencyKey=...):
  *      `issued`    -> ISSUED (cause `lookup_issued`) -> capture -> COMPLETED;
@@ -115,7 +115,7 @@ describe('Part C issuance failures (compose, casino-sim faults)', () => {
     expect(path).not.toContain('UNKNOWN->ISSUING'); // found by lookup, never sent again
     expect(done.attempts).toBe(1);
 
-    expect(await issuedFor(id)).toBe(1);
+    expect(await issuedFor(t, id)).toBe(1);
     expect(await settledBalance(p)).toEqual({ available: SEED - PRICE, held: 0 });
     expect(await journalOf(t.tenant.tenantId, id)).toEqual({ reserve: 1, capture: 1 });
     expect(await reserveStateOf(t.tenant.tenantId, id)).toBe('captured');
@@ -138,7 +138,7 @@ describe('Part C issuance failures (compose, casino-sim faults)', () => {
     expect(done.failure_reason).toMatch(/^casino_rejected:/);
     expect(done.attempts).toBe(1);
 
-    expect(await issuedFor(id)).toBe(0);
+    expect(await issuedFor(t, id)).toBe(0);
     expect(await settledBalance(p)).toEqual({ available: SEED, held: 0 });
     expect(await journalOf(t.tenant.tenantId, id)).toEqual({ reserve: 1, release: 1 });
     expect(await reserveStateOf(t.tenant.tenantId, id)).toBe('released');
@@ -155,7 +155,7 @@ describe('Part C issuance failures (compose, casino-sim faults)', () => {
 
     // The request reached casino-sim (it records, then stalls for 10 s). Erase that record while
     // the adapter is still waiting: for engagement the casino has now never issued this key.
-    await eventually(async () => ((await issuedFor(id)) === 1 ? true : undefined), 30_000);
+    await eventually(async () => ((await issuedFor(t, id)) === 1 ? true : undefined), 30_000);
     await resetCasino();
     // The same-key retry that follows the `not_found` lookup is refused for good.
     await armFault({ kind: 'reject', player_id: p.externalPlayerId });
@@ -176,7 +176,7 @@ describe('Part C issuance failures (compose, casino-sim faults)', () => {
     );
     expect(done.attempts).toBe(2);
 
-    expect(await issuedFor(id)).toBe(0);
+    expect(await issuedFor(t, id)).toBe(0);
     expect(await settledBalance(p)).toEqual({ available: SEED, held: 0 });
     expect(await journalOf(t.tenant.tenantId, id)).toEqual({ reserve: 1, release: 1 });
     expect(await reserveStateOf(t.tenant.tenantId, id)).toBe('released');
@@ -256,7 +256,7 @@ describe('Part C issuance failures (compose, casino-sim faults)', () => {
     // The order is in flight at the casino (request recorded, reply stalled) when the broker goes.
     await armFault({ kind: 'timeout', player_id: p.externalPlayerId });
     const id = await redeem(t, p);
-    await eventually(async () => ((await issuedFor(id)) === 1 ? true : undefined), 30_000);
+    await eventually(async () => ((await issuedFor(t, id)) === 1 ? true : undefined), 30_000);
     expect(TERMINAL).not.toContain((await operatorRedemption(t, id)).state);
 
     let spin2 = '';
@@ -291,7 +291,7 @@ describe('Part C issuance failures (compose, casino-sim faults)', () => {
     const after = await operatorRedemption(t, id);
     expect(after.state).toBe('COMPLETED');
     expect(after.history.filter((h) => TERMINAL.includes(h.to))).toHaveLength(1);
-    expect(await issuedFor(id)).toBe(1);
+    expect(await issuedFor(t, id)).toBe(1);
     expect(await journalOf(t.tenant.tenantId, id)).toEqual({ reserve: 1, capture: 1 });
     expect(await reserveStateOf(t.tenant.tenantId, id)).toBe('captured');
     expect(await journalOf(t.tenant.tenantId, spin1)).toEqual({ spin_award: 1 });

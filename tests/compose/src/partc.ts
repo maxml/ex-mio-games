@@ -140,11 +140,18 @@ export async function resetCasino(): Promise<void> {
   if (r.status !== 200) throw new Error(`casino reset failed: ${r.status}`);
 }
 
-/** How many rewards casino-sim (casino A) holds under OUR key for this order (`redeem:<id>`). */
-export async function issuedFor(redemptionId: string): Promise<number> {
+/**
+ * How many rewards casino-sim (casino A) holds under OUR key for this PRODUCTION order. The key is
+ * pinned as a LITERAL (D-30, F2 accepted): `redeem:<tenant id>:prd:<order id>`, the D-26 scoped key.
+ * The old `redeem:<order id>` matched nothing after the change, so a `toBe(0)` here passed for any
+ * behaviour. Mutation: drop the tenant or the environment from `orderKey` in redemption-saga.service
+ * -> the casino holds a different key, every `issuedFor(...) === 1` below goes red.
+ */
+export async function issuedFor(t: PartCTenant, redemptionId: string): Promise<number> {
   const r = await fetch(`${urls.casinoSim}/__issued?casino=a`);
   const list = (await r.json()) as Array<{ key: string }>;
-  return list.filter((x) => x.key === `redeem:${redemptionId}`).length;
+  const key = `redeem:${t.tenant.tenantId.toLowerCase()}:prd:${redemptionId.toLowerCase()}`;
+  return list.filter((x) => x.key === key).length;
 }
 
 /** Casino A sends a signed deposit webhook to the tenant's ingest route (from inside the network). */

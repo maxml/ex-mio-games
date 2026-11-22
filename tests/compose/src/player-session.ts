@@ -132,6 +132,11 @@ export async function newTenant(opts: { platform?: string } = {}): Promise<TestT
           secret: k.hmac_secret,
           now: Math.floor(Date.now() / 1000),
           externalPlayerId,
+          // F7: identity refuses a launch whose `plat` claim differs from the key's platform (401).
+          // Both keys of this tenant are issued for `platform`, so the casino signs that one; the
+          // fixture default `sim-casino` only matched the default tenant, never a `casino-a` one.
+          // No environment claim: the environment is the key's (D-28, X-3), never the token's.
+          platform,
         }),
         audience: 'engagement',
       },

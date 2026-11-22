@@ -664,10 +664,17 @@ describe('INV-O2 erasing the identity link keeps the stable account', () => {
     const p = newPlayer();
     await h.fund(t, p, 10);
     const walletId = (await h.dbWallet(t, p)).wallet_id;
+    // INV-ENV-INPUT (D-29): the environment is a required read input; `h.fund` is production.
+    // Control: before the erase the player DOES resolve in that environment, so the
+    // wallet_not_found below is the erase, not a read that could never resolve.
+    const prod = { sandbox: false } as const;
+    expect(await h.as(t, () => h.balances.readByPlayer(p, prod))).toMatchObject({
+      wallet_id: walletId,
+    });
     await h.as(t, () => h.ledger.eraseIdentityLink(p));
     expect(await count('wallet_owner_links', t)).toBe(0);
     expect(await h.as(t, () => h.balances.readByWallet(walletId))).toMatchObject({ available: 10 });
-    await expect(h.as(t, () => h.balances.readByPlayer(p))).rejects.toMatchObject({
+    await expect(h.as(t, () => h.balances.readByPlayer(p, prod))).rejects.toMatchObject({
       code: 'wallet_not_found',
     });
     expect(await count('ledger_entries', t)).toBe(2);

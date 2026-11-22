@@ -304,6 +304,9 @@ describe('INV-L2 the journal is append-only for the runtime role', () => {
 // missing one, any new table that is not listed here fails the test.
 const TABLE_GRANTS: Record<string, string[]> = {
   accounts: ['INSERT', 'SELECT'],
+  // 1732300002000-AuditIntents (D-21/D-23 F4): the service-kit audit port inserts the intent, the
+  // finalize and the sweeper DELETE ... RETURNING it. No UPDATE: an intent is never rewritten.
+  audit_intents: ['DELETE', 'INSERT', 'SELECT'],
   balances: ['INSERT', 'SELECT'], // UPDATE is column-level, see COLUMN_UPDATES
   billing_plans: ['SELECT'],
   billing_webhook_events: ['INSERT', 'SELECT'],
@@ -503,7 +506,51 @@ describe('INV-L6 ledger tables are tenant-isolated by RLS', () => {
     'outbox',
     'migrations',
     'reconciliation_tenants',
+    // NOT `audit_intents` (stack triage, D-24): the intent row stores the whole acting envelope
+    // (target tenant_id, acting admin, route) for up to 60 s, so it is tenant data and needs FORCE
+    // RLS like any work queue. Only an owner decision may move it here, with its reason.
   ];
+  // D-24 behaviour at the choke point, raw SQL as the runtime role: a tenant transaction never reads
+  // another tenant's audit intent. RED today: `audit_intents` has no tenant_id and no policy
+  // (packages/service-kit/src/audit-intents.ts:30-34), so B's transaction reads A's intent.
+  // Fix direction (coder): tenant_id + enableTenantRls, the sweeper reading through the platform path.
+  // Mutation once green: disable or drop the policy on audit_intents -> red.
+  it('INV-L6b a tenant transaction cannot read another tenant audit intent (D-24)', async () => {
+    const a = uuidv7();
+    const b = uuidv7();
+    const eventId = uuidv7();
+    const envelope = { event_id: eventId, type: 'audit.acting_request', tenant_id: a };
+    // Seeded as the admin so the seed does not depend on the column set the fix chooses.
+    const cols = await admin.query(
+      `SELECT 1 FROM pg_attribute WHERE attrelid = 'public.audit_intents'::regclass
+          AND attname = 'tenant_id' AND NOT attisdropped`,
+    );
+    if (cols.rows.length > 0) {
+      await admin.query(
+        `INSERT INTO audit_intents (event_id, envelope, tenant_id) VALUES ($1, $2, $3)`,
+        [eventId, envelope, a],
+      );
+    } else {
+      await admin.query(`INSERT INTO audit_intents (event_id, envelope) VALUES ($1, $2)`, [
+        eventId,
+        envelope,
+      ]);
+    }
+    try {
+      // Control: the row is there.
+      const all = await admin.query(
+        `SELECT count(*)::int AS n FROM audit_intents WHERE event_id = $1`,
+        [eventId],
+      );
+      expect(all.rows[0].n).toBe(1);
+      const seen = await inTenant(app, b, () =>
+        app.query(`SELECT count(*)::int AS n FROM audit_intents WHERE event_id = $1`, [eventId]),
+      );
+      expect(seen.rows[0].n).toBe(0);
+    } finally {
+      await admin.query(`DELETE FROM audit_intents WHERE event_id = $1`, [eventId]);
+    }
+  });
   it('every other table in public has ENABLE + FORCE row level security and a policy', async () => {
     const { rows } = await admin.query(
       `SELECT c.relname, c.relrowsecurity AS enabled, c.relforcerowsecurity AS forced,
