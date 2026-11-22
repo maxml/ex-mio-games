@@ -29,10 +29,16 @@ describe('runMigrationsCli', () => {
       }),
       release: jest.fn(async () => undefined),
     };
+    // Fix round 2 (test owner): the double now has the shape of a real DataSource, a shipped
+    // migration and `showMigrations`, because migrate fails closed without them (D-31 R5). The
+    // property is unchanged: the lock is taken on its own connection BEFORE runMigrations.
+    // Mutation: run the migrations before the advisory lock in migrate.ts -> red.
     const ds = {
       isInitialized: true,
       initialize: jest.fn(async () => undefined),
       createQueryRunner: () => runner,
+      migrations: [{ name: 'Init1' }],
+      showMigrations: jest.fn(async () => false),
       runMigrations: jest.fn(async () => {
         order.push('runMigrations');
         return [];
