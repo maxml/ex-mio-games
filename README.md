@@ -103,6 +103,12 @@ docker compose up -d --wait
 scripts/demo.sh            # prints each request and the trimmed response, asserts it, exits non-zero on a mismatch
 ```
 
+Its Part C steps are C-1 duplicate deposit, C-2 concurrent spins, C-3 duplicate redemption, C-4 casino timeout,
+C-5 invalid or unauthorized events, C-6 player isolation (C-6b no negative balance), C-7 tenant isolation and
+C-8 failed reward issuance (casino B rejects the bonus: the coins stay held while the ticket is pending, then the
+order ends `RELEASED`, the balance returns to the baseline exactly once and the stock and per-player limit come
+back). C-8 was added after the recorded run below, so that run has no output for it.
+
 Recorded output of that script on a clean stack (secrets and tokens shown as `<redacted>`, bodies trimmed).
 The first run of 37 steps made 133 assertions pass and recorded 13 failures, all from two product gaps listed
 under "Known gaps from the recorded run" below.
