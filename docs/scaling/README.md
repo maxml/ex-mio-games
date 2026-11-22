@@ -1,6 +1,6 @@
 # Part E: scaling the product
 
-Short technical plan for the six questions of Part E. A one-page week table is in [90-days.md](90-days.md).
+Short technical plan for the six questions of Part E. The 90-day plan by phase is in [90-days.md](90-days.md).
 
 Status words: **Built** means implemented in the submission, **Partial** means the core exists and the named part does not, **Designed** (or "Next") means decided and described but not implemented. The status of each system item follows the table in [`docs/architecture/overview.md`](../architecture/overview.md) section 14. Anything in the plan below that is not in that table is a plan, not a fact. Team size, durations and speed-ups are estimates, not measurements, unless a sentence says it was measured.
 
@@ -159,27 +159,29 @@ An extra hop and eventual consistency: a feature sees a spin a moment after it h
 
 ## 4. First 90 days
 
-Answer: three blocks. Each ends with a revenue milestone, and the plan is ordered by profit impact. The week-by-week table is in [90-days.md](90-days.md).
+Answer: the slice already exists (P0 is implemented, demoed and deployed to a pre-production server), so weeks 1 and 2 take it to production, and then three phases of 30 days each. What sets the calendar is not code: a real casino partner's API access, sandbox and contract; real payments (a Stripe account, legal and tax); the first paying operators and their feedback on real data from the Varta analytics panel; security review and gambling-compliance requirements in the target markets; and hiring. The AI-assisted, reviewed process shortens the coding share, not these. The full plan with exit criteria is in [90-days.md](90-days.md).
 
-### Weeks 1 to 4: first paid pilot is signed and live in sandbox
+### Weeks 1 and 2: take the existing slice to production
 
-- Deliverables: Phase 0 of Section 1 (per-service secrets, identity provider, Stripe adapter), self-serve operator signup, one operator connected to the simulator then to its real casino sandbox, the funnel (signup, connect, first deposit event, first spin, first redemption) visible in Varta, backups with one restore drill.
-- Exit criteria: a stranger signs up and reaches a spin without help from us; deploy drill passes; restore drill passed with a measured time; Stripe sandbox charge reconciles.
-- Revenue milestone: a pilot operator agreed in writing, price and start date set. Revenue is zero at the end of week 4 and that is expected.
+- Deliverables: the follow-ups MIO-198 to MIO-216 and the known gaps; real per-service secrets and separate database credentials; a production identity provider; monitoring and alerts on the SLO table with a load-test baseline; backups with a restore drill; the proven Deckhand deploy repeated on the production host.
+- Exit criteria: production deploy drill passes; restore time measured; an induced broker outage alerts and recovers with a clean reconciliation.
 
-### Weeks 5 to 8: first paid pilot in production
+### Days 15 to 30: first real casino integration
 
-- Deliverables: real casino adapter in production behind the contract suite, billing live, SLOs and alerts, runbooks, on-call, rate limits per tenant, operator console for rules, catalog and stock.
-- Exit criteria: the first paid invoice is issued and paid; two weeks with no ledger reconciliation mismatch; SLOs measured.
-- Revenue milestone: first paid pilot, the first money received.
+- Deliverables: an adapter on the canonical model, using the how-to, passing the contract suite on the casino's sandbox.
+- Exit criteria: one test deposit gives one spin credit, once; zero double rewards on a replayed-webhook run; Stripe sandbox charge, refund and replay give one ledger effect each.
 
-### Weeks 9 to 13: second operator and the first new feature
+### Days 31 to 60: first paying operators
 
-- Deliverables: second operator on the same platform by configuration only (the test of Section 2), Missions as a module on canonical events with its boundary check, security review follow-ups, one retrospective of review findings per change and escaped defects.
-- Exit criteria: second operator live without a code change in the shared repository; Missions on for one tenant; the number of defects found after merge is known.
-- Revenue milestone: two paying operators; a feature a pilot can be asked to pay for or that reduces churn.
+- Deliverables: pilot on the real casino, self-serve signup, billing live, per-tenant rate limits, the funnel in Varta, fixes from the pilot's findings.
+- Exit criteria: at least one operator live and paying; real deposits processed, each credited once; redemption success rate at or above 99% within 2 minutes; p95 latency inside the EPIC-18 SLOs; zero double rewards; two weeks with no reconciliation mismatch.
 
-Deliberately not done in 90 days: PvP, Kingdom Builder, multi-region, RNG certification, moving modules to services, websocket journal replay unless players report missed rewards.
+### Days 61 to 90: second operators and the new mechanics
+
+- Deliverables: a second operator by configuration only; Missions enabled for one tenant; PvP (coins only) and Kingdom Builder in staging; retrospective of review findings per change and escaped defects.
+- Exit criteria: at least two paying tenants; no code change in the shared repository for the second; Missions live for a paying tenant; zero double rewards in PvP and Kingdom Builder staging runs.
+
+Deliberately not done in 90 days: real-money PvP, multi-region, RNG certification, moving existing modules to services, websocket journal replay unless players report missed rewards.
 
 ## 5. Smallest realistic team for an MVP in six months
 
@@ -219,7 +221,7 @@ What AI tooling replaces and what it does not:
 | Fixture and sample generation                                                                                                        | Talking to operators and casinos; a real casino's undocumented behaviour |
 |                                                                                                                                      | Accountability for production: on-call, incident decisions               |
 
-The speed-up from AI is not assumed in the team arithmetic above. Measure it (findings per change, time per change, escaped defects) in the first 90 days and reduce the team estimate only if the measurement supports it.
+These estimates are for a human team. The AI-assisted process shortens the coding share, which is why the calendar is driven by external dependencies (Section 4). The speed-up from AI is not assumed in the team arithmetic above. Measure it (findings per change, time per change, escaped defects) in the first 90 days and reduce the team estimate only if the measurement supports it.
 
 ## 6. What to automate with AI
 

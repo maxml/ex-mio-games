@@ -1,21 +1,45 @@
-# First 90 days: week table
+# First 90 days: plan by phase
 
-Estimates and targets, not measurements. Reasoning is in [README.md](README.md) section 4. The only figures taken from the repository are the backlog hour totals behind the effort estimate (README section 5: 6 productive hours per day, 21 days per month, the MVP scope is 2,449 hours, 408 person-days); the latency and throughput targets come from the SLO table of backlog task MIO-193 once it exists; week targets, SLO percentages and onboarding times are proposals to be replaced by measurements. Revenue is expected to be zero until week 8.
+Targets, not measurements. Reasoning is in [README.md](README.md) section 4. The percentages and latency figures are proposals; the latency and throughput targets come from the SLO table of backlog task MIO-193 (EPIC-18) once it exists and replace the proposals here.
 
-| Week | Goal                                    | Deliverable                                                                                                                                                                                                               | Metric                                                                                                               |
-| ---- | --------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------- |
-| 1    | Close the secrets gap and the demo gaps | Per-service secrets on deploy; separate database owner and runtime credentials; merge the final integration branch; console switched to the rules and wheel routes; reward API run end to end (README section 1, Phase 0) | Deploy drill: service A cannot read service B's secret; a fresh tenant gets a spin from a signed deposit with no SQL |
-| 2    | Choose and wire identity                | Production identity provider behind the existing interface                                                                                                                                                                | Adapter contract test passes against the provider's staging project                                                  |
-| 3    | Take payments                           | Stripe adapter behind `PaymentProvider`; self-serve operator signup                                                                                                                                                       | Sandbox charge, refund and replayed webhook give one ledger effect each                                              |
-| 4    | Backups and the funnel                  | Backups with a restore drill; signup-to-first-redemption funnel in Varta; pilot operator agreed                                                                                                                           | Restore time measured; funnel visible; pilot agreed in writing                                                       |
-| 5    | Real casino, sandbox                    | Adapter for the pilot's platform, passing the contract suite                                                                                                                                                              | Contract suite green; staging run on the casino's test account                                                       |
-| 6    | Go to production                        | Pilot on the real casino; sandbox flag on integration credential; metering                                                                                                                                                | One real deposit produces one spin credit, once                                                                      |
-| 7    | Reliability                             | SLOs (table of MIO-193) with a load-test baseline (MIO-194), alerts, runbooks (DLQ, `NEEDS_REVIEW`, casino down, broker down); on-call named                                                                              | Induced broker outage alerts and recovers with clean reconciliation                                                  |
-| 8    | First money                             | Billing live; per-tenant rate limits; operator console for rules and catalog                                                                                                                                              | First invoice paid (revenue milestone: first paid pilot)                                                             |
-| 9    | Stabilise                               | Fix pilot findings; security review follow-ups                                                                                                                                                                            | Two weeks with no ledger reconciliation mismatch                                                                     |
-| 10   | Second operator                         | Onboard a second operator on the same platform by configuration                                                                                                                                                           | Zero code changes in the shared repository; onboarding hours recorded                                                |
-| 11   | Missions, build                         | Missions module on canonical events; module boundary check in CI                                                                                                                                                          | Forbidden import to `integrations` fails the build                                                                   |
-| 12   | Missions, pilot                         | Missions enabled for one tenant through a flag                                                                                                                                                                            | Mission completion rate and coin cost per mission visible in Varta                                                   |
-| 13   | Measure and decide                      | Retrospective: review findings per change, escaped defects, onboarding time                                                                                                                                               | Numbers published; team size for months 4 to 6 confirmed or changed                                                  |
+The slice already exists: P0 is implemented, demoed and deployed to a pre-production server with Deckhand. So the plan starts with taking it to production, which is code work of days. The rest of the 90 days is set by things that are not code.
 
-Not in the 90 days: PvP, Kingdom Builder, multi-region, RNG certification, moving modules to services, websocket journal replay.
+## What sets the calendar
+
+- A real casino partner: API access, a sandbox account and a signed contract. Nothing can be tested against a real casino before these exist, so the conversation starts on day 1 and runs alongside everything else.
+- Real payments: a Stripe account in the company's name, legal entity details and tax set-up.
+- First paying operators: onboarding, their feedback, and iterating on real data from the Varta analytics panel.
+- Security review and gambling-compliance requirements in each target market.
+- Hiring: the people in the team answer (README section 5) have to be found and started.
+
+The AI-assisted, reviewed process shortens the coding share of each phase. It does not shorten any of the five items above.
+
+## Weeks 1 and 2: take the existing slice to production
+
+- Close the follow-ups MIO-198 to MIO-216 and the known gaps in `docs/submission/known-gaps.md`: guards that fail open (migrations, deploy defaults, environment defaults), log redaction and auth-refusal logs, console screens still answered by a mock in live mode, outbox rows with no queue, spin key upgrade and seed secrecy, CI on the default stack slot.
+- Real secrets: one secrets file per service on the server, separate database owner and runtime credentials, production identity provider behind the existing interface.
+- Monitoring and alerts on the SLO table (MIO-193) with a load-test baseline (MIO-194), runbooks for the dead-letter queue, `NEEDS_REVIEW`, casino down and broker down.
+- Backups with a measured restore drill.
+- Repeat on the production host the deploy that is already proven on the pre-production server.
+
+Exit: the production deploy drill passes (service A cannot read service B's secret); a restore is measured; an induced broker outage alerts and recovers with a clean ledger reconciliation; a fresh tenant gets a spin from a signed deposit with no SQL.
+
+## Days 15 to 30: first real casino integration
+
+Starts as soon as the partner's sandbox access exists. An adapter built on the canonical model and the how-to in `docs/how-to/where-to-change.md`, passing the contract suite.
+
+Exit: contract suite green against the casino's sandbox; one test deposit gives one spin credit, once; zero double rewards across a replayed-webhook run; Stripe sandbox charge, refund and replay give one ledger effect each; security review started.
+
+## Days 31 to 60: first paying operators
+
+Pilot on the real casino, self-serve operator signup, billing live, per-tenant rate limits, the signup-to-first-redemption funnel in Varta, fixes from the pilot's findings.
+
+Exit: at least one operator live on a real casino and paying (first invoice paid); real deposits processed with each credited once; redemption success rate at or above 99% reaching a final status within 2 minutes; p95 latency inside the EPIC-18 SLOs; zero double rewards; two weeks with no ledger reconciliation mismatch; security review findings closed.
+
+## Days 61 to 90: second operators and the new mechanics
+
+A second operator by configuration only. Then the mechanics from Part E question 3, in the same reviewed process: Missions on canonical events (module boundary check in CI) enabled for one tenant through a flag; PvP (coins only, versioned seed an auditor can replay) and Kingdom Builder as separate services in staging.
+
+Exit: at least two paying tenants; the second onboarded with no code change in the shared repository; Missions live for a paying tenant with completion rate and coin cost visible in Varta; PvP matches and Kingdom Builder buildings settled in staging with zero double rewards; the money and trust numbers above held for the whole phase; retrospective published (review findings per change, escaped defects, onboarding time) and the team size for months 4 to 6 confirmed or changed.
+
+Not in the 90 days: real-money PvP, multi-region, RNG certification, moving existing modules to services, websocket journal replay.
