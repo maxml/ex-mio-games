@@ -37,6 +37,8 @@ const REAL_OPERATOR_FIELDS = [
 ] as const satisfies ReadonlyArray<keyof OperatorState>;
 
 export function createHybridApi(real: MioApi, mock: MioApi): MioApi {
+  let selectedPlan: string | null = null;
+  let mockPlanSynced = false;
   return {
     player: {
       ...real.player,
@@ -62,6 +64,19 @@ export function createHybridApi(real: MioApi, mock: MioApi): MioApi {
         if (!live) return base;
         const merged: OperatorState = { ...base };
         for (const key of REAL_OPERATOR_FIELDS) Object.assign(merged, { [key]: live[key] });
+        // The plan ids are the services' (`free`, `pro`, ...), not the mock's: the selection is held here, and
+        // the default is the first paid plan.
+        const ids = live.plans.map((p) => p.id);
+        merged.plan =
+          selectedPlan && ids.includes(selectedPlan)
+            ? selectedPlan
+            : (live.plans.find((p) => p.price > 0)?.id ?? live.plans[0]?.id ?? base.plan);
+        // The go-live gate (a mock call, G-4) reads the mock's own "plan paid" flag: when the real plan turns
+        // active, one mock payment settles it, so a real payment unlocks the same step.
+        if (live.planActive && !base.planActive && !mockPlanSynced) {
+          mockPlanSynced = true;
+          void mock.operator.startPayment(base.plan, '4242').catch(() => (mockPlanSynced = false));
+        }
         return merged;
       },
       // The mock keeps the console's own flag in step, so its go-live gate sees the real signup.
@@ -69,7 +84,9 @@ export function createHybridApi(real: MioApi, mock: MioApi): MioApi {
         await real.operator.createAccount(input);
         await mock.operator.createAccount(input);
       },
-      selectPlan: (planId) => mock.operator.selectPlan(planId),
+      selectPlan: async (planId) => {
+        selectedPlan = planId;
+      },
       runSandbox: () => mock.operator.runSandbox(),
       startGoLive: () => mock.operator.startGoLive(),
       confirmFirstLiveDeposit: () => mock.operator.confirmFirstLiveDeposit(),

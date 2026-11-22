@@ -4,6 +4,7 @@
 //
 // Where a service endpoint does not exist yet, the BFF answers with the mock engine's default for that
 // field only and the browser adapter keeps the mock for that call (docs/submission/known-gaps.md).
+import { createHmac } from 'node:crypto';
 import {
   ActAsTenantRequest,
   AuditEntry,
@@ -608,6 +609,43 @@ export function createBff(deps: BffDeps) {
           schema: PaymentAttempt,
         });
         s.attemptId = attempt.id;
+        // Local stand-in for the payment provider (compose only: needs FAKE_PROVIDER_WEBHOOK_SECRET). The fake
+        // provider never calls back by itself (known-gaps G-12), so the BFF sends the signed callback the real
+        // provider would. A failure here leaves the attempt `processing`, as without the stand-in.
+        if (config.fakeProviderSecret && attempt.state === 'processing') {
+          try {
+            const op = await up<{ provider_subscription_id: string }>(
+              'payments',
+              'GET',
+              '/v1/operator/plan',
+              { token: pay },
+            );
+            const start = new Date(now());
+            const month = (d: Date) => new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), 1));
+            const next = new Date(Date.UTC(start.getUTCFullYear(), start.getUTCMonth() + 1, 1));
+            const payload = {
+              eventId: globalThis.crypto.randomUUID(),
+              tenantId: s.tenantId,
+              subscriptionId: op.provider_subscription_id,
+              status: 'active',
+              version: 1,
+              amountMinor: plan.price_minor,
+              currency: plan.currency,
+              periodStart: month(start).toISOString(),
+              periodEnd: next.toISOString(),
+            };
+            await up('payments', 'POST', '/v1/billing/webhooks', {
+              body: payload,
+              headers: {
+                'x-webhook-signature': createHmac('sha256', config.fakeProviderSecret)
+                  .update(JSON.stringify(payload))
+                  .digest('hex'),
+              },
+            });
+          } catch {
+            /* the attempt stays processing */
+          }
+        }
         return { status: 201, body: mapAttempt(attempt, new Map(plans.map((p) => [p.id, p]))) };
       },
     ],

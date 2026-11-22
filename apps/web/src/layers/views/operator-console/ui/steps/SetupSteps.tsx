@@ -77,7 +77,7 @@ export function SignupStep({ s, nav }: StepProps) {
       </form>
       {created && (
         <Alert tone="success" className="mt-4">
-          Account created (mock). A sandbox is ready for you.
+          Account created. A sandbox is ready for you.
         </Alert>
       )}
       {nav({ canContinue: created, hint: 'Create the account to continue.' })}

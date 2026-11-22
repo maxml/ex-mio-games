@@ -257,6 +257,9 @@ services:
       PAYMENTS_URL: http://payments:4003
       # A tenant is `<slug>.<BASE_DOMAIN>`, the same value identity runs with.
       BASE_DOMAIN: mio.localhost
+      # Local stand-in for the payment provider's callback (the fake provider sends none): the same dev secret
+      # as payments' FAKE_PROVIDER_WEBHOOK_SECRET. Leave unset anywhere but a local stack.
+      FAKE_PROVIDER_WEBHOOK_SECRET: dev-fake-provider-webhook-secret-0000
       # The stack is served over plain http on localhost: a `Secure` session cookie would not be sent back.
       MIO_INSECURE_COOKIE: '1'
       # D-27: `/config` returns this as `realtimeUrl`, the engagement public URL the browser opens the
