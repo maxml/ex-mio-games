@@ -19,7 +19,7 @@ Terms used here are explained in the [glossary](docs/glossary.md).
 - Design: 14 ADRs and 5 architecture diagrams in [`docs/adrs/`](docs/adrs/) and [`docs/architecture/`](docs/architecture/README.md).
 - Process: AI agents in separate roles, with reviews of up to three rounds per area. See [How AI was used](#how-ai-was-used).
 - Planning: the whole product is split into a backlog of **166 tasks in 18 epics**, each with acceptance criteria
-  and an hour estimate: 2,299 hours, or 2,828 hours with a 20% buffer. Start at
+  and an hour estimate: 2,828 hours of estimated effort in total. Start at
   [`backlog/README.md`](backlog/README.md).
 
 Why these tasks, in this order: the first goal is a sellable slice (priority P0): an operator signs up, registers a
