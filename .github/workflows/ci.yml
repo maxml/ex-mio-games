@@ -21,13 +21,16 @@ permissions:
 # Every action is pinned to a commit SHA (the tag is in the trailing comment).
 jobs:
   checks:
-    name: lint, typecheck, unit tests
+    name: prompts, format, lint, typecheck, unit tests
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           submodules: false
+
+      # Hermetic, seconds: role prompts and agent wrappers (bash and python3 only).
+      - run: bash ci/check-prompts.sh
 
       # pnpm comes from corepack, at the version in package.json "packageManager".
       - run: corepack enable
@@ -38,6 +41,8 @@ jobs:
           cache: pnpm
 
       - run: pnpm install --frozen-lockfile
+
+      - run: pnpm format:check
 
       - run: pnpm nx run-many -t lint --parallel=2
 
