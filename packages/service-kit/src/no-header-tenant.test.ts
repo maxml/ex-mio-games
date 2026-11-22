@@ -89,6 +89,8 @@ describe('INV-SCAN: no header-based tenant code remains anywhere', () => {
         'I-API-5: forged x-sandbox / x-principal-id / x-tenant-id are ignored (X-3, X-9)',
       'apps/engagement/src/services/ingestion.service.test.ts':
         'a client x-sandbox hint does not turn the flag on for a production credential (D-13)',
+      'apps/web/src/layers/shared/api/bff/review-fr2-cross-tenant.test.ts':
+        'FR2-BFF-1: a browser x-tenant-id naming another tenant reaches no service (D-4)',
     };
     const FORBIDDEN =
       /x-tenant-id|x-principal-|x-platform-admin-token|x-service-id|x-service-token|x-acting-tenant|x-sandbox|PLATFORM_TOKEN|headerTenantResolver|TenancyModule\.forRoot/i;
