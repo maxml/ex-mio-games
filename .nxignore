@@ -2,3 +2,8 @@
 # Each worktree under .claude/worktrees/ contains a full copy of the workspace;
 # without this, Nx raises MultipleProjectsWithSameNameError while agents run.
 .claude
+
+# The design prototype is a standalone package with its own lockfile, not a workspace project.
+# Its vite.config.ts needs dependencies the workspace install does not provide, so the Nx vite
+# plugin must not load it.
+design
