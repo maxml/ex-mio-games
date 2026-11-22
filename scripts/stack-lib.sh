@@ -118,7 +118,10 @@ ensure_images() {
       else
         echo "stack: building ex-mio/$s:$2"
         # shellcheck disable=SC2046,SC2086
-        COMPOSE_PARALLEL_LIMIT=1 ${MIO_HEAVY:-} $(compose_args "$1") build "$s" || exit 1 # errexit is off under the caller's `||`
+        # Registry hiccups fail a build now and then: three tries. errexit is off under the caller's `||`.
+        COMPOSE_PARALLEL_LIMIT=1 ${MIO_HEAVY:-} $(compose_args "$1") build "$s" ||
+          COMPOSE_PARALLEL_LIMIT=1 ${MIO_HEAVY:-} $(compose_args "$1") build "$s" ||
+          COMPOSE_PARALLEL_LIMIT=1 ${MIO_HEAVY:-} $(compose_args "$1") build "$s" || exit 1
       fi
     done
   ) 9>"$LEDGER/build.lock"
