@@ -1,4 +1,4 @@
-import { scopedKey, uuidv7 } from '@ex-mio/contracts';
+import { uuidv7 } from '@ex-mio/contracts';
 import { LEDGER_JOBS_LOCK_ID } from '../model/ledger-jobs.repository';
 import {
   activateSubscription,
@@ -204,12 +204,8 @@ describe('INV-JOB3 the usage report of the last complete month goes out once per
     });
     expect(sent(paid)).toHaveLength(1);
     expect(sent(paid)[0]).toMatchObject({
-      idempotencyKey: scopedKey({
-        kind: 'usage',
-        tenantId: paid,
-        sandbox: false,
-        parts: ['2026-11'],
-      }),
+      // literal wire key (final review F2): never derived from scopedKey, the code under test
+      idempotencyKey: `usage:${paid}:prd:2026-11`,
       quantity: 2,
     });
     expect(sent(free)).toHaveLength(0);
