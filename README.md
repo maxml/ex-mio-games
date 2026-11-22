@@ -1,8 +1,11 @@
 # MIO Games (ex-mio-games)
 
-MIO Games is a platform that online casinos plug into to give their players a game layer: a Wheel of Fortune
-earned by depositing, virtual coins, and a Bonus Store where coins buy real rewards. This repository is a
-working vertical slice of it, built for the MIO Games test task. [CI](https://github.com/maxml/ex-mio-games/actions/workflows/ci.yml)
+MIO Games is a platform that online casinos would plug into to give their players a game layer: a Wheel of
+Fortune earned by depositing, virtual coins, and a Bonus Store where coins buy rewards that the casino issues.
+This repository is a working vertical slice of it, built for the MIO Games test task. Everything outside MIO is
+simulated: the two casinos are a bundled simulator (casino-sim), sign-in runs on the Firebase Auth Emulator and
+payments use a fake provider. No real casino or payment service is connected, and Varta and Deckhand are optional
+and off in the local run. [CI](https://github.com/maxml/ex-mio-games/actions/workflows/ci.yml)
 runs format, lint, typecheck and unit tests on every push, then starts the compose stack and runs the compose
 suites, the database suites and the demo against it.
 Terms used here are explained in the [glossary](docs/glossary.md).
@@ -10,7 +13,8 @@ Terms used here are explained in the [glossary](docs/glossary.md).
 ## What was done
 
 - A running prototype: 5 services (identity, engagement, payments, web, casino-sim) in 9 containers, 2 simulated
-  casino integrations with different APIs, an operator console and a player widget.
+  casinos with different APIs, each with its own adapter in MIO, an operator console and a player widget that call
+  MIO's own services.
 - Proof: a demo of 40 steps and 194 assertions, and 250 compose tests, with the output in [`evidence/`](evidence/README.md).
 - Design: 14 ADRs and 5 architecture diagrams in [`docs/adrs/`](docs/adrs/) and [`docs/architecture/`](docs/architecture/README.md).
 - Process: AI agents in separate roles, with reviews of up to three rounds per area. See [How AI was used](#how-ai-was-used).
@@ -18,17 +22,17 @@ Terms used here are explained in the [glossary](docs/glossary.md).
   and an hour estimate: 2,299 hours, or 2,828 hours with a 20% buffer. Start at
   [`backlog/README.md`](backlog/README.md).
 
-Why these tasks, in this order: the first goal is a sellable slice (priority P0): an operator signs up, connects a
-casino, and a deposit turns into a spin, coins and an issued reward. Anything that protects money or tenant data
+Why these tasks, in this order: the first goal is a sellable slice (priority P0): an operator signs up, registers a
+casino, and a deposit turns into a spin, coins and an issued reward. Here the casino is the simulator. Anything that protects money or tenant data
 comes before features. Each task carries a risk class (guard, identity, admission, budget, locks, concurrency,
 ownership, isolation), and a task with a class goes through a spec and failing tests before code. This
-prototype implements the slice and the reliability cases of Part C. Billing beyond the fake provider, rate limits,
+prototype implements the slice and the reliability cases of Part C. Real billing (only a fake provider exists), rate limits,
 the production deploy and the later products (PvP, Missions, Kingdom Builder) are planned in the backlog and not built.
 
 ## How we prioritised
 
-The assignment had a limit of 8 hours. This repository chose a product start instead: a small but real
-slice that a casino operator could try, with the planning for the rest written down. The order was:
+The assignment had a limit of 8 hours. This repository chose a product start instead: a small working
+slice that an operator could try against simulated casinos, with the planning for the rest written down. The order was:
 
 1. The money path: deposit, spin, coins, store, issued reward, and the plan payment.
 2. The protections around it: signatures, deduplication, one winner for concurrent spins, idempotent
@@ -52,8 +56,8 @@ The principles behind the design, each linked to where the repo does it:
   ([ADR 0001](docs/adrs/0001-microservices-and-their-cost.md)). Tenants and integrations are modules behind Nx
   boundaries ([ADR 0008](docs/adrs/0008-integration-adapters-canonical-model.md)).
 - A message broker from the start, with outbox and inbox ([ADR 0003](docs/adrs/0003-rabbitmq-outbox-inbox.md)).
-- Identity and the payment provider sit behind interfaces. Sign-in runs on the Firebase Auth Emulator and billing on
-  a fake provider, so no accounts are needed. Stripe exists as a port only.
+- Identity and the payment provider sit behind interfaces. Sign-in runs on the Firebase Auth Emulator and payments on
+  a fake provider, so no accounts are needed. Stripe exists as a port only and is not used.
 - A websocket client that reconnects and resyncs over REST ([ADR 0014](docs/adrs/0014-realtime-websocket-client.md)).
 - Product analytics from day one through Varta, and a design system built in Storybook
   ([`packages/ui`](packages/ui/TOKENS.md), [ADR 0013](docs/adrs/0013-fsd-frontend-architecture.md)).
@@ -155,7 +159,7 @@ schemes and reward APIs:
 3. The player spends coins in the Bonus Store. MIO asks the casino, through that casino's adapter, to issue the
    reward, and tracks the order until the casino reports a final status.
 4. The operator configures rules, wheel, store and casino credentials in a console. The player sees the wheel
-   and the store in a widget. Both run live against the services.
+   and the store in a widget. Both call MIO's own services instead of mock data.
 
 Both casinos go through the same rules, wheel, ledger and store code. Only the adapter differs.
 
@@ -166,7 +170,8 @@ Both casinos go through the same rules, wheel, ledger and store code. Only the a
 - Tenant isolation. Each casino sees only its own data, enforced in the database with row-level security as
   well as in the services.
 - Sandbox and production are separate environments. Spin credits, event deduplication and tokens are kept per
-  environment, so a sandbox token cannot use a production credit.
+  environment, so a sandbox token cannot use a production credit. Production here is a separate environment inside the local
+  stack; no production deployment exists.
 - The wheel is decided on the server and is deterministic for a given seed. The client cannot send weights or
   a result, and the public wheel view hides the weights.
 
