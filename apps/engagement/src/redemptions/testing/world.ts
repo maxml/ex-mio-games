@@ -254,7 +254,8 @@ export class FakePayments implements CoinsPort {
     if (r.state === to) return { ok: true, amount: r.amount }; // stored result, any key
     if (r.state !== from) {
       // the conflicting-transition code of payments, by the state the reserve holds (spec D-9)
-      if (verb === 'refund' && r.state === 'reserved') return { ok: false, code: 'reserve_not_captured' };
+      if (verb === 'refund' && r.state === 'reserved')
+        return { ok: false, code: 'reserve_not_captured' };
       const held: Record<ReserveState, CoinsRefusalCode> = {
         reserved: 'reserve_not_captured',
         captured: 'reserve_already_captured',
@@ -486,7 +487,8 @@ export class World<S extends RedemptionSaga> {
   }
 
   private record(key: string): void {
-    const id = key.startsWith('redeem:') ? key.slice('redeem:'.length) : '';
+    // `redeem:<tenant>:<prd|sbx>:<order id>` (scopedKey): the order id is the last part.
+    const id = key.startsWith('redeem:') ? (key.split(':').pop() ?? '') : '';
     const r = this.store.redemptions.get(id);
     this.audit.push({
       key,

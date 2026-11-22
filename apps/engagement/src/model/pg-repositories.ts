@@ -44,9 +44,9 @@ export class PgInboundEventsRepository extends InboundEventsRepository {
     const inserted = rowsOf(
       await tx.query(
         `INSERT INTO inbound_events
-           (id, tenant_id, source, external_event_id, external_player_hmac, amount_minor, currency, occurred_at)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-         ON CONFLICT (tenant_id, source, external_event_id) DO NOTHING
+           (id, tenant_id, sandbox, source, external_event_id, external_player_hmac, amount_minor, currency, occurred_at)
+         VALUES ($1, $2, $9, $3, $4, $5, $6, $7, $8)
+         ON CONFLICT (tenant_id, sandbox, source, external_event_id) DO NOTHING
          RETURNING id`,
         [
           uuidv7(),
@@ -57,6 +57,7 @@ export class PgInboundEventsRepository extends InboundEventsRepository {
           row.amountMinor,
           row.currency,
           row.occurredAt,
+          row.sandbox,
         ],
       ),
     );
@@ -64,8 +65,9 @@ export class PgInboundEventsRepository extends InboundEventsRepository {
     // The conflicting row is committed (the insert waited for its transaction): read it back.
     const existing = rowsOf(
       await tx.query(
-        `SELECT id FROM inbound_events WHERE tenant_id = $1 AND source = $2 AND external_event_id = $3`,
-        [row.tenantId, row.source, row.externalEventId],
+        `SELECT id FROM inbound_events
+          WHERE tenant_id = $1 AND sandbox = $4 AND source = $2 AND external_event_id = $3`,
+        [row.tenantId, row.source, row.externalEventId, row.sandbox],
       ),
     );
     return { inserted: false, id: existing[0]!.id as string };

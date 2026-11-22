@@ -120,6 +120,7 @@ export class IngestionService {
       this.db.tenantTx(async (tx) => {
         const { inserted, id } = await this.inbound.insertIfAbsent(tx, {
           tenantId,
+          sandbox,
           source: e.source,
           externalEventId: e.external_event_id,
           externalPlayerHmac,

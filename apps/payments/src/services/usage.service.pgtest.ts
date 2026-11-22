@@ -1,4 +1,4 @@
-import { uuidv7, type EventEnvelope } from '@ex-mio/contracts';
+import { scopedKey, uuidv7, type EventEnvelope } from '@ex-mio/contracts';
 import {
   activateSubscription,
   newPlayer,
@@ -125,7 +125,7 @@ describe('INV-M4 the usage report sent to the provider twice is billed once', ()
     await h.as(t, () => h.usage.reportToProvider('2026-11'));
     expect(sent(t)).toHaveLength(1);
     expect(sent(t)[0]).toMatchObject({
-      idempotencyKey: `usage:${t}:2026-11`,
+      idempotencyKey: scopedKey({ kind: 'usage', tenantId: t, sandbox: false, parts: ['2026-11'] }),
       period: '2026-11',
       quantity: 1,
     });

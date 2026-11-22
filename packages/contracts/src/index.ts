@@ -7,6 +7,7 @@ export * from './ids';
 export * from './ingest';
 export * from './payments';
 export * from './realtime';
+export * from './scoped-key';
 export * from './store';
 export * from './telemetry';
 export * from './web-api';

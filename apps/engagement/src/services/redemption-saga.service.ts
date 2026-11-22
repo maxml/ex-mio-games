@@ -1,8 +1,9 @@
-import type {
-  IssueResult,
-  ResolvedRewardPort,
-  RewardRequest,
-  RewardStatus,
+import {
+  scopedKey,
+  type IssueResult,
+  type ResolvedRewardPort,
+  type RewardRequest,
+  type RewardStatus,
 } from '@ex-mio/contracts';
 import { rewardOfOrder } from '../redemptions/reward-request';
 import {
@@ -32,7 +33,11 @@ import {
 /** Consumer name of the inbox rows written by `onCasinoReport`. */
 export const SAGA_CONSUMER = 'engagement.redemption-saga';
 
-const keyOf = (id: string): string => `redeem:${id}`;
+/** D-26: every idempotency key of an order carries its tenant and environment (INV-ENV-KEYS). */
+const orderKey = (
+  kind: 'redeem' | 'hold' | 'capture' | 'release' | 'refund',
+  r: Pick<RedemptionRecord, 'id' | 'tenantId' | 'sandbox'>,
+): string => scopedKey({ kind, tenantId: r.tenantId, sandbox: r.sandbox, parts: [r.id] });
 
 /** End states of an order: the reward was issued, or the coins are back, or were never held. */
 const RESOLVED_STATES: ReadonlySet<string> = new Set([
@@ -97,7 +102,10 @@ export class RedemptionSagaService implements RedemptionSaga {
     const now = this.deps.clock.now();
     let reply: CoinsReply;
     try {
-      reply = await this.deps.coins.reserve({ ...this.call(r), amount: r.price }, `hold:${r.id}`);
+      reply = await this.deps.coins.reserve(
+        { ...this.call(r), amount: r.price },
+        orderKey('hold', r),
+      );
     } catch {
       // Timeout or transport: the outcome is unknown, the SAME call is repeated later.
       if (!inline)
@@ -289,7 +297,7 @@ export class RedemptionSagaService implements RedemptionSaga {
   ): Promise<void> {
     let result: IssueResult;
     try {
-      result = await resolved.port.issueReward(request, keyOf(r.id));
+      result = await resolved.port.issueReward(request, orderKey('redeem', r));
     } catch {
       result = { kind: 'unknown' };
     }
@@ -426,7 +434,7 @@ export class RedemptionSagaService implements RedemptionSaga {
     request: RewardRequest,
   ): Promise<RewardStatus> {
     try {
-      return await resolved.port.getRewardStatus(keyOf(r.id), request);
+      return await resolved.port.getRewardStatus(orderKey('redeem', r), request);
     } catch {
       return { kind: 'unknown' }; // a lookup that fails is never a decision
     }
@@ -438,7 +446,7 @@ export class RedemptionSagaService implements RedemptionSaga {
   private async capture(r: RedemptionRecord, now: Date): Promise<boolean> {
     let reply: CoinsReply;
     try {
-      reply = await this.deps.coins.capture(this.call(r), `capture:${r.id}`);
+      reply = await this.deps.coins.capture(this.call(r), orderKey('capture', r));
     } catch {
       await this.deps.store.reschedule(
         r.tenantId,
@@ -481,7 +489,7 @@ export class RedemptionSagaService implements RedemptionSaga {
     if (r.state !== 'REJECTED') return false;
     let reply: CoinsReply;
     try {
-      reply = await this.deps.coins.release(this.call(r), `release:${r.id}`);
+      reply = await this.deps.coins.release(this.call(r), orderKey('release', r));
     } catch {
       await this.deps.store.reschedule(
         r.tenantId,
@@ -579,7 +587,7 @@ export class RedemptionSagaService implements RedemptionSaga {
     r: RedemptionRecord,
     dedupe: { consumer: string; eventId: string },
   ): Promise<void> {
-    const reply = await this.deps.coins.refund(this.call(r), `refund:${r.id}`);
+    const reply = await this.deps.coins.refund(this.call(r), orderKey('refund', r));
     if (reply.ok) {
       await this.apply(r, {
         expectFrom: ['COMPLETED'],

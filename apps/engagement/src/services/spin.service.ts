@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import {
   ConflictException,
   Inject,
@@ -8,7 +9,7 @@ import {
 } from '@nestjs/common';
 import {
   createEvent,
-  uuidv7,
+  scopedKey,
   type MySpinsResponse,
   type PublicWheel,
   type SpinConflictBody,
@@ -38,6 +39,15 @@ const IN_PROGRESS = (): ConflictException =>
   });
 
 const UNIQUE_VIOLATION = '23505';
+
+/** A stable UUID (version 8 layout) derived from an environment-scoped key. */
+const uuidFromKey = (key: string): string => {
+  const b = createHash('sha256').update(key).digest().subarray(0, 16);
+  b[6] = ((b[6] ?? 0) & 0x0f) | 0x80;
+  b[8] = ((b[8] ?? 0) & 0x3f) | 0x80;
+  const hex = b.toString('hex');
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
+};
 
 export interface SpinInput {
   idempotencyKey: string;
@@ -75,7 +85,14 @@ export class SpinService {
 
   async spin(input: SpinInput): Promise<SpinResponse> {
     const { tenantId, userId } = this.caller();
-    const flightKey = `${tenantId}|${userId}|${input.idempotencyKey}`;
+    // D-26: the environment is in every key (the token's `sbx` claim, never a request value).
+    const sandbox = input.sandbox === true;
+    const flightKey = scopedKey({
+      kind: 'flight',
+      tenantId,
+      sandbox,
+      parts: [userId, input.idempotencyKey],
+    });
     if (this.inFlight.has(flightKey)) throw IN_PROGRESS();
     this.inFlight.add(flightKey);
     try {
@@ -95,10 +112,15 @@ export class SpinService {
     userId: string,
     input: SpinInput,
   ): Promise<SpinResponse> {
-    const existing = await this.spins.findByOperation(tx, {
-      userId,
-      operationId: input.idempotencyKey,
+    // The stored operation id is the environment-scoped key; the spin id is derived from it, so
+    // (tenant_id, id) is the dedupe key and a sandbox and a production request never collide (D-26).
+    const operationId = scopedKey({
+      kind: 'spin',
+      tenantId,
+      sandbox: input.sandbox === true,
+      parts: [userId, input.idempotencyKey],
     });
+    const existing = await this.spins.findByOperation(tx, { userId, operationId });
     if (existing) {
       // The same key with another credit_id is a different request: refused, nothing changes.
       if (input.creditId !== undefined && input.creditId !== existing.creditId) {
@@ -130,7 +152,7 @@ export class SpinService {
     const table = await this.wheels.activeTable(tx, credit.wheelId);
     if (!table) throw new Error('no reward table for the credit wheel');
     const { version: seedVersion, seed } = this.seeds.current(tenantId);
-    const spinId = uuidv7();
+    const spinId = uuidFromKey(operationId);
     const picked = selectSegment({ seed, seedVersion, spinId, table });
     const rewardCoins = picked.segment.reward.type === 'coins' ? picked.segment.reward.amount : 0;
 
@@ -138,7 +160,7 @@ export class SpinService {
       id: spinId,
       userId,
       creditId: credit.id,
-      operationId: input.idempotencyKey,
+      operationId,
       seedVersion: picked.seedVersion,
       tableVersion: picked.tableVersion,
       hmac: picked.hmac,

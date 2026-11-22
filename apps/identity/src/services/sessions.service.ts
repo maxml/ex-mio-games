@@ -26,7 +26,7 @@ import {
   type TokenResponse,
   type Role,
 } from '@ex-mio/contracts';
-import { createTokenVerifier, TokenRejectedError } from '@ex-mio/service-kit';
+import { AuthorizationRefused, createTokenVerifier, TokenRejectedError } from '@ex-mio/service-kit';
 import { IdentityError, ProviderError, UniqueViolationError } from '../errors';
 import type { Clock, Repos, SigningKeyRow, UnitOfWork } from '../model/ports';
 import type { Subject } from './access.service';
@@ -203,7 +203,10 @@ export class SessionsService {
     const isAdmin =
       subject.roles.includes('platform_admin') && subject.tenantId === PLATFORM_TENANT_ID;
     if (!isAdmin || subject.acting) {
-      throw new IdentityError('ACTING_FORBIDDEN', 'acting sessions are for the platform admin');
+      throw new AuthorizationRefused({
+        code: 'ACTING_FORBIDDEN',
+        message: 'acting sessions are for the platform admin',
+      });
     }
   }
 
@@ -251,7 +254,10 @@ export class SessionsService {
    */
   issueRealtimeTicket(subject: Subject): RealtimeTicketResponse {
     if (subject.acting) {
-      throw new IdentityError('ACTING_FORBIDDEN', 'an acting session cannot open a socket');
+      throw new AuthorizationRefused({
+        code: 'ACTING_FORBIDDEN',
+        message: 'an acting session cannot open a socket',
+      });
     }
     const t = this.issueUserToken({
       sub: subject.userId,
@@ -294,7 +300,7 @@ export class SessionsService {
     try {
       // the jti row is the consumption record; its expiry is the ticket's
       await this.uow.run(tid, (tx) =>
-        this.repos.jti.insert(tx, tid, `rt:${claims.jti}`, claims.exp),
+        this.repos.jti.insert(tx, tid, `rt:${claims.jti}`, claims.exp, claims.sbx === true),
       );
     } catch (err) {
       if (err instanceof UniqueViolationError) {

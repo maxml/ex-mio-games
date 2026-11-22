@@ -188,7 +188,7 @@ export function pgRepos(): Repos {
         link(tx, `"tenant_id" = $1 ORDER BY "created_at", "user_id"`, [tenantId]),
     },
     jti: {
-      async insert(tx, tenantId, jti, expiresAt) {
+      async insert(tx, tenantId, jti, expiresAt, sandbox) {
         // expired nonces can never be replayed (the token itself is expired): drop them as we go
         await m(tx).query(
           `DELETE FROM "launch_jti" WHERE "tenant_id" = $1 AND "expires_at" < now() - interval '1 hour'`,
@@ -196,8 +196,8 @@ export function pgRepos(): Repos {
         );
         await guarded('jti', () =>
           m(tx).query(
-            `INSERT INTO "launch_jti" ("tenant_id","jti","expires_at") VALUES ($1,$2,$3)`,
-            [tenantId, jti, ts(expiresAt)],
+            `INSERT INTO "launch_jti" ("tenant_id","jti","expires_at","sandbox") VALUES ($1,$2,$3,$4)`,
+            [tenantId, jti, ts(expiresAt), sandbox],
           ),
         );
       },

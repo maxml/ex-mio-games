@@ -14,7 +14,8 @@ import {
   SetMetadata,
 } from '@nestjs/common';
 import { APP_GUARD, APP_INTERCEPTOR, ModuleRef, Reflector } from '@nestjs/core';
-import { Observable } from 'rxjs';
+import { Observable, tap } from 'rxjs';
+import { AuthorizationRefused } from './authorization-refused';
 import {
   createEvent,
   INTERNAL_PATH_PREFIX,
@@ -415,7 +416,8 @@ export class ServiceAuthGuard implements CanActivate {
     }
 
     if (method) {
-      const refused = refusal !== undefined;
+      // D-26: only an authorization refusal is `refused`; the malformed-tenant 400 is validation.
+      const refused = refusal !== undefined && refusal.getStatus() === 403;
       const event = createEvent({
         type: 'audit.service_call',
         tenantId: eventTenant,
@@ -430,7 +432,7 @@ export class ServiceAuthGuard implements CanActivate {
           occurred_at: new Date(this.rt.now() * 1000).toISOString(),
         },
       });
-      if (refused) await this.writeFinal(event);
+      if (refusal) await this.writeFinal(event);
       else await this.write(event, req, reply);
     }
     if (refusal) throw refusal;
@@ -504,6 +506,7 @@ export class ServiceAuthGuard implements CanActivate {
 }
 
 const HANDLER_STARTED = Symbol.for('ex-mio:handler-started');
+const AUTHORIZATION_REFUSED = Symbol.for('ex-mio:authorization-refused');
 
 /**
  * D-24 / INV-STACK-8: the audit decision is the guards' authorization outcome, not the HTTP outcome.
@@ -513,8 +516,10 @@ const HANDLER_STARTED = Symbol.for('ex-mio:handler-started');
  * own 403, 404, 409 or 500 is still an `allowed` call and the event carries the real status.
  */
 export function auditDecision(req: object, status: number): 'allowed' | 'refused' {
-  const handlerStarted = (req as Record<symbol, boolean | undefined>)[HANDLER_STARTED] === true;
-  return !handlerStarted && status >= 400 ? 'refused' : 'allowed';
+  const marks = req as Record<symbol, boolean | undefined>;
+  // D-26 INV-AUD: a typed AuthorizationRefused thrown inside the handler is a refusal too.
+  if (marks[AUTHORIZATION_REFUSED] === true) return 'refused';
+  return marks[HANDLER_STARTED] !== true && status >= 400 ? 'refused' : 'allowed';
 }
 
 function auditMethod(method: string): 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE' | undefined {
@@ -551,16 +556,27 @@ export class ServiceAuthInterceptor implements NestInterceptor {
     const req = context.switchToHttp().getRequest<object>();
     // Interceptors run after every guard: reaching this point means no guard refused (D-24).
     (req as Record<symbol, boolean>)[HANDLER_STARTED] = true;
+    // The interceptor sees the handler's error before any exception filter rewrites the response.
+    const handle = (): Observable<unknown> =>
+      next.handle().pipe(
+        tap({
+          error: (err: unknown) => {
+            if (err instanceof AuthorizationRefused) {
+              (req as Record<symbol, boolean>)[AUTHORIZATION_REFUSED] = true;
+            }
+          },
+        }),
+      );
     const auth = authOf(req);
-    if (!auth) return next.handle();
+    if (!auth) return handle();
     const tenant = (req as Record<symbol, TenantContext | undefined>)[
       Symbol.for('ex-mio:tenant-context')
     ];
     return new Observable((subscriber) =>
       authStorage.run(auth, () =>
         tenant
-          ? runWithTenant(tenant, () => next.handle().subscribe(subscriber))
-          : next.handle().subscribe(subscriber),
+          ? runWithTenant(tenant, () => handle().subscribe(subscriber))
+          : handle().subscribe(subscriber),
       ),
     );
   }

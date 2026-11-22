@@ -1,4 +1,10 @@
-import { createEvent, uuidv7, type EventEnvelope, type RedemptionState } from '@ex-mio/contracts';
+import {
+  createEvent,
+  scopedKey,
+  uuidv7,
+  type EventEnvelope,
+  type RedemptionState,
+} from '@ex-mio/contracts';
 import { Db, type Tx } from '@ex-mio/service-kit';
 import { runWithTenant } from '@ex-mio/tenancy';
 import {
@@ -186,9 +192,12 @@ export class PgRedemptionStore implements RedemptionStore {
     return this.inTenant(scope.tenantId, async (tx) => {
       // Same (tenant, player, key) calls queue here, so the loser sees the winner's committed row.
       await tx.query(`SELECT pg_advisory_xact_lock(hashtextextended($1, 0))`, [
-        ['order', scope.tenantId, scope.playerId, String(scope.sandbox), input.operationKey].join(
-          '\u001f',
-        ),
+        scopedKey({
+          kind: 'order',
+          tenantId: scope.tenantId,
+          sandbox: scope.sandbox,
+          parts: [scope.playerId, input.operationKey],
+        }),
       ]);
       const existing: { id: string; item_id: string }[] = await tx.query(
         `SELECT "id", "item_id" FROM "redemptions"
@@ -221,26 +230,29 @@ export class PgRedemptionStore implements RedemptionStore {
 
       // The per-player counter, then the stock: both conditional single statements, so the check
       // and the change cannot be separated by another transaction (never below zero).
-      const counted = await affected(
-        tx,
-        `INSERT INTO "item_player_usage" ("tenant_id", "item_id", "player_id", "used")
-         VALUES ($1, $2, $3, 1)
-         ON CONFLICT ("tenant_id", "item_id", "player_id") DO UPDATE
-           SET "used" = "item_player_usage"."used" + 1
-           WHERE (SELECT "per_player_limit" FROM "store_items" WHERE "id" = $2) IS NULL
-              OR "item_player_usage"."used" <
-                 (SELECT "per_player_limit" FROM "store_items" WHERE "id" = $2)`,
-        [scope.tenantId, item.id, scope.playerId],
-      );
-      if (counted === 0) throw new StoreRejection('limit_reached');
-      const taken = await affected(
-        tx,
-        `UPDATE "store_items"
-           SET "stock" = CASE WHEN "stock" IS NULL THEN NULL ELSE "stock" - 1 END
-         WHERE "id" = $1 AND ("stock" IS NULL OR "stock" > 0)`,
-        [item.id],
-      );
-      if (taken === 0) throw new StoreRejection('out_of_stock');
+      // D-28: a sandbox order skips both. Stock and the per-player limit are production-only.
+      if (!scope.sandbox) {
+        const counted = await affected(
+          tx,
+          `INSERT INTO "item_player_usage" ("tenant_id", "item_id", "player_id", "sandbox", "used")
+           VALUES ($1, $2, $3, false, 1)
+           ON CONFLICT ("tenant_id", "item_id", "player_id", "sandbox") DO UPDATE
+             SET "used" = "item_player_usage"."used" + 1
+             WHERE (SELECT "per_player_limit" FROM "store_items" WHERE "id" = $2) IS NULL
+                OR "item_player_usage"."used" <
+                   (SELECT "per_player_limit" FROM "store_items" WHERE "id" = $2)`,
+          [scope.tenantId, item.id, scope.playerId],
+        );
+        if (counted === 0) throw new StoreRejection('limit_reached');
+        const taken = await affected(
+          tx,
+          `UPDATE "store_items"
+             SET "stock" = CASE WHEN "stock" IS NULL THEN NULL ELSE "stock" - 1 END
+           WHERE "id" = $1 AND ("stock" IS NULL OR "stock" > 0)`,
+          [item.id],
+        );
+        if (taken === 0) throw new StoreRejection('out_of_stock');
+      }
 
       const at = this.clock.now();
       const id = uuidv7();
@@ -399,10 +411,10 @@ export class PgRedemptionStore implements RedemptionStore {
         [tenantId, rec.id, from, change.to, change.cause, at],
       );
       // Same lock order as placeOrder (the player's counter, then the stock): no deadlock between them.
-      if (restoreStock) {
+      if (restoreStock && !rec.sandbox) {
         await tx.query(
           `UPDATE "item_player_usage" SET "used" = GREATEST(0, "used" - 1)
-           WHERE "tenant_id" = $1 AND "item_id" = $2 AND "player_id" = $3`,
+           WHERE "tenant_id" = $1 AND "item_id" = $2 AND "player_id" = $3 AND "sandbox" = false`,
           [tenantId, rec.itemId, rec.playerId],
         );
         await tx.query(

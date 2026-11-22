@@ -91,7 +91,13 @@ export class LaunchService {
 
     try {
       await this.uow.run(tenantId, (tx) =>
-        this.repos.jti.insert(tx, tenantId, claims.jti, claims.exp),
+        this.repos.jti.insert(
+          tx,
+          tenantId,
+          claims.jti,
+          claims.exp,
+          key.row.environment === 'sandbox',
+        ),
       );
     } catch (err) {
       if (err instanceof UniqueViolationError) {
