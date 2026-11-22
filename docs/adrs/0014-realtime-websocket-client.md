@@ -43,14 +43,12 @@ exactly the moments that matter.
   scope for now.
 - **Next:** the authenticated journal replay (epoch, journal id) for missed events, and the Redis adapter.
 
-## Options considered
+## Considered options
 
-### One shared socket with backoff (chosen)
+1. Polling over REST. Stateless on the server and simple, but it wastes load between events and adds up to one interval of latency to a wheel result.
+2. Server-sent events. Stateless and works through proxies, but the channel is one-way and the browser's built-in reconnect has no backoff cap or ticket refresh.
+3. One shared socket.io client per tab with reconnect, exponential backoff with jitter, and a one-time handshake ticket. Pushes events as they happen and heals after an outage. Needs a gateway, and events missed while offline need a refetch.
 
-- Good, because it is the simplest thing that survives outages.
-- Bad, because missed events need a refetch.
+## Decision outcome
 
-### Server-sent events or polling
-
-- Good, because they are stateless on the server.
-- Bad, because polling wastes load and adds latency, and SSE is one-way.
+Option 3, because it gives the player the result without a reload and survives outages without a tight retry loop, while the one-time ticket keeps the long-lived token out of the browser. The cost is a stateful gateway in `engagement` and no replay of missed events: the client refetches over REST after it reconnects.

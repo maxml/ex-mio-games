@@ -26,7 +26,7 @@ Each service needs a typed data layer on Postgres, with migrations. The architec
 
 ## Decision outcome
 
-TypeORM. Entities and repositories form the model layer; controllers validate input with zod and hold the request-level checks; services hold application logic only.
+Option 1, TypeORM, because the owner chose it, it integrates with NestJS first class, and it leaves raw SQL easy for RLS, triggers and conditional updates, which carry the real guarantees. Prisma would add a schema language and a generated client that sit awkwardly beside hand-written RLS migrations; a bare query builder would mean writing the model layer ourselves. Entities and repositories form the model layer; controllers validate input with zod and hold the request-level checks; services hold application logic only.
 
 - RLS policies, triggers, roles and grants are written as SQL migrations, not inferred from entities.
 - Every transaction that touches tenant data runs `SET LOCAL app.tenant_id` through one helper, so the context cannot be forgotten at a call site.

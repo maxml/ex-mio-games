@@ -22,6 +22,18 @@ scaffold Definition of Done so every feature is added the same way.
 Version constraints (Next 14 / React 18 / Tailwind 3.4) are inherited from the
 monorepo baseline; this ADR is about _architecture_, not version policy.
 
+## Considered options
+
+1. A flat Next.js app: feature folders under `app/` and a shared `components/`, with no layer rules. Cheapest to start, but the import graph tangles after a few features and nothing enforces direction.
+2. Atomic Design only (atoms, molecules, organisms). It orders UI components but says nothing about features, server state or imports between features, so it covers one layer of the problem.
+3. Bulletproof React (`features/` with ESLint boundaries). The mainstream feature-based baseline, with fewer layers than FSD and weaker rules for entities and screens.
+4. Feature-Sliced Design with enforced boundaries (ESLint `import/no-restricted-paths` and Steiger). Downward-only imports through each slice's Public API; hooks serve as the view model.
+5. Full Clean Architecture or MVVM. Rejected: presenters and two-way binding conflict with React's one-way flow, and a heavy domain layer is overkill for most features.
+
+## Decision outcome
+
+Option 4, pragmatic Feature-Sliced Design, because it is the only option that keeps the structure disciplined as features are added and has linters that fail the build when a boundary is crossed. From Clean Architecture it keeps only the dependency rule and a thin `model` segment. Atomic Design is used inside `shared/ui` only. The cost is the highest onboarding curve of the options, which the linters and a short ramp-up offset.
+
 ## 2. Decision (TL;DR)
 
 | Aspect                       | Decision                                                                        | Section |
@@ -171,18 +183,6 @@ without changing the skeleton:
   drift.
 - **Cost:** FSD has the highest onboarding curve of the mainstream options —
   it needs the linters as guardrails and a short team ramp-up.
-
-## Options considered
-
-- **Bulletproof React** (`features/` + ESLint boundaries) — the mainstream
-  feature-based baseline; FSD is its stricter, layered generalization.
-- **MVP / MVVM** — rejected/not formalized: imperative presenters and two-way
-  binding conflict with React's declarative, unidirectional flow (hooks already
-  serve as the ViewModel).
-- **Full Clean Architecture** — overkill for most features; only the dependency
-  rule and a thin extracted domain are worth keeping.
-- **Atomic Design** — a UI-layer taxonomy only; combined here at the `shared/ui`
-  level, not used as the whole architecture.
 
 ## References
 
