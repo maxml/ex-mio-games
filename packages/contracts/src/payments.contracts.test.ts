@@ -104,10 +104,11 @@ describe('payments contracts', () => {
     const e = createEvent({
       type: 'engagement.spin.completed',
       tenantId: U,
+      sandbox: false,
       payload: { spin_id: U, player_id: U, reward_coins: 5, table_version: 3 },
     });
     expect(parseEvent({ ...e, sandbox: true }).sandbox).toBe(true);
-    expect(parseEvent(e).sandbox).toBeUndefined();
+    expect(parseEvent(e).sandbox).toBe(false);
   });
 
   it('accepts the upper bound and rejects another currency', () => {

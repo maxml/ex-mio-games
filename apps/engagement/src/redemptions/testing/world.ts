@@ -196,17 +196,26 @@ export class FakePayments implements CoinsPort {
     return w;
   }
 
-  credit(player: string, amount: number, sandbox = false): void {
+  /** INV-ENV-INPUT: the environment is always stated. `credit`/`bal`/`total` name the PRODUCTION wallet; the `...In` forms take it as a required argument. */
+  creditIn(player: string, amount: number, sandbox: boolean): void {
     this.wallet(player, sandbox).available += amount;
   }
 
-  bal(player: string, sandbox = false) {
+  credit(player: string, amount: number): void {
+    this.creditIn(player, amount, false);
+  }
+
+  balIn(player: string, sandbox: boolean) {
     return this.wallet(player, sandbox);
   }
 
+  bal(player: string) {
+    return this.balIn(player, false);
+  }
+
   /** available + held + captured: what must stay equal to what was credited. */
-  total(player: string, sandbox = false): number {
-    const b = this.bal(player, sandbox);
+  total(player: string): number {
+    const b = this.bal(player);
     return b.available + b.held + b.captured;
   }
 
@@ -572,7 +581,7 @@ export class World<S extends RedemptionSaga> {
       reservation: r.reservation,
       effects: this.effects,
       holdState: this.payments.holdState(id),
-      balance: structuredClone(this.payments.bal(r.playerId, r.sandbox)),
+      balance: structuredClone(this.payments.balIn(r.playerId, r.sandbox)),
     };
   }
 }

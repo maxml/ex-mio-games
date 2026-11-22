@@ -250,7 +250,7 @@ for X in A B; do
   expect_jq '.status=="active"'
 
   heading "Casino $X integration credentials (key id, API key, HMAC secret shown once)"
-  call POST "$IDN/v1/credentials" -H 'content-type: application/json' -H "$(auth "${TOK_ID[$X]}")" -d "$(jq -nc --arg p "${PLAT[$X]}" '{platform:$p}')"
+  call POST "$IDN/v1/credentials" -H 'content-type: application/json' -H "$(auth "${TOK_ID[$X]}")" -d "$(jq -nc --arg p "${PLAT[$X]}" '{platform:$p,environment:"production"}')"
   expect_status 201
   expect_jq '(.key_id|length)>0 and (.hmac_secret|length)>0 and (.api_key|length)>0'
   KEY_ID[$X]="$(jqr .key_id)"

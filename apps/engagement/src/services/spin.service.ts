@@ -52,8 +52,8 @@ const uuidFromKey = (key: string): string => {
 export interface SpinInput {
   idempotencyKey: string;
   creditId?: string;
-  /** From the verified token's `sbx` claim (the controller); never from a body or a header. */
-  sandbox?: boolean;
+  /** From the verified token's `sbx` claim (the controller); never from a body or a header. Required. */
+  sandbox: boolean;
 }
 
 const toResponse = (s: SpinRecord): SpinResponse => ({
@@ -86,7 +86,7 @@ export class SpinService {
   async spin(input: SpinInput): Promise<SpinResponse> {
     const { tenantId, userId } = this.caller();
     // D-26: the environment is in every key (the token's `sbx` claim, never a request value).
-    const sandbox = input.sandbox === true;
+    const sandbox = input.sandbox;
     const flightKey = scopedKey({
       kind: 'flight',
       tenantId,
@@ -117,7 +117,7 @@ export class SpinService {
     const operationId = scopedKey({
       kind: 'spin',
       tenantId,
-      sandbox: input.sandbox === true,
+      sandbox: input.sandbox,
       parts: [userId, input.idempotencyKey],
     });
     const existing = await this.spins.findByOperation(tx, { userId, operationId });
@@ -130,7 +130,7 @@ export class SpinService {
     }
 
     // Credits are per environment, like wallets (D-13): a sandbox token spends only sandbox credits.
-    const sandboxToken = input.sandbox === true;
+    const sandboxToken = input.sandbox;
     const credit = await this.credits.consume(tx, {
       userId,
       sandbox: sandboxToken,
@@ -172,14 +172,14 @@ export class SpinService {
     // X-3 / D-13: a spin is a sandbox spin when the token came through a sandbox credential or the
     // credit itself was granted from a sandbox deposit. Payments then credits the sandbox wallet and
     // meters nothing (X-2). The flag is on the envelope, never in the payload.
-    const sandbox = input.sandbox === true || credit.sandbox === true;
+    const sandbox = input.sandbox || credit.sandbox;
     // Also for a `nothing` segment (0 coins): payments and metering key on the spin.
     await this.db.publish(
       tx,
       createEvent({
         type: 'engagement.spin.completed',
         tenantId,
-        ...(sandbox ? { sandbox: true } : {}),
+        sandbox,
         payload: {
           spin_id: spinId,
           player_id: userId,
@@ -189,7 +189,7 @@ export class SpinService {
       }),
     );
     // After the commit: the spin happened, with its reward and the environment it ran in.
-    emitPlayerEventAfterCommit(tx, tenantId, userId, {
+    emitPlayerEventAfterCommit(tx, tenantId, userId, sandbox, {
       event: 'engagement.spin_completed',
       props: { reward_coins: rewardCoins, sandbox },
     });
@@ -201,7 +201,7 @@ export class SpinService {
     const { userId } = this.caller();
     // Credits are per environment (D-13): the verified token's `sbx` claim picks which are counted.
     // `currentAuth()` throws without an auth context: fail closed, never default to production.
-    const sandbox = currentAuth().sandbox === true;
+    const sandbox = currentAuth().sandbox;
     const available = await this.db.tenantTx((tx) =>
       this.credits.countAvailable(tx, { userId, sandbox }),
     );

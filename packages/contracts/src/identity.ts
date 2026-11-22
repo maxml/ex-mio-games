@@ -445,11 +445,11 @@ export const StartActingRequest = z
   .strict();
 export type StartActingRequest = z.infer<typeof StartActingRequest>;
 
-/** F6: the platform is required; the environment defaults to production and is never a client flag on a launch. */
+/** F6/F12/D-30: the platform and the environment are both required; there is no production default. */
 export const IssueCredentialRequest = z
   .object({
     platform: z.string().trim().min(1).max(64),
-    environment: IntegrationEnvironment.default('production'),
+    environment: IntegrationEnvironment,
   })
   .strict();
 export type IssueCredentialRequest = z.infer<typeof IssueCredentialRequest>;
@@ -466,7 +466,7 @@ export const CasinoParam = z
   .regex(/^[a-z0-9][a-z0-9-]{0,63}$/);
 export const PutRewardApiRequest = z
   .object({
-    environment: IntegrationEnvironment.default('production'),
+    environment: IntegrationEnvironment,
     base_url: z
       .string()
       .url()
@@ -521,7 +521,13 @@ export type RealtimeTicketRedeemRequest = z.infer<typeof RealtimeTicketRedeemReq
 
 /** What `SessionsService.redeemRealtimeTicket` returns: the principal of a ticket, once (D-23). */
 export const RealtimeTicketRedeemResponse = z
-  .object({ sub: Uuid, tid: Uuid, roles: z.array(Role).min(1) })
+  .object({
+    sub: Uuid,
+    tid: Uuid,
+    roles: z.array(Role).min(1),
+    /** D-30, F8: the environment of the launch token the ticket came from; realtime is per environment. */
+    sandbox: z.boolean(),
+  })
   .strict();
 export type RealtimeTicketRedeemResponse = z.infer<typeof RealtimeTicketRedeemResponse>;
 

@@ -31,14 +31,12 @@ export class BalanceService {
   ) {}
 
   /**
-   * The player's balance in ONE environment (default production). The environment comes from the
-   * token claim at the controller, never from a request value; a production read cannot see a
+   * The player's balance in ONE environment, a required argument (INV-ENV-INPUT: no default). The
+   * environment comes from the token claim at the controller (or the required query of the
+   * service-only route), never from a user-supplied value; a production read cannot see a
    * sandbox wallet and the other way round (X-2).
    */
-  async readByPlayer(
-    playerId: string,
-    opts: { sandbox: boolean } = { sandbox: false },
-  ): Promise<WalletBalance> {
+  async readByPlayer(playerId: string, opts: { sandbox: boolean }): Promise<WalletBalance> {
     const { tenantId } = currentTenant();
     const walletId = await this.db.tenantTx(async (tx) => {
       const wallet = await this.repo.walletByPlayer(tx, tenantId, playerId, opts.sandbox);
@@ -62,7 +60,7 @@ export class BalanceService {
     const walletId =
       payload.wallet_id ??
       (payload.player_id
-        ? await this.walletOfPlayer(event.tenant_id, payload.player_id, event.sandbox === true)
+        ? await this.walletOfPlayer(event.tenant_id, payload.player_id, event.sandbox)
         : null);
     if (!walletId) return;
     try {

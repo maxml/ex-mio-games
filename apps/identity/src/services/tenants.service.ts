@@ -97,6 +97,7 @@ export class TenantsService {
       createEvent({
         type: 'identity.tenant.created',
         tenantId: row.id,
+        sandbox: false, // a tenant is not environment scoped; not a sandbox effect
         payload: { name: row.name, slug: row.slug },
       }),
     );

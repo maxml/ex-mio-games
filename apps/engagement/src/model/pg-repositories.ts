@@ -35,7 +35,7 @@ const toCredit = (r: Row): SpinCredit => ({
   userId: r.user_id as string,
   wheelId: r.wheel_id as string,
   status: r.status as 'available' | 'used',
-  ...(r.sandbox === true ? { sandbox: true } : {}),
+  sandbox: r.sandbox === true,
 });
 
 @Injectable()

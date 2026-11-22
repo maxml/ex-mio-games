@@ -58,4 +58,4 @@ export function macMatches(given: string, expected: string): boolean {
 }
 
 export const sandboxMismatch = (config: AdapterConfig, requestSandbox: boolean): boolean =>
-  (config.sandbox ?? false) !== requestSandbox;
+  config.sandbox !== requestSandbox;

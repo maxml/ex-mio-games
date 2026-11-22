@@ -54,7 +54,7 @@ export class SpinController {
       idempotencyKey: idempotencyKey.data,
       ...(request.credit_id !== undefined ? { creditId: request.credit_id } : {}),
       // X-3 / D-13: the environment is the verified token's `sbx` claim (AuthContext.sandbox); never a body or a header.
-      ...(currentAuth().sandbox === true ? { sandbox: true } : {}),
+      sandbox: currentAuth().sandbox,
     });
     return SpinResponse.parse(result);
   }

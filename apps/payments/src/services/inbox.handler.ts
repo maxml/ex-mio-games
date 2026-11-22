@@ -59,7 +59,7 @@ export class PaymentsInboxHandler {
         playerId: spin.player_id,
         amount: spin.reward_coins,
         // The producer's flag from the envelope only (X-3): a sandbox spin credits the sandbox wallet.
-        sandbox: event.sandbox === true,
+        sandbox: event.sandbox,
       });
     }
     await this.usage.handle(tx, event);

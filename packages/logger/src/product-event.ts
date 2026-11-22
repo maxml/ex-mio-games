@@ -74,7 +74,8 @@ export interface ProductAuth {
   roles: readonly string[];
   acting?: { tenantId: string } | undefined;
   service?: string | undefined;
-  sandbox?: boolean | undefined;
+  /** INV-ENV-INPUT: required; the actor's environment (a boolean, as a Varta prop). */
+  sandbox: boolean;
 }
 
 /**

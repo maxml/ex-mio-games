@@ -13,8 +13,19 @@ function actorOf(tenantId: string): ProductAuth {
   const auth = tryCurrentAuth();
   if (auth) return auth;
   const principalId = tryTenantContext()?.principalId;
-  if (principalId) return { mode: 'user', tenantId, principalId, roles: ['operator_admin'] };
-  return { mode: 'service', tenantId, principalId: 'payments', roles: [], service: 'payments' };
+  // Payments events here are billing and operator events: production-only by D-13 (metering
+  // excludes sandbox), so the actor's environment is production, stated and not defaulted.
+  if (principalId) {
+    return { mode: 'user', tenantId, principalId, roles: ['operator_admin'], sandbox: false };
+  }
+  return {
+    mode: 'service',
+    tenantId,
+    principalId: 'payments',
+    roles: [],
+    service: 'payments',
+    sandbox: false,
+  };
 }
 
 /**

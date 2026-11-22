@@ -28,7 +28,7 @@ export function readPrincipal(_headers?: Record<string, unknown>): Principal {
   return {
     id: auth.principalId,
     roles: auth.roles,
-    sandbox: auth.sandbox === true,
+    sandbox: auth.sandbox,
     acting: auth.acting !== undefined,
   };
 }

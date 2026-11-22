@@ -106,8 +106,14 @@ export interface AuthContext {
   acting?: { tenantId: string; reason: string };
   /** Service mode: the calling service. */
   service?: string;
-  /** User mode: the token's `sbx` claim (X-3), the player's environment. Never read from a request value. */
-  sandbox?: boolean;
+  /**
+   * INV-ENV-INPUT: always present. User mode: the token's `sbx` claim (X-3), the player's
+   * environment; the verifier is the only constructor and never reads a request value. Service
+   * mode: a service token has no environment, so this is `false` and means "not environment
+   * scoped"; an environment-scoped service route names it in its own required request field
+   * (the internal balance read), never here.
+   */
+  sandbox: boolean;
 }
 
 const REQUEST_AUTH = Symbol.for('ex-mio:auth-context');
@@ -346,7 +352,7 @@ export class ServiceAuthGuard implements CanActivate {
       principalId: claims.sub,
       roles: claims.roles,
       ...(acting ? { acting } : {}),
-      ...(claims.sbx ? { sandbox: true } : {}),
+      sandbox: claims.sbx === true,
     };
     (req as unknown as Record<symbol, AuthContext>)[REQUEST_AUTH] = auth;
     setRequestTenant(req, { tenantId, principalId: claims.sub });
@@ -365,6 +371,7 @@ export class ServiceAuthGuard implements CanActivate {
     const event = createEvent({
       type: 'audit.acting_request',
       tenantId: acting.tenantId,
+      sandbox: claims.sbx === true,
       payload: {
         actor_user_id: claims.sub,
         actor_tenant_id: PLATFORM_TENANT_ID,
@@ -421,6 +428,7 @@ export class ServiceAuthGuard implements CanActivate {
       const event = createEvent({
         type: 'audit.service_call',
         tenantId: eventTenant,
+        sandbox: false, // an audit row of a service call is not environment scoped
         payload: {
           caller_service: caller as ServiceName,
           service: this.rt.audience,
@@ -444,6 +452,7 @@ export class ServiceAuthGuard implements CanActivate {
       principalId: `svc:${caller}`,
       roles: [],
       service: caller,
+      sandbox: false, // a service token has no environment (see AuthContext.sandbox)
     };
     (req as unknown as Record<symbol, AuthContext>)[REQUEST_AUTH] = auth;
     setRequestTenant(req, tenantId ? { tenantId, principalId: `svc:${caller}` } : undefined);

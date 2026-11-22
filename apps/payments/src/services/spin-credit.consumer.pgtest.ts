@@ -1,5 +1,12 @@
 import { createEvent, parseEvent, uuidv7 } from '@ex-mio/contracts';
-import { newPlayer, newTenant, openHarness, spinCompleted, type Harness } from '../testing/harness';
+import {
+  newPlayer,
+  newTenant,
+  openHarness,
+  spinCompleted,
+  spinCompletedIn,
+  type Harness,
+} from '../testing/harness';
 
 // Choke point: the payments inbox handler, reached through the REAL `InboxConsumer` (consumer name
 // `payments`, foundation `packages/bus/src/inbox.ts`) as the runtime role. Decision D-1: engagement
@@ -451,7 +458,7 @@ describe('X-2 a sandbox spin never credits the production wallet (D-15, D-13; re
   it('a new player with only a sandbox spin: delivered and acked, production shows and spends nothing', async () => {
     const t = newTenant();
     const p = newPlayer();
-    const d = await h.consume(spinCompleted(t, p, 50, { sandbox: true }));
+    const d = await h.consume(spinCompletedIn(true, t, p, 50));
     expect(d.outcome).toBe('applied'); // not lost, not dead-lettered
     expect(d.acked).toBe(true);
     expect(await productionAvailable(t, p)).toBe(0);
@@ -462,7 +469,7 @@ describe('X-2 a sandbox spin never credits the production wallet (D-15, D-13; re
     const t = newTenant();
     const p = newPlayer();
     await h.fund(t, p, 3);
-    await h.consume(spinCompleted(t, p, 50, { sandbox: true }));
+    await h.consume(spinCompletedIn(true, t, p, 50));
     expect(await productionAvailable(t, p)).toBe(3);
     await expect(reserveOf(t, p, 4)).rejects.toMatchObject({ code: 'insufficient_funds' });
     await expect(reserveOf(t, p, 3)).resolves.toMatchObject({ body: { amount: 3 } });
@@ -473,7 +480,7 @@ describe('X-2 a sandbox spin never credits the production wallet (D-15, D-13; re
   it('every event the sandbox credit publishes is marked sandbox by payments, the producer', async () => {
     const t = newTenant();
     const p = newPlayer();
-    await h.consume(spinCompleted(t, p, 50, { sandbox: true }));
+    await h.consume(spinCompletedIn(true, t, p, 50));
     const { rows } = await h.admin.query(`SELECT envelope FROM outbox WHERE tenant_id = $1`, [t]);
     for (const r of rows) expect(parseEvent(r.envelope).sandbox).toBe(true);
   });

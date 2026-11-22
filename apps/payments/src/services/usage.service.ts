@@ -37,7 +37,7 @@ export class UsageService {
 
   /** Meter one event inside the caller's transaction (the spin delivery's, or a test's). */
   async handle(tx: Tx, event: EventEnvelope): Promise<void> {
-    if (event.sandbox === true) return;
+    if (event.sandbox) return;
     const spin = SpinCompletedV1.parse(event.payload);
     // The business key is the spin, not the event: engagement may re-publish a spin under a new
     // event id, and the tenant must not be billed twice for it (INV-M6).

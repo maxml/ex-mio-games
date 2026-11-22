@@ -39,14 +39,14 @@ describe('event envelope: sandbox flag (D-13)', () => {
     payload: { name: 'A', slug: 'a' },
   } as const;
 
-  it('INV-ENV-SANDBOX: the producer can mark an envelope sandbox; absent means production', () => {
+  it('INV-ENV-SANDBOX: the producer states the environment of an envelope; it is never absent (D-29)', () => {
     const sandboxOf = (e: object) => (e as { sandbox?: boolean }).sandbox;
-    expect(sandboxOf(createEvent({ ...input, sandbox: true } as never))).toBe(true);
-    expect(sandboxOf(createEvent(input))).toBeUndefined();
+    expect(sandboxOf(createEvent({ ...input, sandbox: true }))).toBe(true);
+    expect(sandboxOf(createEvent({ ...input, sandbox: false }))).toBe(false);
   });
 
   it('INV-ENV-SANDBOX-TYPED: a non-boolean sandbox is not an envelope', () => {
-    const e = createEvent({ ...input, sandbox: true } as never);
+    const e = createEvent({ ...input, sandbox: true });
     expect(() => parseEvent({ ...e, sandbox: 'yes' })).toThrow(InvalidEventError);
   });
 });
@@ -56,6 +56,7 @@ describe('event envelope', () => {
     const e = createEvent({
       type: 'identity.tenant.created',
       tenantId: TENANT,
+      sandbox: false,
       payload: { name: 'Acme', slug: 'acme' },
     });
     expect(Object.keys(e).sort()).toEqual(
@@ -65,6 +66,7 @@ describe('event envelope', () => {
         'event_id',
         'occurred_at',
         'payload',
+        'sandbox',
         'tenant_id',
         'type',
         'version',
@@ -75,19 +77,18 @@ describe('event envelope', () => {
   });
 
   // FX-1/D-13. Mutation: drop `sandbox` from EventEnvelope (zod strips it) or write it when false.
-  it('FX-1: createEvent writes sandbox only when true; absent means production; parseEvent keeps it', () => {
+  it('FX-1: createEvent always writes sandbox (false for production); parseEvent keeps it', () => {
     const base = {
       type: 'identity.tenant.created',
       tenantId: TENANT,
       payload: { name: 'A', slug: 'ab' },
     } as const;
-    const prod = createEvent(base);
-    expect('sandbox' in prod).toBe(false);
-    expect('sandbox' in createEvent({ ...base, sandbox: false })).toBe(false);
+    const prod = createEvent({ ...base, sandbox: false });
+    expect(prod.sandbox).toBe(false);
     const sbx = createEvent({ ...base, sandbox: true });
     expect(sbx.sandbox).toBe(true);
     expect(parseEvent(JSON.parse(JSON.stringify(sbx))).sandbox).toBe(true);
-    expect(parseEvent(prod).sandbox).toBeUndefined();
+    expect(parseEvent(prod).sandbox).toBe(false);
     expect(() => parseEvent({ ...prod, sandbox: 'yes' })).toThrow(InvalidEventError);
   });
 

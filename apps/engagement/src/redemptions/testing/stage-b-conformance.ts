@@ -15,7 +15,8 @@ const uuidOfLabel = (label: string): string => {
   return `0190a1b2-c3d4-7e5f-8a6b-${hex}`;
 };
 
-const scopeOf = (h: StoreHarness, playerId: string, sandbox = false): Scope => ({
+/** INV-ENV-INPUT: the environment is a required argument, never defaulted. */
+const scopeOf = (h: StoreHarness, playerId: string, sandbox: boolean): Scope => ({
   tenantId: h.tenantId,
   playerId: uuidOfLabel(playerId),
   sandbox,
@@ -72,8 +73,9 @@ export function stageBConformance(label: string, pair: PairSetup): void {
       const [a, b] = await pair();
       const placeOn = async (h: StoreHarness) => {
         const itemId = await h.addItem({ price: 10, stock: null, perPlayerLimit: null });
-        return (await h.store.placeOrder(scopeOf(h, 'p-f3'), { operationKey: 'k-f3', itemId }))
-          .redemption;
+        return (
+          await h.store.placeOrder(scopeOf(h, 'p-f3', false), { operationKey: 'k-f3', itemId })
+        ).redemption;
       };
       const ra = await placeOn(a);
       const rb = await placeOn(b);
@@ -92,7 +94,10 @@ export function stageBConformance(label: string, pair: PairSetup): void {
       // inside one tenant it is a repeat: applies nothing, even through a legal pair
       const itemB = await a.addItem({ price: 10, stock: null, perPlayerLimit: null });
       const second = (
-        await a.store.placeOrder(scopeOf(a, 'p-f3b'), { operationKey: 'k-f3b', itemId: itemB })
+        await a.store.placeOrder(scopeOf(a, 'p-f3b', false), {
+          operationKey: 'k-f3b',
+          itemId: itemB,
+        })
       ).redemption;
       const repeat = await a.store.apply(a.tenantId, second.id, change('RESERVED'));
       expect(repeat.applied).toBe(false);
@@ -107,7 +112,10 @@ export function stageBConformance(label: string, pair: PairSetup): void {
       for (let round = 0; round < ROUNDS; round++) {
         const results = await Promise.allSettled(
           Array.from({ length: 30 }, () =>
-            h.store.placeOrder(scopeOf(h, 'p-f5'), { operationKey: `race-${round}`, itemId }),
+            h.store.placeOrder(scopeOf(h, 'p-f5', false), {
+              operationKey: `race-${round}`,
+              itemId,
+            }),
           ),
         );
         const failed = results.filter((r) => r.status === 'rejected');

@@ -201,6 +201,13 @@ from that first run.
   stays as a fallback with `skipTrailingSlashRedirect` so `/socket.io/` is no longer redirected.
 - **Redemption reaching the casino.** An operator registers the casino reward API with
   `PUT /v1/operator/integrations/:casino/reward-api` (identity); it is served to engagement as `reward_api`.
+- **The environment is always stated (INV-ENV-INPUT, D-29).** Nothing defaults to production. These requests
+  now answer **400 `VALIDATION_FAILED`** when `environment` (`production` or `sandbox`) is missing:
+  `POST /v1/credentials` (body `{ platform, environment }`), `PUT /v1/operator/integrations/:casino/reward-api`
+  (body `{ environment, base_url, ... }`), and the internal `GET /internal/v1/tenants/:tenantId/players/:playerId/balance`
+  (query `sandbox=true|false`, service tokens only). A player's environment is never a request field: it comes
+  from the launch token, and the realtime ticket carries it (a sandbox player gets a sandbox ticket). An event
+  without `sandbox` is invalid and goes to the dead-letter path.
 - **Wheel, rules and subscription id.** `PUT /v1/operator/wheel` and `PUT /v1/operator/rules` (engagement,
   `operator_admin`), a default wheel and rule on signup, and `GET /v1/operator/plan` (payments) replace the
   database steps; the script no longer reads or writes any database.

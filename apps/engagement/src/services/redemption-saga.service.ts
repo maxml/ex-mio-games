@@ -89,7 +89,7 @@ export class RedemptionSagaService implements RedemptionSaga {
       return placed;
     }
     // `placeOrder` has committed (the store owns its transaction): the order exists.
-    emitPlayerEvent(scope.tenantId, scope.playerId, {
+    emitPlayerEvent(scope.tenantId, scope.playerId, scope.sandbox, {
       event: 'engagement.redemption_requested',
       props: { price_coins: placed.redemption.price, sandbox: scope.sandbox },
     });
@@ -725,7 +725,7 @@ export class RedemptionSagaService implements RedemptionSaga {
   private async apply(r: RedemptionRecord, change: StateChange): Promise<ApplyResult> {
     const res = await this.deps.store.apply(r.tenantId, r.id, change);
     if (res.applied && RESOLVED_STATES.has(change.to)) {
-      emitPlayerEvent(r.tenantId, r.playerId, {
+      emitPlayerEvent(r.tenantId, r.playerId, r.sandbox, {
         event: 'engagement.redemption_resolved',
         props: {
           status: change.to.toLowerCase(),

@@ -50,6 +50,7 @@ const event = (): EventEnvelope =>
   createEvent({
     type: 'audit.acting_request',
     tenantId: PLATFORM_TENANT_ID,
+    sandbox: false,
     payload: {
       actor_user_id: '0190a1b2-c3d4-7e5f-8a6b-7c8d9e0f1a2c',
       actor_tenant_id: PLATFORM_TENANT_ID,

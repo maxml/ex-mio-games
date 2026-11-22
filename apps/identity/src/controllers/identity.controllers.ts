@@ -115,7 +115,7 @@ export class AuthController {
   @HttpCode(200)
   realtimeTicket(@Body() body: unknown): RealtimeTicketResponse {
     parseInput(RealtimeTicketRequest, body ?? {});
-    return this.sessions.issueRealtimeTicket(subject());
+    return this.sessions.issueRealtimeTicket(subject(), currentAuth().sandbox);
   }
 
   @RequirePermission('acting.start')
