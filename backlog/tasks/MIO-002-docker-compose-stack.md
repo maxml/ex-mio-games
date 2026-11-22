@@ -10,6 +10,8 @@ depends_on: [MIO-001]
 blocked_by:
   ['starter: microservices layout (one container per service)', 'starter: Redis with persistence']
 size: M
+estimate_hours_base: 16
+estimate_hours: 20
 ---
 
 ## Goal

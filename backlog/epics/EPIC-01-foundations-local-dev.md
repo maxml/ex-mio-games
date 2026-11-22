@@ -29,6 +29,8 @@ The demo is what we sell. If a prospect or a reviewer cannot run it in minutes, 
 | MIO-007 | Nx module boundaries enforced in lint                                                           | P1       |
 | MIO-008 | MVC layering convention and its lint check                                                      | P1       |
 | MIO-009 | Fail-fast configuration and `.env.example` that needs no cloud keys                             | P1       |
+| MIO-204 | CI proven on the default stack slot with the tagged images                                      | P1       |
+| MIO-214 | Stack prune removes only this project's images, never another project's                         | P2       |
 
 ## Exit criteria
 

@@ -53,18 +53,20 @@ complete: nothing outside it is needed to sell the slice.
 
 Each task file `tasks/MIO-NNN-<slug>.md` starts with YAML frontmatter:
 
-| Field          | Values                                                                                               | Meaning                                                                                                                                                                              |
-| -------------- | ---------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `id`           | `MIO-NNN`                                                                                            | Stable id; never reused                                                                                                                                                              |
-| `title`        | text                                                                                                 | What will be true when the task is done                                                                                                                                              |
-| `epic`         | `EPIC-NN`                                                                                            | Parent epic                                                                                                                                                                          |
-| `priority`     | `P0`–`P3`                                                                                            | See the scale above                                                                                                                                                                  |
-| `money_impact` | `direct`, `enabler`, `none`                                                                          | `direct`: changes revenue or what we can sell; `enabler`: something `direct` needs; `none`: neither                                                                                  |
-| `risk_class`   | `guard`, `identity`, `admission`, `budget`, `locks`, `concurrency`, `ownership`, `isolation`, `none` | The kind of defect that would hurt most. Any class other than `none` means the task goes through spec and failing tests first, and the reviewer re-applies a mutation for each guard |
-| `status`       | see below                                                                                            | Current state                                                                                                                                                                        |
-| `depends_on`   | list of task ids                                                                                     | Tasks in this backlog that must be done first                                                                                                                                        |
-| `blocked_by`   | list of strings (optional)                                                                           | Prerequisites outside this backlog. `starter: <capability>` means a capability that the monorepo starter must gain first; other entries name a missing decision or material          |
-| `size`         | `S`, `M`, `L`                                                                                        | Rough size: S up to a day, M a few days, L a week or more                                                                                                                            |
+| Field                 | Values                                                                                               | Meaning                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| --------------------- | ---------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `id`                  | `MIO-NNN`                                                                                            | Stable id; never reused                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| `title`               | text                                                                                                 | What will be true when the task is done                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| `epic`                | `EPIC-NN`                                                                                            | Parent epic                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| `priority`            | `P0`–`P3`                                                                                            | See the scale above                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| `money_impact`        | `direct`, `enabler`, `none`                                                                          | `direct`: changes revenue or what we can sell; `enabler`: something `direct` needs; `none`: neither                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| `risk_class`          | `guard`, `identity`, `admission`, `budget`, `locks`, `concurrency`, `ownership`, `isolation`, `none` | The kind of defect that would hurt most. Any class other than `none` means the task goes through spec and failing tests first, and the reviewer re-applies a mutation for each guard                                                                                                                                                                                                                                                                                                                                                                           |
+| `status`              | see below                                                                                            | Current state                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| `depends_on`          | list of task ids                                                                                     | Tasks in this backlog that must be done first                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| `blocked_by`          | list of strings (optional)                                                                           | Prerequisites outside this backlog. `starter: <capability>` means a capability that the monorepo starter must gain first; other entries name a missing decision or material                                                                                                                                                                                                                                                                                                                                                                                    |
+| `size`                | `S`, `M`, `L`                                                                                        | Rough size band of the base estimate: S up to 8 hours, M 12 to 24 hours, L 32 to 48 hours                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| `estimate_hours_base` | integer                                                                                              | Focused engineering hours for one experienced engineer to finish the task to its acceptance criteria: code, tests, review fixes and documentation. Meetings are not included. For a task with a `risk_class` other than `none` it includes the specification, the failing tests and the hostile review (the process in `docs/ai`). It is a judgement from the task's Scope and Acceptance criteria, not a function of `size`; the size band is a sanity check, and a task outside its band gets a one-line "Estimate:" note under Notes, or a different `size` |
+| `estimate_hours`      | integer                                                                                              | `ceil(estimate_hours_base * 1.2)`: the base plus the 20% buffer. This is the number people plan with                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
 
 The body has: **Goal**, **Scope**, **Acceptance criteria** (testable), and **Notes** (sources, caveats).
 
@@ -83,6 +85,58 @@ but code waits for the starter capability. A task whose blocker is a decision or
 | `concurrency` | Races, lost updates, crash-in-the-middle, redelivery                        |
 | `ownership`   | Acting on an object that belongs to someone else                            |
 | `isolation`   | Data crossing tenant boundaries                                             |
+
+## Estimates and totals
+
+**Buffer rule (owner decision):** every task carries a 20% buffer. `estimate_hours` is always
+`ceil(estimate_hours_base * 1.2)`; the size bands apply to the base value. The buffer is per task, so the
+totals below are sums of the per-task values, not 1.2 times the base total.
+
+Planning conversion used in `docs/scaling/README.md` (Part E): 6 productive hours per engineer per day and
+21 working days per month. Hours are one experienced engineer's focused time, with no AI speed-up assumed.
+
+| Scope                                          | Tasks   | Base hours | Hours with 20% buffer |
+| ---------------------------------------------- | ------- | ---------- | --------------------- |
+| EPIC-01 Foundations and local development      | 11      | 105        | 133                   |
+| EPIC-02 Architecture and decisions             | 8       | 89         | 110                   |
+| EPIC-03 Diagrams as code with archify          | 8       | 64         | 81                    |
+| EPIC-04 Tenancy                                | 5       | 88         | 107                   |
+| EPIC-05 Identity                               | 8       | 160        | 195                   |
+| EPIC-06 Casino integrations                    | 10      | 139        | 170                   |
+| EPIC-07 Engagement                             | 14      | 202        | 248                   |
+| EPIC-08 Coin ledger                            | 8       | 121        | 148                   |
+| EPIC-09 Monetization                           | 10      | 180        | 219                   |
+| EPIC-10 Product analytics                      | 11      | 100        | 125                   |
+| EPIC-11 Realtime websocket                     | 4       | 70         | 85                    |
+| EPIC-12 Design and design system               | 6       | 126        | 154                   |
+| EPIC-13 Web                                    | 8       | 212        | 256                   |
+| EPIC-14 Reliability and security tests         | 17      | 260        | 318                   |
+| EPIC-15 Observability, audit, deploy           | 9       | 98         | 121                   |
+| EPIC-16 AI-native development                  | 10      | 104        | 131                   |
+| EPIC-17 Submission documents                   | 13      | 91         | 116                   |
+| EPIC-18 Performance, capacity and load testing | 5       | 80         | 99                    |
+| P0 (the first sellable slice)                  | 49      | 988        | 1,200                 |
+| P1                                             | 82      | 1,000      | 1,237                 |
+| P2                                             | 28      | 231        | 292                   |
+| P3                                             | 6       | 70         | 87                    |
+| **Grand total**                                | **165** | **2,289**  | **2,816**             |
+
+The P0 row is the first sellable slice: MIO-005, MIO-121 and everything they depend on. With the buffer it
+is 1,200 hours, 200 person-days, 9.5 person-months. P0 and P1 together are 2,437 hours.
+
+Reproduce every figure above with this read-only command, run from the repository root (the epic and
+priority rows come from the same pass; P0 is the `P0` row):
+
+```sh
+awk 'FNR==1{fm=0} /^---$/{fm++; if(fm==2){N[e]++;B[e]+=b;H[e]+=h;PN[p]++;PB[p]+=b;PH[p]+=h;T++;TB+=b;TH+=h} next} fm==1{if($1=="epic:")e=$2;if($1=="priority:")p=$2;if($1=="estimate_hours_base:")b=$2;if($1=="estimate_hours:")h=$2} END{for(k in N)printf "epic %s %d %d %d\n",k,N[k],B[k],H[k];for(k in PN)printf "prio %s %d %d %d\n",k,PN[k],PB[k],PH[k];printf "total %d %d %d\n",T,TB,TH}' backlog/tasks/*.md | sort
+```
+
+Each output row is `kind name tasks base_hours buffered_hours`. A second read-only check confirms the buffer
+rule on every task (it prints nothing when all 165 tasks agree):
+
+```sh
+awk '/^estimate_hours_base:/{b=$2} /^estimate_hours:/{if($2!=int((b*12+9)/10))print FILENAME}' backlog/tasks/*.md
+```
 
 ## Status values
 
@@ -167,24 +221,25 @@ idempotency_key_reused` for the same key with a different request; the stored re
 
 | Epic                                                   | Title                                                                       | Priority | Tasks   | P0     | P1     | P2     | P3    |
 | ------------------------------------------------------ | --------------------------------------------------------------------------- | -------- | ------- | ------ | ------ | ------ | ----- |
-| [EPIC-01](epics/EPIC-01-foundations-local-dev.md)      | Foundations and local development                                           | P0       | 9       | 3      | 6      | 0      | 0     |
+| [EPIC-01](epics/EPIC-01-foundations-local-dev.md)      | Foundations and local development                                           | P0       | 11      | 3      | 7      | 1      | 0     |
 | [EPIC-02](epics/EPIC-02-architecture-decisions.md)     | Architecture and decisions (Part A)                                         | P1       | 8       | 2      | 6      | 0      | 0     |
 | [EPIC-03](epics/EPIC-03-archify-diagrams.md)           | Diagrams as code with archify (needs owner review)                          | P2       | 8       | 0      | 0      | 8      | 0     |
 | [EPIC-04](epics/EPIC-04-tenancy.md)                    | Tenancy                                                                     | P0       | 5       | 3      | 2      | 0      | 0     |
-| [EPIC-05](epics/EPIC-05-identity.md)                   | Identity                                                                    | P0       | 7       | 6      | 0      | 1      | 0     |
-| [EPIC-06](epics/EPIC-06-integrations.md)               | Casino integrations module and event ingestion                              | P0       | 8       | 6      | 2      | 0      | 0     |
-| [EPIC-07](epics/EPIC-07-engagement.md)                 | Engagement: rules, wheel, bonus store, redemption                           | P0       | 11      | 8      | 3      | 0      | 0     |
-| [EPIC-08](epics/EPIC-08-ledger-payments.md)            | Coin ledger in the payments service                                         | P0       | 7       | 5      | 2      | 0      | 0     |
+| [EPIC-05](epics/EPIC-05-identity.md)                   | Identity                                                                    | P0       | 8       | 6      | 0      | 2      | 0     |
+| [EPIC-06](epics/EPIC-06-integrations.md)               | Casino integrations module and event ingestion                              | P0       | 10      | 6      | 3      | 1      | 0     |
+| [EPIC-07](epics/EPIC-07-engagement.md)                 | Engagement: rules, wheel, bonus store, redemption                           | P0       | 14      | 8      | 4      | 2      | 0     |
+| [EPIC-08](epics/EPIC-08-ledger-payments.md)            | Coin ledger in the payments service                                         | P0       | 8       | 5      | 3      | 0      | 0     |
 | [EPIC-09](epics/EPIC-09-monetization.md)               | Monetization: operator billing, plans, metering, entitlements               | P0       | 10      | 5      | 5      | 0      | 0     |
-| [EPIC-10](epics/EPIC-10-analytics.md)                  | Product analytics through Varta                                             | P0       | 9       | 4      | 4      | 0      | 1     |
+| [EPIC-10](epics/EPIC-10-analytics.md)                  | Product analytics through Varta                                             | P0       | 11      | 4      | 4      | 2      | 1     |
 | [EPIC-11](epics/EPIC-11-realtime.md)                   | Realtime websocket                                                          | P1       | 4       | 0      | 3      | 1      | 0     |
 | [EPIC-12](epics/EPIC-12-design.md)                     | Design and design system                                                    | P0       | 6       | 3      | 2      | 1      | 0     |
-| [EPIC-13](epics/EPIC-13-web.md)                        | Web: player widget, operator console, platform admin console                | P0       | 6       | 4      | 2      | 0      | 0     |
-| [EPIC-14](epics/EPIC-14-reliability-security.md)       | Reliability and security test suite (Part C)                                | P1       | 15      | 0      | 14     | 1      | 0     |
-| [EPIC-15](epics/EPIC-15-observability-audit-deploy.md) | Observability, audit, security baseline, deploy                             | P1       | 6       | 0      | 3      | 3      | 0     |
+| [EPIC-13](epics/EPIC-13-web.md)                        | Web: player widget, operator console, platform admin console                | P0       | 8       | 4      | 3      | 1      | 0     |
+| [EPIC-14](epics/EPIC-14-reliability-security.md)       | Reliability and security test suite (Part C)                                | P1       | 17      | 0      | 16     | 1      | 0     |
+| [EPIC-15](epics/EPIC-15-observability-audit-deploy.md) | Observability, audit, security baseline, deploy                             | P1       | 9       | 0      | 5      | 4      | 0     |
 | [EPIC-16](epics/EPIC-16-ai-native-development.md)      | AI-native development and AI-readiness (Part D)                             | P1       | 10      | 0      | 4      | 1      | 5     |
 | [EPIC-17](epics/EPIC-17-submission-docs.md)            | Submission documents, scaling plan, publication gate (Deliverables, Part E) | P1       | 13      | 0      | 11     | 2      | 0     |
-| **Total**                                              |                                                                             |          | **142** | **49** | **69** | **18** | **6** |
+| [EPIC-18](epics/EPIC-18-performance-capacity.md)       | Performance, capacity and load testing                                      | P1       | 5       | 0      | 4      | 1      | 0     |
+| **Total**                                              |                                                                             |          | **165** | **49** | **82** | **28** | **6** |
 
 ## Waiting on someone
 
@@ -270,14 +325,14 @@ Every item of the assignment maps to at least one task.
 
 ### Part E: Scaling the product
 
-| Assignment item                                                             | Tasks                                                       |
-| --------------------------------------------------------------------------- | ----------------------------------------------------------- |
-| 1. Evolve the prototype into a production-ready multi-tenant SaaS           | MIO-187 (with the production roadmap), assembled in MIO-182 |
-| 2. Support 10 casino operators without 10 codebases                         | MIO-188 (evidence MIO-057, MIO-052, MIO-092)                |
-| 3. PvP, Missions, Kingdom Builder without coupling to the integration layer | MIO-189 (with MIO-070)                                      |
-| 4. First 90 days                                                            | MIO-183                                                     |
-| 5. Smallest realistic team for an MVP in six months                         | MIO-190                                                     |
-| 6. Parts of the development process to automate with AI                     | MIO-191                                                     |
+| Assignment item                                                             | Tasks                                                                                                            |
+| --------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
+| 1. Evolve the prototype into a production-ready multi-tenant SaaS           | MIO-187 (with the production roadmap), assembled in MIO-182; scale-out numbers from MIO-193, MIO-194 and MIO-196 |
+| 2. Support 10 casino operators without 10 codebases                         | MIO-188 (evidence MIO-057, MIO-052, MIO-092)                                                                     |
+| 3. PvP, Missions, Kingdom Builder without coupling to the integration layer | MIO-189 (with MIO-070)                                                                                           |
+| 4. First 90 days                                                            | MIO-183                                                                                                          |
+| 5. Smallest realistic team for an MVP in six months                         | MIO-190                                                                                                          |
+| 6. Parts of the development process to automate with AI                     | MIO-191                                                                                                          |
 
 ### Deliverables and general notes
 
@@ -308,3 +363,4 @@ Every item of the assignment maps to at least one task.
 | Publication privacy gate (the repository is public)                                                       | EPIC-17 (MIO-192) |
 | Production roadmap: onboarding and suspension, credential rotation, retention, restore, failure ownership | EPIC-17 (MIO-187) |
 | Diagrams as code with archify                                                                             | EPIC-03           |
+| Performance: SLOs, load tests, CI gate, capacity model, soak                                              | EPIC-18           |

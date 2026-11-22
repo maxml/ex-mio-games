@@ -9,6 +9,8 @@ status: todo
 depends_on: [MIO-110, MIO-112]
 blocked_by: ['starter: resilient websocket']
 size: M
+estimate_hours_base: 20
+estimate_hours: 24
 ---
 
 ## Goal
@@ -29,3 +31,8 @@ The socket must not die: when it drops, it comes back on its own and nothing is 
   events emitted during the outage (end-to-end test).
 - Network offline for 60 seconds, then online: the client catches up with no duplicates in the UI.
 - No reconnect storm: 1,000 simulated clients reconnect spread over the backoff window (load test).
+
+## Notes
+
+This 1,000-client reconnect test stays in this task. The load-test harness (MIO-194) and the SLOs
+(MIO-193) cover the HTTP and broker paths; they link to this test and do not repeat it.

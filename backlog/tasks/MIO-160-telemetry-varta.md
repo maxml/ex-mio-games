@@ -8,6 +8,8 @@ risk_class: none
 status: todo
 depends_on: [MIO-001]
 size: M
+estimate_hours_base: 20
+estimate_hours: 24
 ---
 
 ## Goal
@@ -33,3 +35,10 @@ Assignment Part A: observability. We can follow one deposit from webhook to issu
   are read back and contain none of them (known tenancy defect 10).
 - Redaction is applied by the logger itself (a deny-list of field names plus value patterns), not by
   callers; a mutation that removes it turns the test red.
+
+## Notes
+
+The SLO table in MIO-193 names the latency histograms and queue-depth gauges it needs for the four
+critical paths (ingest to spin credit, spin, redemption to issuance, balance read). They are added here as
+metrics; MIO-193 checks that every metric it names exists. Forward pointer only: this task does not
+depend on MIO-193.

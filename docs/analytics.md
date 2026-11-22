@@ -97,8 +97,12 @@ spins. When another source appears it adds a value to `source`, not a new event.
 - **Player loop.** `widget_opened` (anonymous) -> `player_launched` -> `deposit_ingested` ->
   `spin_completed` -> `coins_credited` -> `redemption_requested` -> `redemption_resolved`. Where players
   drop, and how many orders end in `completed` rather than `released` or `rejected_funds`.
-- **Sandbox against production.** Every player and money event carries `sandbox`; filter it out of
-  revenue and engagement numbers.
+- **Sandbox against production.** Only some events carry `sandbox`: `player_launched`,
+  `deposit_ingested`, `coins_credited`, `spin_completed`, `redemption_requested` and
+  `redemption_resolved`. `plan_selected`, `payment_succeeded` and `payment_failed` have no `sandbox`
+  prop (they are the operator's own plan billing), `credential_issued` carries `environment`
+  instead, and `widget_opened` has neither. A `props_sandbox` filter silently drops rows of the
+  events that lack it, so apply it only to the events in the first list.
 
 Varta never merges an anonymous visitor with a known player, so the anonymous `widget_opened` step and
 the `player_launched` step are counted as two populations, not joined per person.
@@ -125,7 +129,7 @@ tenant B the casino B operator.
 | order reaches an end          | `engagement.redemption_resolved`  |        1 |        0 | the one `rejected_funds` (a player with no coins); see the README known gaps |
 
 Operator activation is 2 of 2 operators through signup, plan, payment and key. The player loop of tenant A
-runs 4 launches, 2 deposits, 2 spins, 2 credits and 4 orders. Two lines as emitted:
+runs 4 launches, 2 deposits, 2 spins, 2 credits and 4 orders. Two lines as emitted, trimmed (the real lines also carry `ts` and `event_id`, which Varta requires, plus `env` and `version`):
 
 ```json
 {"level":"info","service":"engagement","kind":"product_event","event":"engagement.deposit_ingested","event_v":1,"tenant_id":"<tenant uuid>","actor_type":"player","actor_id":"<player uuid>","consent":"essential","props":{"casino":"casino-a","sandbox":false,"amount_minor":5000,"currency":"EUR"}}

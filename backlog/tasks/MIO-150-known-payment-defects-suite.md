@@ -26,6 +26,8 @@ depends_on:
     MIO-154,
   ]
 size: L
+estimate_hours_base: 40
+estimate_hours: 48
 ---
 
 ## Goal

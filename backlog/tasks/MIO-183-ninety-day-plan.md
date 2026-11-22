@@ -8,6 +8,8 @@ risk_class: none
 status: todo
 depends_on: [MIO-187]
 size: S
+estimate_hours_base: 6
+estimate_hours: 8
 ---
 
 ## Goal
@@ -33,3 +35,9 @@ Deliverable "first 90-day engineering plan", ordered by profit impact.
   issuance latency under 2 s").
 - The plan names what is deliberately not done in the 90 days.
 - It answers Part E question 4 directly and is consistent with the production milestones in MIO-187.
+
+## Notes
+
+The measurable outcomes for days 31 to 60 (for example the p95 issuance latency) are taken from the SLO
+table of MIO-193 and are measured with the harness of MIO-194; the example target above is a placeholder
+until that table exists. Forward pointer only.

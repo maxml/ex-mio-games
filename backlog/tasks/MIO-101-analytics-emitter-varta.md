@@ -9,6 +9,8 @@ status: todo
 depends_on: [MIO-100, MIO-013]
 blocked_by: ['starter: analytics emitter', 'starter: event bus (outbox, inbox, DLQ) on RabbitMQ']
 size: M
+estimate_hours_base: 24
+estimate_hours: 29
 ---
 
 ## Goal
@@ -23,10 +25,14 @@ Two delivery classes, stated in the taxonomy (MIO-100) for every event:
 - **Business events** (funnel steps, deposits, spins, redemptions, plan changes): written as an
   analytics intent row in the **same database transaction** as the business change (the service's
   outbox). A relay delivers them to the sink at least once and retries until acknowledged. Each has a
-  deterministic `event_id` (from tenant, step and business id), and every read (funnel query, Varta
-  panel) counts distinct `event_id`. Result: committed changes always produce the event; rolled-back
-  changes never do; duplicates are invisible to readers. We do not claim exactly-once delivery; we claim
-  exactly-once counting.
+  `event_id` that is a lowercase UUIDv7 generated once, when the intent row is written, and stored on that
+  row so every relay retry re-sends the same id (Varta keeps only that shape and drops any other, so the
+  id is never derived from tenant, step and business id; ADR 0009). One event per business fact is
+  enforced elsewhere: a separate `dedupe_key` prop (tenant, step, business id) with a unique constraint
+  on the intent row, in the idempotency layer (MIO-086), so a retried business step writes no second
+  intent row. Every read (funnel query, Varta panel) counts distinct `event_id`. Result: committed
+  changes always produce the event; rolled-back changes never do; duplicates are invisible to readers.
+  We do not claim exactly-once delivery; we claim exactly-once counting.
 - **Behavioural events** (widget opened, button clicks, frontend events): best effort, written to the log
   line sink without a transaction; may be lost on a crash. Never used for billing or for the funnel steps
   above.

@@ -8,6 +8,8 @@ risk_class: concurrency
 status: todo
 depends_on: [MIO-061, MIO-062, MIO-086]
 size: M
+estimate_hours_base: 24
+estimate_hours: 29
 ---
 
 ## Goal

@@ -1,0 +1,43 @@
+# Optional override: makes the services that emit product events visible to a Varta
+# collector running on the same Docker host. The default `docker compose up` does not
+# read this file and is unchanged. Use it as
+#
+#   docker compose -f docker-compose.yml -f docker-compose.varta.yml up -d
+#
+# It adds no port, no network and no environment variable: the services keep writing
+# JSON lines to stdout, and the collector tails Docker's json log files. See
+# docs/observability/varta.md.
+
+x-varta-logging: &varta-logging
+  # The collector reads the live and the rotated json-file logs. Any other driver
+  # leaves it nothing to tail. Rotation keeps the files bounded.
+  #
+  # Once Varta's label support for json-file logs lands (it closes the first-minute
+  # window in which a new container has no project), add this option under `options`:
+  #   labels: "varta.project,varta.service,deckhand.project,deckhand.service,com.docker.compose.project,com.docker.compose.service"
+  driver: json-file
+  options:
+    max-size: 10m
+    max-file: '3'
+
+services:
+  identity:
+    labels:
+      varta.project: ex-mio
+      varta.service: identity
+    logging: *varta-logging
+  engagement:
+    labels:
+      varta.project: ex-mio
+      varta.service: engagement
+    logging: *varta-logging
+  payments:
+    labels:
+      varta.project: ex-mio
+      varta.service: payments
+    logging: *varta-logging
+  web:
+    labels:
+      varta.project: ex-mio
+      varta.service: web
+    logging: *varta-logging

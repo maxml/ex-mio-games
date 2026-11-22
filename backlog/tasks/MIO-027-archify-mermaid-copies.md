@@ -8,6 +8,8 @@ risk_class: none
 status: needs-owner-review
 depends_on: [MIO-021, MIO-022]
 size: S
+estimate_hours_base: 6
+estimate_hours: 8
 ---
 
 ## Goal

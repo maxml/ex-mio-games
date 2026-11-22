@@ -98,7 +98,7 @@ sandbox, payload }`; `tenant_id` is mandatory; the payload schema is registered 
 - **wire keys (D-26, D-30 F2):** every dedupe, order, hold, spin-credit and inbox key is
   `<kind>:<tenant>:<sbx|prd>:<part>...`, built only by `packages/contracts/src/scoped-key.ts`. This is a
   **breaking change of the wire key** (the casino receives `redeem:<tenant>:prd:<order id>`): **no orders may be
-  in flight across the upgrade**; drain every redemption to a final state first (README "Upgrading").
+  in flight across the upgrade**; drain every redemption to a final state first (README "Release notes").
 - **reward API transport rule (D-31 R4):** one shared helper, `packages/contracts/src/reward-api-url.ts`.
   In a production deployment (`NODE_ENV=production`) plain http is refused for every reward API unless the host
   is in `REWARD_API_ALLOW_HOSTS`; identity's PUT and engagement's call both use it.

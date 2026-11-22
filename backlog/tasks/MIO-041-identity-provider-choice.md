@@ -9,6 +9,8 @@ status: blocked
 depends_on: [MIO-040]
 blocked_by: ['The team has not decided yet; local Firebase Auth Emulator meanwhile']
 size: M
+estimate_hours_base: 16
+estimate_hours: 20
 ---
 
 ## Goal

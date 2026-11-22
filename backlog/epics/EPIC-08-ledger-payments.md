@@ -24,6 +24,7 @@ tables in the payments database: append-only, integer amounts, no negative balan
 | MIO-084 | Reconciliation job and ledger conservation report                                      | P1       |
 | MIO-085 | Ledger history API for players and operators                                           | P1       |
 | MIO-086 | Idempotency contract for value operations: scoped keys, durable business-operation ids | P0       |
+| MIO-198 | Behaviour test that the internal balance read refuses a request without an environment | P1       |
 
 Ledger property tests and the known payment defects suite are in EPIC-14 (MIO-148, MIO-150).
 

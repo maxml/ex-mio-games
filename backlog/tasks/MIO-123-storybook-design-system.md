@@ -9,6 +9,8 @@ status: todo
 depends_on: [MIO-122]
 blocked_by: ['starter: Storybook design system']
 size: L
+estimate_hours_base: 40
+estimate_hours: 48
 ---
 
 ## Goal

@@ -9,6 +9,12 @@ The repository is a monorepo of small services, built from the monorepo starter 
 event bus and idempotent money handling. For the product and the decisions behind it start at
 [`AGENTS.md`](AGENTS.md) and [`docs/README.md`](docs/README.md). Status words used everywhere: **Built**,
 **Partial** (the core exists, the named part does not) and **Next** (decided, not built).
+Decisions cited as D-<n> in tests and comments are resolved in docs/decision-log.md.
+
+## Screens
+
+Operator console and player widget screenshots are in [`docs/screens/README.md`](docs/screens/README.md). The
+shots are from mock mode, not from a live casino.
 
 ## Run it from a clean clone
 
@@ -17,7 +23,7 @@ the casinos are simulated, billing uses a fake payment provider. The first build
 packages, so it needs network access once.
 
 ```sh
-git clone <repository-url> ex-mio-games
+git clone https://github.com/maxml/ex-mio-games ex-mio-games
 cd ex-mio-games
 docker compose up -d --wait      # builds the images, starts nine containers, returns when all are healthy
 ```
@@ -154,70 +160,107 @@ Its Part C steps are C-1 duplicate deposit, C-2 concurrent spins, C-3 duplicate 
 C-5 invalid or unauthorized events, C-6 player isolation (C-6b no negative balance), C-7 tenant isolation and
 C-8 failed reward issuance (casino B rejects the bonus: the coins stay held while the ticket is pending, then the
 order ends `RELEASED`, the balance returns to the baseline exactly once and the stock and per-player limit come
-back). C-8 was added after the recorded run below, so that run has no output for it.
+back). The recorded run below includes C-8.
 
-Recorded output of that script on a clean stack (secrets and tokens shown as `<redacted>`, bodies trimmed).
-The first run of 37 steps made 133 assertions pass and recorded 13 failures, all from two product gaps listed
-under "Known gaps from the recorded run" below.
+Recorded output of that script, captured from `scripts/demo.sh` on 2026-11-22 against the compose stack built
+from commit `dd9d464` (run suffix 56719). The run printed `DONE: 40 steps, 194 assertions passed, 0 recorded failure(s)`
+and exited 0, including Part C cases C-1 to C-8. Secrets and tokens are shown as `<redacted>`; the `PASS` lines
+and long bodies are trimmed (`...`); nothing else is edited. Each block names the demo steps it comes from.
 
-Workflow steps 1-3, a signed deposit from casino A (schema A, HMAC over `timestamp.body`) and from casino B
-(schema B, signature inside the body). The casino simulator builds and signs the webhook:
+Workflow setup, steps 2, 5, 7 and 8: sign-up, integration credentials (the environment is stated, D-29), the
+reward API registration (D-27, D-30) and the published wheel and rule:
 
 ```text
-> POST 4004/casino-a/__deposit  body={"target_url":"http://engagement:4002/v1/integrations/demo-a-16018/events","secret":"<redacted>","player_id":"A-PLAYER-77","amount_minor":5000,"currency":"EUR","event_id":"evt-a-16018-1"}
+> POST 4001/v1/operators/signup body={"tenant_name":"Casino demo-a-56719","slug":"demo-a-56719","email":"boss@demo-a-56719.test","password":"<redacted>"}
+< 201 {"tenant":{"id":"01a20399-7faa-7964-9a44-e106e1db8b28","type":"operator","name":"Casino demo-a-56719","slug":"demo-a-56719","status":"active"},"user":{"id":"01a20399-7faa-7066-9d2d-366f8faef0c6","email":"boss@demo-a-56719.test","roles":["operator_admin"]}}
+> POST 4001/v1/credentials [authorization: Bearer <redacted>] body={"platform":"casino-a","environment":"production"}
+< 201 {"key_id":"key_01a203997faa79649a44e106e1db8b28_w--JyawQ9zas","api_key":"<redacted>","hmac_secret":"<redacted>"}
+> PUT 4001/v1/operator/integrations/casino-a/reward-api [authorization: Bearer <redacted>] body={"environment":"production","base_url":"http://casino-sim:4004","api_key":"<redacted>"}
+< 200 {"platform":"casino-a","environment":"production","base_url":"http://casino-sim:4004","has_api_key":true,"issue_deadline_ms":null}
+> PUT 4002/v1/operator/wheel [authorization: Bearer <redacted>] body={"name":"Demo wheel","segments":[{"label":"200 coins","weight":6,"reward":{"type":"coins","amount":200}},...]}
+< 200 {"id":"01a20399-813e-7210-a752-f594030b48c0","version":2}
+> PUT 4002/v1/operator/rules [authorization: Bearer <redacted>] body={"name":"Deposit 20 EUR, 1 spin","min_amount_minor":2000,"currency":"EUR","spins":1}
+< 200 {"id":"deposit","version":2}
+```
+
+Workflow steps 1-3 (demo steps 16, 17 and 20), a signed deposit from casino A (schema A, HMAC over
+`timestamp.body`) and from casino B (schema B, signature inside the body). The casino simulator builds and
+signs the webhook:
+
+```text
+> POST 4004/casino-a/__deposit body={"target_url":"http://engagement:4002/v1/integrations/demo-a-56719/events","secret":"<redacted>","player_id":"A-PLAYER-77","amount_minor":5000,"currency":"EUR","event_id":"evt-a-56719-1"}
 < 200 {"delivered":[200]}
-> POST 4004/casino-b/__deposit  body={"target_url":"http://engagement:4002/v1/integrations/demo-b-16018/events","secret":"<redacted>","player_id":"B-PLAYER-12","amount_minor":5000,"currency":"EUR","event_id":"evt-b-16018-1"}
+> POST 4004/casino-b/__deposit body={"target_url":"http://engagement:4002/v1/integrations/demo-b-56719/events","secret":"<redacted>","player_id":"B-PLAYER-12","amount_minor":5000,"currency":"EUR","event_id":"evt-b-56719-1"}
 < 200 {"delivered":[200]}
 > GET 4002/v1/me/spins [authorization: Bearer <redacted>]        (player A, after the rules engine ran over the bus)
 < 200 {"available":1}
 ```
 
-Workflow steps 4-5, the spin and the balance. The same Idempotency-Key replays the same spin:
+Workflow steps 4-5 (demo steps 24 and 25), the spin and the balance. The same Idempotency-Key replays the same
+spin:
 
 ```text
-> GET 4002/v1/wheel
-< 200 {"wheel_id":"0190a1b2-c3d4-4e5f-8a6b-2000000000a1","segments":[{"label":"200 coins"},{"label":"300 coins"},{"label":"500 coins"}]}
-> POST 4002/v1/spins [idempotency-key: spin-a-16018-1] body={}
-< 201 {"spin_id":"01a2012d-49ac-7223-b6b6-7b6c69073dd5","segment_index":0,"segment_label":"200 coins","reward_coins":200}
-> POST 4002/v1/spins [idempotency-key: spin-a-16018-1] body={}
-< 201 {"spin_id":"01a2012d-49ac-7223-b6b6-7b6c69073dd5","segment_index":0,"segment_label":"200 coins","reward_coins":200}
-> GET 4003/v1/me/balance
-< 200 {"wallet_id":"01a2012d-4b5f-7089-bb44-30ea714130c2","available":200,"held":0,"currency":"COIN"}
+> GET 4002/v1/wheel [authorization: Bearer <redacted>]
+< 200 {"wheel_id":"01a20399-813e-7210-a752-f594030b48c0","segments":[{"label":"200 coins"},{"label":"300 coins"},{"label":"500 coins"}]}
+> POST 4002/v1/spins [idempotency-key: spin-a-56719-1] body={}
+< 201 {"spin_id":"e2db2218-34e5-8079-b6dc-98f8b8f4f17d","segment_index":2,"segment_label":"500 coins","reward_coins":500}
+> POST 4002/v1/spins [idempotency-key: spin-a-56719-1] body={}
+< 201 {"spin_id":"e2db2218-34e5-8079-b6dc-98f8b8f4f17d","segment_index":2,"segment_label":"500 coins","reward_coins":500}
+> GET 4003/v1/me/balance [authorization: Bearer <redacted>]
+< 200 {"wallet_id":"01a20399-e459-741c-bc03-7118046b196e","available":500,"held":0,"currency":"COIN"}
 ```
 
-Workflow steps 6-8, the redemption and its final status. This is where the recorded run stops short of the
-goal: the order reserves the coins and then lands in `NEEDS_REVIEW` with `failure_reason: no_adapter` and the
-casino simulator receives nothing, so the status never becomes `ISSUED` or `COMPLETED` (see the known gaps):
+Workflow steps 6-8 (demo steps 28 to 30), the redemption and its final status. Casino A answers the bonus at
+once; casino B answers with a ticket, the simulator settles it, and the order ends `ISSUED`:
 
 ```text
-> POST 4002/v1/redemptions [idempotency-key: redeem-b-16018-1] body={"item_id":"01a2012c-ed93-7bf6-aec8-941f3f7d1de4"}
-< 202 {"id":"01a2012e-5537-7aa0-90e5-4f20e0475a3e","price":50,"status":"pending","state":"RESERVED","attempts":0,"casino_reference":null,...}
-> GET 4002/v1/operator/redemptions/01a2012e-5537-7aa0-90e5-4f20e0475a3e
-< 200 {"status":"pending","state":"NEEDS_REVIEW","failure_reason":"no_adapter","history":[{"from":null,"to":"REQUESTED","cause":"order_placed"},{"from":"REQUESTED","to":"RESERVED","cause":"reserved"},...]}
+> POST 4002/v1/redemptions [idempotency-key: redeem-a-56719-1] body={"item_id":"01a20399-a3b6-7fed-a8c5-4f6bff8c1552"}
+< 202 {"id":"01a20399-ed06-73b9-8fb6-614f20ae112f","item_id":"01a20399-a3b6-7fed-a8c5-4f6bff8c1552","price":50,"status":"pending","state":"RESERVED","attempts":0,"casino_reference":null,"failure_reason":null,"history":[],...}
+> GET 4002/v1/redemptions/01a20399-ed06-73b9-8fb6-614f20ae112f
+< 200 {"id":"01a20399-ed06-73b9-8fb6-614f20ae112f","price":50,"status":"issued","state":"ISSUED","attempts":1,"casino_reference":"bonus-43840e0a-951e-474d-ae09-49d5dd526c4a","failure_reason":null,"history":[],...}
+> GET 4004/__issued?casino=a
+< 200 [{"key":"redeem:01a20399-7faa-7964-9a44-e106e1db8b28:prd:01a20399-ed06-73b9-8fb6-614f20ae112f","player_id":"A-PLAYER-77","reference":"bonus-43840e0a-951e-474d-ae09-49d5dd526c4a","reward":{"type":"bonus","amount":500,"currency":"EUR"}}]
+
+> POST 4002/v1/redemptions [idempotency-key: redeem-b-56719-1] body={"item_id":"01a20399-a46d-755b-bedb-22cd89a5be29"}
+< 202 {"id":"01a20399-f706-74ce-b1d1-b67ccfe8aba1","price":50,"status":"pending","state":"RESERVED","attempts":0,...}
 > GET 4004/__issued?casino=b
-< 200 []
+< 200 [{"key":"redeem:01a20399-844f-7409-8a45-2e7e02b047bb:prd:01a20399-f706-74ce-b1d1-b67ccfe8aba1","player_id":"B-PLAYER-12","reference":"tkt-e062a319-a032-4399-b710-a1b226a4561c","reward":{"type":"bonus","amount_cents":500,"ccy":"EUR"}}]
+> POST 4004/casino-b/__settle
+< 200 {"settled":1}
+> GET 4002/v1/redemptions/01a20399-f706-74ce-b1d1-b67ccfe8aba1
+< 200 {"id":"01a20399-f706-74ce-b1d1-b67ccfe8aba1","price":50,"status":"issued","state":"ISSUED","attempts":1,"casino_reference":"ref-7888bdb1-30ab-4317-82d7-edffe1b3ae64","failure_reason":null,"history":[],...}
+> GET 4003/v1/me/balance [authorization: Bearer <redacted>]
+< 200 {"wallet_id":"01a20399-e459-741c-bc03-7118046b196e","available":450,"held":0,"currency":"COIN"}      (player A: 500 minus the 50 coins of the order)
 ```
 
-Part C cases from the same run:
+Part C cases from the same run (demo steps 32 to 39):
 
 ```text
-# duplicate deposit: the casino delivers one webhook three times, the player gets one spin
+# C-1 duplicate deposit: the casino delivers one webhook three times, the player gets one spin
 > POST 4004/__faults body={"casino":"a","kind":"duplicateDelivery","times":1,"copies":3}
-> POST 4004/casino-a/__deposit body={...,"event_id":"evt-a-16018-dup"}
+> POST 4004/casino-a/__deposit body={...,"event_id":"evt-a-56719-dup"}
 < 200 {"delivered":[200,200,200]}
 > GET 4002/v1/me/spins
 < 200 {"available":1}
 
-# concurrent spins: 10 parallel requests with distinct keys against one credit
-< 1 x 201; 9 x 409          then GET /v1/me/spins -> {"available":0}
+# C-2 concurrent spins: 10 parallel requests with distinct keys against one credit
+< 1 201; 9 409;          then GET /v1/me/spins -> {"available":0}
 
-# duplicate redemption: the same Idempotency-Key 5 times in parallel
-< 1 x 202; 4 x 409      one redemption id, coins debited once (available 450 -> 400)
+# C-3 duplicate redemption: the same Idempotency-Key 5 times in parallel
+< statuses:  1 202; 4 409;      one redemption id, coins debited once (900)
 > POST 4002/v1/redemptions (same key again)
-< 202 + header Idempotent-Replayed: true, same id
+< 202 + header Idempotent-Replayed: true, same id 01a2039b-1479-7602-af22-8665c0f2f21c
 
-# unsigned, wrongly signed, and other-tenant-signed events
-> POST 4002/v1/integrations/demo-a-16018/events                       (no signature)
+# C-4 casino timeout: the casino accepts the bonus and never answers in time
+> POST 4004/__faults body={"casino":"a","kind":"timeout","times":1,"player_id":"A-PLAYER-77"}
+    state: RESERVED
+    state: ISSUING
+    state: UNKNOWN
+    state: ISSUED
+< three redemptions, three issued rewards on the casino: the timeout produced no second reward
+
+# C-5 unsigned, wrongly signed, and other-tenant-signed events
+> POST 4002/v1/integrations/demo-a-56719/events                       (no signature)
 < 401 {"message":"signature check failed","code":"signature_missing"}
 > POST ... x-a-signature: 0000...0000
 < 401 {"message":"signature check failed","code":"signature_invalid"}
@@ -226,28 +269,68 @@ Part C cases from the same run:
 > POST 4002/v1/spins   (no token)
 < 401 {"code":"TENANT_REQUIRED","message":"authentication required"}
 
-# a player with no coins redeems: no negative balance
-< 409 {"message":"not enough coins","code":"insufficient_funds"}
-
-# tenant isolation: casino B reads casino A's redemption
-> GET 4002/v1/operator/redemptions/<casino A redemption id>   (casino B operator token)
+# C-6 player isolation: another player of casino A reads player A's data
+> GET 4002/v1/redemptions/01a20399-ed06-73b9-8fb6-614f20ae112f
 < 404 {"message":"redemption not found","code":"redemption_not_found"}
-> GET 4002/v1/redemptions/<casino A redemption id>            (casino B player token)
+> GET 4003/v1/players/01a20399-a71e-722e-a0cb-13c2486a3258/balance
+< 403 {"code":"forbidden","message":"role not allowed"}
+
+# C-6b a player with no coins redeems: no negative balance
+< 409 {"message":"not enough coins","code":"insufficient_funds"}
+> GET 4003/v1/me/balance
+< 404 {"code":"wallet_not_found","message":"wallet not found"}
+
+# C-7 tenant isolation: casino B reads casino A's redemption
+> GET 4002/v1/operator/redemptions/01a20399-ed06-73b9-8fb6-614f20ae112f   (casino B operator token)
+< 404 {"message":"redemption not found","code":"redemption_not_found"}
+> GET 4002/v1/redemptions/01a20399-ed06-73b9-8fb6-614f20ae112f            (casino B player token)
 < 404 {"message":"redemption not found","code":"redemption_not_found"}
 ```
 
-Realtime through the web origin (one Socket.IO client, namespace `/rt`, one-time ticket from
-`POST /v1/auth/realtime-ticket`). The pushed frames arrived on the direct engagement origin:
+C-8, a failed reward issuance (demo step 40). Casino B is told to reject one bonus. The order holds the coins
+while the casino's ticket is pending, then ends `RELEASED`; the balance returns to the baseline once, and the
+stock unit and the per-player slot come back (the second order of the same one-unit item is accepted):
 
 ```text
-< 42/rt,["notification",{"type":"spin.result","payload":{"spin_id":"01a20116-df48-...","reward_coins":200,"table_version":1},...}]
-< 42/rt,["notification",{"type":"balance.changed","payload":{"reason":"credited","amount":200},...}]
+> POST 4004/__faults body={"casino":"b","kind":"reject","times":1,"player_id":"B-PLAYER-12"}
+    balance before: 150
+> POST 4002/v1/redemptions [idempotency-key: redeem-b-56719-reject] body={"item_id":"01a2039b-6cfa-7d0d-94d3-b661832b34ed"}
+< 202 {"id":"01a2039b-74bd-7451-b07a-f444636a39d8","price":50,"status":"pending","state":"RESERVED",...}
+> GET 4002/v1/redemptions/01a2039b-74bd-7451-b07a-f444636a39d8
+< 200 {"status":"pending","state":"UNKNOWN","attempts":1,"casino_reference":"tkt-809ac6a3-12b4-43b5-b6df-7cde68f2fa2c",...}
+> GET 4003/v1/me/balance
+< 200 {"available":100,"held":50,"currency":"COIN"}
+> POST 4004/casino-b/__settle
+< 200 {"settled":1}
+> GET 4002/v1/redemptions/01a2039b-74bd-7451-b07a-f444636a39d8        (after the next poll, at most 60 s)
+< 200 {"status":"failed_refunded","state":"RELEASED","attempts":1,"failure_reason":"casino_rejected:rejected","history":[],...}
+> GET 4003/v1/me/balance
+< 200 {"wallet_id":"01a20399-e916-7e68-9fa8-dbd9be393874","available":150,"held":0,"currency":"COIN"}
+> GET 4004/__issued?casino=b
+< 200 [ ...only the earlier bonus; the rejected one was never issued ]
+> POST 4002/v1/redemptions [idempotency-key: redeem-b-56719-after-reject] body={"item_id":"01a2039b-6cfa-7d0d-94d3-b661832b34ed"}
+< 202 {"id":"01a2039c-a229-7954-b158-384caf9da5c3","status":"pending","state":"RESERVED",...}
 ```
 
-### Known gaps from the recorded run
+Realtime (demo steps 22, 23 and 26): one Socket.IO client on namespace `/rt` with a one-time ticket from
+`POST /v1/auth/realtime-ticket`. The handshake and the namespace connect went through the web origin, the
+WebSocket upgrade passed through the web proxy with and without the trailing slash, and the pushed frames
+arrived:
 
-The first recorded run exposed three gaps. All three are closed (decision D-27); the captured output above is
-from that first run.
+```text
+> POST 4001/v1/auth/realtime-ticket [authorization: Bearer <redacted>] body={}
+< 200 {"ticket":"<redacted>","expires_in":60}
+> GET /socket.io/?EIO=4&transport=websocket + Upgrade: websocket (web origin, trailing slash as the client sends it)
+< HTTP/1.1 101 Switching Protocols
+< 42/rt,["notification",{"id":"01a20399-e34d-786f-8b64-2a65931b0f57","type":"spin.result","payload":{"spin_id":"e2db2218-34e5-8079-b6dc-98f8b8f4f17d","reward_coins":500,"table_version":2},"ts":1795356746573}]
+< 42/rt,["notification",{"id":"01a20399-e466-7730-9512-0e5f54a3ab8b","type":"balance.changed","payload":{"reason":"credited","amount":500},"ts":1795356746854}]
+```
+
+### Gaps the first recorded run exposed
+
+An earlier recorded run (37 steps, 13 failures) exposed three gaps. All three are closed (decision D-27), and the
+output above, from the run on `dd9d464`, shows them closed: the redemption reaches the casino and ends `ISSUED`
+or `RELEASED`, and the socket works through the web origin.
 
 - **Socket.IO.** The web `/config` now returns `realtimeUrl` (engagement's public URL, `PUBLIC_REALTIME_URL`),
   engagement allows the web origin (`REALTIME_ALLOWED_ORIGINS`), and the same-origin `/socket.io` rewrite
@@ -332,8 +415,10 @@ answer, 503 otherwise).
 
 ### Realtime
 
-Engagement hosts the Socket.IO gateway (namespace `/rt`). The browser never talks to it directly: the web app
-proxies `/socket.io/*` to engagement, so the socket opens on the web origin. The socket authenticates with a
+Engagement hosts the Socket.IO gateway (namespace `/rt`). The browser reads `realtimeUrl` from the web `/config`
+(engagement's public URL, `PUBLIC_REALTIME_URL`) and opens the socket there; engagement allows the web origin
+through `REALTIME_ALLOWED_ORIGINS`. The web app's same-origin `/socket.io/*` rewrite to engagement stays as a
+fallback (decision D-27). The socket authenticates with a
 one-time ticket (`aud=realtime`, at most 60 s) from `GET /api/realtime/ticket`. Delivery is at most once and
 there is no replay of events missed while disconnected: the client resyncs over REST after a reconnect. For
 `next dev` outside compose run `REALTIME_UPSTREAM=http://localhost:4002 pnpm --filter @ex-mio/web dev`.
@@ -349,8 +434,8 @@ can be run for one project with `pnpm nx run <project>:<target>`.
 | One service or package                                                              | `pnpm --filter @ex-mio/<name> test` (identity, engagement, payments, contracts, service-kit, bus, tenancy, idempotency, logger, casino-sim) | nothing running                                                |
 | Web                                                                                 | `pnpm --filter @ex-mio/web test` (vitest)                                                                                                   | nothing running                                                |
 | Design system, contrast and colour gate                                             | `pnpm --filter @ex-mio/ui test`                                                                                                             | nothing running                                                |
-| Payments against Postgres                                                           | `pnpm --filter @ex-mio/payments test:db`                                                                                                    | `docker compose up -d --wait postgres`                         |
-| Engagement store against Postgres                                                   | `pnpm --filter @ex-mio/engagement test:pg`                                                                                                  | `docker compose up -d --wait postgres`                         |
+| Payments against Postgres                                                           | `pnpm --filter @ex-mio/payments test:db`                                                                                                    | `docker compose up -d --wait` (see below)                      |
+| Engagement store against Postgres                                                   | `pnpm --filter @ex-mio/engagement test:pg` with `DATABASE_URL` set (see below)                                                              | `docker compose up -d --wait` (see below)                      |
 | Whole stack: health, roles, tenant isolation, idempotency, bus, ingest, saga, audit | `pnpm test:compose`                                                                                                                         | `docker compose up -d --wait` (the stack on its default ports) |
 | Lint (layering, package boundaries)                                                 | `pnpm lint`                                                                                                                                 | nothing running                                                |
 | Typecheck                                                                           | `pnpm typecheck`                                                                                                                            | nothing running                                                |
@@ -373,8 +458,32 @@ The one failure is a web timing test that ran on a machine at load average 30:
 succeeds" did not find the text `Result unknown` within its wait. It was not re-run in isolation, so it is not
 yet shown to be a flake.
 
-<!-- OUTPUT: `pnpm --filter @ex-mio/payments test:db` and `pnpm --filter @ex-mio/engagement test:pg` -->
-<!-- OUTPUT: `pnpm test:compose` (suite and test counts against the running stack) -->
+The end-to-end run is recorded above: `scripts/demo.sh` on `dd9d464` passed 40 steps and 194 assertions, with
+Part C cases C-1 to C-8 against the live stack. The Part C compose tests behind those cases are in
+`tests/compose/src/partc-issuance.compose.test.ts`. No output of `pnpm --filter @ex-mio/payments test:db`,
+`pnpm --filter @ex-mio/engagement test:pg` or `pnpm test:compose` is committed, and no CI run exists (the
+repository has no remote). The compose counts quoted in [`docs/ai/`](docs/ai/README.md) (98 then 107 of 111) are
+reviewer-reported on an earlier tree. TODO-RUN: the three suites are re-run on the final tree and their summaries
+recorded here (S-11, S-12 and S-13 in [`docs/submission/known-gaps.md`](docs/submission/known-gaps.md)).
+
+Both Postgres suites need a database with the migrations applied, and the compose Postgres alone has none: each
+service container applies its own migrations at start, so bring up the whole stack (`docker compose up -d --wait`,
+as CI does). The roles are created by `docker/postgres/init.sh`: `<service>_app` (runtime, no DDL, row-level
+security forced) and `<service>_owner` (migrations); the role `engagement` does not exist.
+
+- `test:db` connects as `payments_app`, `payments_owner` and `postgres` itself, with the dev passwords from
+  `init.sh` (`apps/payments/src/testing/pg.ts`). `POSTGRES_HOST` (default `localhost`) and `POSTGRES_PORT`
+  (default `54329`) are the only variables.
+- `test:pg` takes `DATABASE_URL` as the runtime role, and the schema must be applied by the owner role first
+  (idempotent; the container did it at start, this repeats it):
+
+  ```sh
+  docker compose exec -T \
+    -e MIGRATION_DATABASE_URL=postgresql://engagement_owner:engagement-owner-dev@postgres:5432/engagement \
+    engagement node dist/migrate.js
+  DATABASE_URL=postgresql://engagement_app:engagement-app-dev@localhost:54329/engagement \
+    pnpm --filter @ex-mio/engagement test:pg
+  ```
 
 ```text
 $ pnpm lint
@@ -400,7 +509,9 @@ second one.
   in two tenants. Players do not have provider accounts: a player is the casino's launch token plus our mapping.
 - Coins are virtual, whole numbers, with no cash value. Amounts from casinos are integers in minor units; a float
   is rejected.
-- A deposit grants spins by a per-tenant rule; the demo rule is "a deposit of at least 20.00 grants one spin".
+- A deposit grants spins by a per-tenant rule. A new tenant gets a default rule and wheel on signup (D-27, see
+  `docs/submission/known-gaps.md` G-4); the demo rule is "a deposit of at least 20.00 grants one spin", and an
+  operator changes it with `PUT /v1/operator/rules`. No SQL seeding is needed on a fresh stack.
 - Rules, reward tables and store items are tenant configuration, and odds changes are versioned. A new
   rule or wheel version is published with `PUT /v1/operator/rules` and `PUT /v1/operator/wheel`, and the live
   console calls them. No route returns the published version in the console's shape, so the console keeps its own copy.
@@ -430,7 +541,7 @@ Checked against the code. The full table with the reasons is section 14 of
 | Operator signup and plan checkout against the fake provider                                  | Built                                                                                                          |
 | Realtime push over Socket.IO with a one-time ticket                                          | Built, at most once                                                                                            |
 | Web: player widget and operator console                                                      | Built; live against the services by default. Sandbox check, go-live and coin history are mock (see known gaps) |
-| Product events for Varta                                                                     | Partial: contract and logger function, no service emits yet                                                    |
+| Product events for Varta                                                                     | Built: 12 events on stdout; Varta ingestion is live on pre-prod                                                    |
 | Redis balance projection                                                                     | Partial: wired, optional, off in default compose                                                               |
 | Missed-event replay on websocket reconnect                                                   | Next                                                                                                           |
 | Rate limiting                                                                                | Next                                                                                                           |
@@ -438,7 +549,7 @@ Checked against the code. The full table with the reasons is section 14 of
 | Production identity provider, refresh tokens                                                 | Next                                                                                                           |
 | Provably-fair seed commitment, RNG certification                                             | Next                                                                                                           |
 | Per-service deployment secrets                                                               | Next, not claimed                                                                                              |
-| Deckhand deploy and Varta wiring                                                             | Described, not run here                                                                                        |
+| Deckhand deploy                                                                              | Described, not run here                                                                                        |
 
 ## Where the answers are
 
@@ -450,13 +561,40 @@ Checked against the code. The full table with the reasons is section 14 of
 | D: AI-native development                  | [`docs/ai/`](docs/ai/README.md): process, decisions, defects found, verification                                                           |
 | E: scaling, first 90 days, team           | [`docs/scaling/`](docs/scaling/README.md) and [`90-days.md`](docs/scaling/90-days.md)                                                      |
 | What is missing                           | [`docs/submission/known-gaps.md`](docs/submission/known-gaps.md)                                                                           |
-| The backlog (17 epics, tasks, acceptance) | [`backlog/`](backlog/README.md)                                                                                                            |
+| The backlog (18 epics, tasks, acceptance) | [`backlog/`](backlog/README.md)                                                                                                            |
+
+## Release notes
+
+Upgrading: changes that need an action when you upgrade from an earlier tree (decisions D-29 and D-30 in
+[`docs/decision-log.md`](docs/decision-log.md)).
+
+- **Wire-key format changed: drain before you upgrade.** The idempotency keys that engagement sends to payments
+  and to the casino, and the usage key sent to the billing provider, are now scoped by tenant and environment:
+  `<kind>:<tenant id>:prd|sbx:<id>` (for example `hold:<tenant>:prd:<order id>`, `redeem:...`, `capture:...`,
+  `usage:<tenant>:prd:<period>`), where the earlier format was `<kind>:<id>`. An order in flight across the
+  upgrade would be looked up under a new key that the casino and payments have never seen, so no order may be in
+  flight: let every redemption reach a final state first. Nothing is in flight before the first launch, which is
+  why the change was accepted. Check that no redemption is `Pending`, `Held` or `Unknown`, then roll payments,
+  engagement and identity together. The key format is pinned in `packages/contracts/src/scoped-key.ts` (D-26).
+- **The environment is required, with no production default.** These requests now answer **400
+  `VALIDATION_FAILED`** without `environment` (`production` or `sandbox`): `POST /v1/credentials` (body
+  `{ platform, environment }`), `PUT /v1/operator/integrations/:casino/reward-api` (body `{ environment, base_url,
+... }`) and the internal `GET /internal/v1/tenants/:tenantId/players/:playerId/balance` (query
+  `sandbox=true|false`). An event without `sandbox` is invalid and goes to the dead-letter path. Callers that
+  relied on the old default must now send the value.
+- **The reward API must be https in production.** A plain-http reward API is refused by the PUT and by the call
+  itself in production; the only exception is a host listed in `REWARD_API_ALLOW_HOSTS` (compose lists
+  `casino-sim`). The PUT also refuses credentials in the URL and loopback, private, link-local and unspecified
+  addresses, and the call never follows a redirect.
+- **Migrations are forward only.** An applied migration is never edited: a change to a shipped table goes
+  into a new migration (the `inbound_events` key and the `audit_intents` tenant isolation shipped that way).
+  `node dist/migrate.js` exits 1 when the image ships no migrations.
 
 ## Known limitations
 
 - The websocket has no missed-event replay; the client resyncs over REST.
 - Stripe exists only as an interface; the production identity provider is not chosen; there are no refresh tokens.
-- Deckhand deploy and Varta wiring are described, not run here.
+- The Deckhand deploy is described in `docs/deploy.md`, not run here; Varta ingestion is live on pre-prod.
 - There is no rate limiting.
 - The wheel's tenant rule cap (`max_grants_per_player`) is best effort when two deposits of one player are
   processed in parallel; only the sequential case is pinned.
@@ -476,20 +614,6 @@ Checked against the code. The full table with the reasons is section 14 of
 The full list, with the web calls that no service answers yet, is in
 [`docs/submission/known-gaps.md`](docs/submission/known-gaps.md).
 
-## Upgrading
-
-- **No orders may be in flight across the upgrade to the environment-scoped wire keys (D-26, D-30 F2).**
-  The keys that name a redemption order, a coin hold, a spin credit or a deposit changed from
-  `<kind>:<id>` to `<kind>:<tenant>:<sbx|prd>:<id>` (for example `redeem:<tenant>:prd:<order id>`). The
-  casino sees that key in its issue call, and engagement, payments and identity use it to dedupe. A redemption that
-  was started before the upgrade and is retried or resolved after it is looked up under the new key, is not
-  found, and can be issued or released a second time. Before deploying: let every redemption reach a final
-  state (no `Pending`, `Held` or `Unknown` rows), or drain the queue; then roll all three services together.
-  The key format is pinned in `packages/contracts/src/scoped-key.ts`.
-- **Migrations are forward only.** An applied migration is never edited: a change to a shipped table goes
-  into a new migration (the `inbound_events` key and the `audit_intents` tenant isolation shipped that way).
-  `node dist/migrate.js` exits 1 when the image ships no migrations.
-
 ## Operations
 
 Each service has two database roles: `<service>_owner` (owns the schema, used by `migrate.js` only) and
@@ -501,19 +625,20 @@ reconciles every tenant's ledger and reports usage on an interval; `pnpm --filte
 
 ## Next steps
 
-1. Fill the recorded outputs in this README from one full run of the stack.
+1. Record one full run of `test:db`, `test:pg` and `test:compose` on the final tree (S-12).
 2. Authenticated journal replay for realtime, and a Redis adapter for more than one engagement instance.
 3. Provably-fair draws: publish a hash of the seed before play, reveal after rotation.
 4. Stripe provider and hosted checkout; entitlements by plan. Refresh tokens and a production identity provider.
-5. Rate limits per tenant; emit product events from the services; alerts on reconciliation and dead-letter depth.
+5. Rate limits per tenant; alerts on reconciliation and dead-letter depth.
 6. Service routes for the sandbox check, go-live and reading the published rules and wheel back, so the console stops answering them from its mock.
 7. Per-service deployment secrets and the blue-green rollout through Deckhand; observability through Varta.
 8. Move integrations into their own service when a second operator team needs independent releases.
 
 ## How this was built
 
-Planned and built with AI coding agents under a review framework (review-framework) that requires a regression
-test at the choke point and a re-applied mutation for every claimed fix. The service skeleton comes from the
+Planned and built with AI coding agents under a review framework (review-framework, a set of review rules kept by the product owner, not a dependency of
+this repository) that requires a regression test at the choke point and a re-applied mutation for every claimed
+fix. The rules are restated in [`docs/ai/verification.md`](docs/ai/verification.md). The service skeleton comes from the
 monorepo starter. Evidence, and the decisions made by hand, are in [`docs/ai/`](docs/ai/README.md).
 
 ## License

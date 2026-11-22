@@ -255,12 +255,12 @@ same merge.
 issuer (compose tests) or from `@ex-mio/service-kit/testing` fixtures with a fixture JWKS (in-process tests), never from a
 header. `INV-SCAN-1..4` fails while any of them still pins the placeholder.
 
-- tests: `apps/identity/src/tenants.test.ts`, `packages/tenancy/src/tenancy.test.ts` (header cases, `TenancyModule.forRoot`),
-  `apps/payments/src/credits.test.ts` and `apps/engagement/src/projections.test.ts` (both boot `TenancyModule.forRoot()` and send
-  headers; they boot `ServiceAuthModule.forService` with fixture JWKS instead), `tests/compose/src/tenancy.compose.test.ts`,
+- tests: `apps/identity/src/identity.tenants.test.ts`, `packages/tenancy/src/tenancy.test.ts` (header cases, `TenancyModule.forRoot`),
+  `apps/engagement/src/projections.test.ts` (it no longer boots `TenancyModule.forRoot()` or sends
+  headers; it boots `ServiceAuthModule.forService` with fixture JWKS instead), `tests/compose/src/tenancy.compose.test.ts`,
   `tests/compose/src/bus.compose.test.ts` (`x-platform-admin-token`), `tests/compose/src/env.ts` (`PLATFORM_TOKEN`).
 - source: `packages/contracts/src/http.ts` (`HEADER_TENANT_ID`, `HEADER_PLATFORM_TOKEN`), `packages/tenancy/src/nest.ts` (header
-  resolver and constants, `TenancyModule`), `apps/identity/src/controllers/platform-admin.guard.ts` (delete),
+  resolver and constants, `TenancyModule`),
   `apps/payments/src/app.module.ts`, `apps/engagement/src/app.module.ts`, `apps/identity/src/app.module.ts` (use
   `ServiceAuthModule.forService`).
 - config: `docker-compose.yml` (drop `PLATFORM_ADMIN_TOKEN`; add `CREDENTIALS_KEK`, `PLATFORM_ADMIN_EMAIL`, `PLATFORM_ADMIN_PASSWORD`, `SERVICE_CLIENT_SECRETS` for identity,
@@ -359,8 +359,7 @@ Check `uptime` first and wait while the 1-minute load is above 20. Prefix with `
 `cd apps/identity && nice -n 10 npx jest --maxWorkers=1`, `cd packages/service-kit && nice -n 10 npx jest --maxWorkers=1`,
 `cd packages/contracts && npx jest`, `cd apps/payments && npx jest --maxWorkers=1 acting-ban wiring`, same for engagement.
 Compose tests, only under the lock: `flock <lock-file> docker compose up -d --wait` (one stack at a time on the host),
-then `cd tests/compose && npx jest --runInBand identity`, then `flock <lock-file> docker compose down -v`. Compose tests are red today
-(missing tables, no JWKS route, no service-token route, no emulator tenants).
+then `cd tests/compose && npx jest --runInBand identity`, then `flock <lock-file> docker compose down -v`.
 
 ## 10. Review findings to changes (Stage A fix round)
 

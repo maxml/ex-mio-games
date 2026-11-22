@@ -8,6 +8,8 @@ risk_class: identity
 status: todo
 depends_on: [MIO-044, MIO-130, MIO-135]
 size: M
+estimate_hours_base: 24
+estimate_hours: 29
 ---
 
 ## Goal

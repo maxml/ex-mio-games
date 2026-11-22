@@ -1,5 +1,7 @@
 @engagement = http://localhost:4002
 
+# {{player_token}} is the session token from the launch exchange (02); it is valid for engagement and payments.
+
 ### Spin the wheel (workflow step 4)
 # The tenant and the player come only from the verified token. The body may hold at most credit_id;
 # there is no field to choose a segment or a weight. The server draws from HMAC(server_seed[version], spin_id).
@@ -19,7 +21,7 @@ Content-Type: application/json
 GET {{engagement}}/v1/wheel/{{wheel_id}}
 Authorization: Bearer {{player_token}}
 
-# Response (captured from scripts/demo.sh, via GET /v1/wheel):
+# Response (captured from scripts/demo.sh, via GET /v1/wheel, which serves the tenant's active wheel):
 # HTTP/1.1 200 OK
 # {"wheel_id":"0190a1b2-c3d4-4e5f-8a6b-2000000000a1","segments":[{"label":"200 coins"},{"label":"300 coins"},{"label":"500 coins"}]}
 
@@ -31,9 +33,9 @@ Content-Type: application/json
 
 {}
 
-# Response: expected, to be replaced with captured output
+# Response (shape from the contract, not captured):
 # HTTP/1.1 409 Conflict
-# { "message": "no spin credit available", "code": "no_credit" }
+# { "message": "no spin available", "code": "no_credit" }
 
 ### A body that tries to choose the outcome is refused
 POST {{engagement}}/v1/spins
@@ -43,5 +45,6 @@ Content-Type: application/json
 
 { "segment_index": 0, "weights": [1, 0, 0] }
 
-# Response: expected, to be replaced with captured output
+# Response (shape from the contract, not captured):
 # HTTP/1.1 422 Unprocessable Entity
+# { "message": "validation failed", "issues": [ ... ] }

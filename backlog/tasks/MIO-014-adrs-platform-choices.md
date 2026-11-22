@@ -8,6 +8,8 @@ risk_class: none
 status: todo
 depends_on: []
 size: M
+estimate_hours_base: 16
+estimate_hours: 20
 ---
 
 ## Goal

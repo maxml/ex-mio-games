@@ -10,6 +10,8 @@ depends_on: [MIO-054, MIO-063, MIO-066]
 blocked_by:
   ['starter: rate limiter (per tenant, per principal, per IP; fail-closed; tenant fairness)']
 size: S
+estimate_hours_base: 8
+estimate_hours: 10
 ---
 
 ## Goal

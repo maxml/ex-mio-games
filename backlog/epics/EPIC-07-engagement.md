@@ -28,6 +28,9 @@ rewards that the casino issues. Reward status is tracked and exposed through an 
 | MIO-068 | Issuance retries, backoff, timeout handling, DLQ and replay                          | P1       |
 | MIO-069 | Wheel fairness: seed management and the anti-manipulation write-up                   | P1       |
 | MIO-070 | ADR: new features (Missions, PvP, Kingdom Builder) consume canonical events only     | P1       |
+| MIO-206 | Replay of a spin stored under the old raw key after the key format change            | P2       |
+| MIO-207 | Spin seed secrecy proof and a published commitment for provably fair spins           | P2       |
+| MIO-208 | Test that tenant creation seeds the default rule and wheel through the real event    | P1       |
 
 ## Covers
 

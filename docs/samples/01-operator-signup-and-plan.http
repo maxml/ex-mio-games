@@ -1,5 +1,12 @@
 @identity = http://localhost:4001
 @payments = http://localhost:4003
+@engagement = http://localhost:4002
+
+# Tokens: an operator token has ONE audience, so each service needs its own login (scripts/demo.sh logs in three times).
+#   {{operator_identity_token}}    login with "audience": "identity"    (credentials, reward API)
+#   {{operator_payments_token}}    login with "audience": "payments"    (plans, attempts, player balances)
+#   {{operator_engagement_token}}  login with "audience": "engagement"  (wheel, rules, store, redemptions)
+# A token for one audience is refused (401) by the other services.
 
 ### Operator signup: creates the tenant and its first owner. Public endpoint.
 # @name signup
@@ -13,59 +20,112 @@ Content-Type: application/json
   "password": "correct-horse-battery"
 }
 
-# Response: expected, to be replaced with captured output
+# Response (captured from scripts/demo.sh on 2026-11-22, run on dd9d464; the run used the slug demo-a-56719, the names and ids below are from it):
 # HTTP/1.1 201 Created
-# {
-#   "tenant": { "id": "0190...-tenant-a", "type": "operator", "name": "Casino A Demo", "slug": "casino-a-demo", "status": "active" },
-#   "user":   { "id": "0190...-user", "email": "owner@casino-a.example", "roles": ["operator_admin"] }
-# }
+# {"tenant":{"id":"01a20399-7faa-7964-9a44-e106e1db8b28","type":"operator","name":"Casino demo-a-56719","slug":"demo-a-56719","status":"active"},"user":{"id":"01a20399-7faa-7066-9d2d-366f8faef0c6","email":"boss@demo-a-56719.test","roles":["operator_admin"]}}
 
-### Operator login. The tenant comes from the Host, never from the body.
-# @name login
+### Operator login, one per audience. The tenant comes from the Host, never from the body.
+# The password has at least 10 characters. "audience" is one of identity, engagement, payments or web (default web).
+# @name loginPayments
 POST {{identity}}/v1/auth/login
 Host: casino-a-demo.mio.localhost
 Content-Type: application/json
 
-{ "email": "owner@casino-a.example", "password": "correct-horse-battery", "audience": "web" }
+{ "email": "owner@casino-a.example", "password": "correct-horse-battery", "audience": "payments" }
 
-# Response: expected, to be replaced with captured output
+# Response (captured from scripts/demo.sh on 2026-11-22, run on dd9d464; the token is not shown):
 # HTTP/1.1 200 OK
-# { "access_token": "<jwt>", "token_type": "Bearer", "expires_in": 900 }
+# {"access_token":"<redacted>","token_type":"Bearer","expires_in":900}
+
+### Same login for the engagement audience (repeat with "identity" for the credential calls below)
+# @name loginEngagement
+POST {{identity}}/v1/auth/login
+Host: casino-a-demo.mio.localhost
+Content-Type: application/json
+
+{ "email": "owner@casino-a.example", "password": "correct-horse-battery", "audience": "engagement" }
 
 ### List billing plans (seeded: free 0, pro 4900, scale 19900, USD cents)
 GET {{payments}}/v1/billing/plans
-Authorization: Bearer {{operator_token}}
+Authorization: Bearer {{operator_payments_token}}
 
-# Response: expected, to be replaced with captured output
+# Response (captured from scripts/demo.sh on 2026-11-22, run on dd9d464):
 # HTTP/1.1 200 OK
-# [
-#   { "id": "0190...-free",  "code": "free",  "name": "Free",  "interval": "month", "price_minor": 0,     "currency": "USD" },
-#   { "id": "0190...-pro",   "code": "pro",   "name": "Pro",   "interval": "month", "price_minor": 4900,  "currency": "USD" },
-#   { "id": "0190...-scale", "code": "scale", "name": "Scale", "interval": "month", "price_minor": 19900, "currency": "USD" }
-# ]
+# [{"id":"ef122033-ab6c-467a-8331-0856804a1837","code":"free","name":"Free","interval":"month","price_minor":0,"currency":"USD"},{"id":"abdfacea-4d79-4e8a-992f-f7d3fae9a51e","code":"pro","name":"Pro","interval":"month","price_minor":4900,"currency":"USD"},{"id":"a59634fd-320d-4264-9174-042e973cab78","code":"scale","name":"Scale","interval":"month","price_minor":19900,"currency":"USD"}]
 
 ### Start a plan checkout with a fake-provider test card (4242... accepted, 4000000000000002 declined)
 # @name attempt
 POST {{payments}}/v1/billing/attempts
-Authorization: Bearer {{operator_token}}
+Authorization: Bearer {{operator_payments_token}}
 Idempotency-Key: plan-attempt-0001
 Content-Type: application/json
 
 { "plan_id": "0190...-pro", "card_number": "4242424242424242" }
 
-# Response: expected, to be replaced with captured output
+# Response (captured from scripts/demo.sh on 2026-11-22, run on dd9d464; the run sent the real plan id of the Pro plan above):
 # HTTP/1.1 201 Created
-# The attempt stays "processing" until the provider's signed activation webhook arrives.
-# {
-#   "id": "0190...-attempt", "plan_id": "0190...-pro", "subscription_id": "0190...-sub",
-#   "state": "processing", "card_last4": "4242", "card_brand": "visa",
-#   "created_at": "2026-11-21T10:00:00.000Z", "updated_at": "2026-11-21T10:00:00.000Z"
-# }
+# The attempt stays "processing" until the provider's signed activation webhook arrives
+# (POST {{payments}}/v1/billing/webhooks with x-webhook-signature; scripts/demo.sh signs it like the provider does).
+# {"id":"01a20399-8903-7313-ae38-f81f785de4da","plan_id":"abdfacea-4d79-4e8a-992f-f7d3fae9a51e","subscription_id":"01a20399-88ff-7fd3-bd1c-caea14b8935f","state":"processing","card_last4":"4242","card_brand":"visa","created_at":"2026-11-22T14:12:03.451Z","updated_at":"2026-11-22T14:12:03.451Z"}
 
 ### Poll the attempt: it turns "succeeded" after the verified webhook
 GET {{payments}}/v1/billing/attempts/{{attempt.response.body.id}}
-Authorization: Bearer {{operator_token}}
+Authorization: Bearer {{operator_payments_token}}
 
-# Response: expected, to be replaced with captured output
+# Response (captured from scripts/demo.sh on 2026-11-22, run on dd9d464, after the signed webhook was applied):
 # HTTP/1.1 200 OK
-# { "id": "0190...-attempt", "state": "succeeded", "card_last4": "4242", "card_brand": "visa", "...": "..." }
+# {"id":"01a20399-8903-7313-ae38-f81f785de4da","plan_id":"abdfacea-4d79-4e8a-992f-f7d3fae9a51e","subscription_id":"01a20399-88ff-7fd3-bd1c-caea14b8935f","state":"succeeded","card_last4":"4242","card_brand":"visa","created_at":"2026-11-22T14:12:03.451Z","updated_at":"2026-11-22T14:12:04.138Z"}
+
+### Issue the casino's integration credentials (operator_admin; shown once)
+POST {{identity}}/v1/credentials
+Authorization: Bearer {{operator_identity_token}}
+Content-Type: application/json
+
+{ "platform": "casino-a", "environment": "production" }
+
+# `environment` is required (`production` or `sandbox`); without it the call answers 400 VALIDATION_FAILED (D-29).
+# Response (captured from scripts/demo.sh on 2026-11-22, run on dd9d464; the secrets are not shown):
+# HTTP/1.1 201 Created
+# {"key_id":"key_01a203997faa79649a44e106e1db8b28_w--JyawQ9zas","api_key":"<redacted>","hmac_secret":"<redacted>"}
+# The casino signs its webhooks (02, 03) and its player launch tokens (02) with hmac_secret.
+
+### Register where MIO calls the casino to issue a reward (the casino reward API, production)
+PUT {{identity}}/v1/operator/integrations/casino-a/reward-api
+Authorization: Bearer {{operator_identity_token}}
+Content-Type: application/json
+
+{ "environment": "production", "base_url": "http://casino-sim:4004", "api_key": "demo-reward-key-a" }
+
+# Response (captured from scripts/demo.sh on 2026-11-22, run on dd9d464):
+# HTTP/1.1 200 OK
+# {"platform":"casino-a","environment":"production","base_url":"http://casino-sim:4004","has_api_key":true,"issue_deadline_ms":null}
+# The api_key is sealed at rest and never returned.
+
+### Publish the wheel (optional: a new tenant already has a default 200/300/500 wheel and a "deposit >= 2000 gives 1 spin" rule)
+PUT {{engagement}}/v1/operator/wheel
+Authorization: Bearer {{operator_engagement_token}}
+Content-Type: application/json
+
+{
+  "name": "Demo wheel",
+  "segments": [
+    { "label": "200 coins", "weight": 6, "reward": { "type": "coins", "amount": 200 } },
+    { "label": "300 coins", "weight": 3, "reward": { "type": "coins", "amount": 300 } },
+    { "label": "500 coins", "weight": 1, "reward": { "type": "coins", "amount": 500 } }
+  ]
+}
+
+# Response (captured from scripts/demo.sh on 2026-11-22, run on dd9d464; a new tenant starts at version 1, so this is version 2):
+# HTTP/1.1 200 OK
+# {"id":"01a20399-813e-7210-a752-f594030b48c0","version":2}
+
+### Publish the deposit rule (operator_admin)
+PUT {{engagement}}/v1/operator/rules
+Authorization: Bearer {{operator_engagement_token}}
+Content-Type: application/json
+
+{ "name": "Deposit 20 EUR, 1 spin", "min_amount_minor": 2000, "currency": "EUR", "spins": 1 }
+
+# Response (captured from scripts/demo.sh on 2026-11-22, run on dd9d464):
+# HTTP/1.1 200 OK
+# {"id":"deposit","version":2}

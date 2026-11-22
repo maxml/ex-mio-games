@@ -9,6 +9,8 @@ status: todo
 depends_on: [MIO-001]
 blocked_by: ['starter: payments skeleton']
 size: M
+estimate_hours_base: 12
+estimate_hours: 15
 ---
 
 ## Goal

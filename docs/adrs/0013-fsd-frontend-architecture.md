@@ -1,14 +1,14 @@
-# Frontend architecture — Feature-Sliced Design on the Next App Router
+# 0013. Frontend architecture: Feature-Sliced Design on the Next App Router
 
-> Status: accepted — the FSD skeleton, module boundaries, state stack, and the
-> reference slices are in the baseline `apps/web` with passing tests.
-> Date: 2026-06-30 (carried over from the monorepo starter; updated 2026-11-21).
-> Deciders: maintainers.
-> Confidence: HIGH — the structure below is what `apps/web` actually ships
-> (`src/layers/{app,views,widgets,features,entities,shared}`, ESLint
-> `import/no-restricted-paths` + Steiger boundaries, TanStack Query + Zustand +
-> react-hook-form/Zod, a typed HTTP client + error envelope, next-intl, and a
-> singleton realtime client). Domain features are layered on top of this seed.
+- Status: accepted (the FSD skeleton, module boundaries, state stack and reference slices are in the baseline
+  `apps/web` with passing tests)
+- Deciders: maintainers
+- Date: 2026-06-30 (carried over from the monorepo starter; updated 2026-11-21)
+- Confidence: HIGH. The structure below is what `apps/web` actually ships
+  (`src/layers/{app,views,widgets,features,entities,shared}`, ESLint
+  `import/no-restricted-paths` + Steiger boundaries, TanStack Query + Zustand +
+  react-hook-form/Zod, a typed HTTP client + error envelope, next-intl, and a
+  singleton realtime client). Domain features are layered on top of this seed.
 
 ## 1. Context
 
