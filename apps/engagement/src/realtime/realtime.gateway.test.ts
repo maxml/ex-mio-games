@@ -34,7 +34,7 @@ class FakeIdentity implements TicketRedeemer {
   private n = 0;
   ticketFor(tid: string, sub: string): string {
     const t = `ticket-${(this.n += 1)}`;
-    this.issued.set(t, { sub, tid, roles: ['player'] });
+    this.issued.set(t, { sub, tid, roles: ['player'], sandbox: false });
     return t;
   }
   async redeem(ticket: string): Promise<Principal | null> {

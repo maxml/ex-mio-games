@@ -52,7 +52,7 @@ export function stageBConformance(label: string, pair: PairSetup): void {
       expect(test.redemption.id).not.toBe(live.redemption.id);
       expect(live.redemption.sandbox).toBe(false);
       expect(test.redemption.sandbox).toBe(true);
-      expect(await h.stockOf(itemId)).toBe(3);
+      expect(await h.stockOf(itemId)).toBe(4); // D-28: only the production order took stock
       // each mode still dedupes inside itself
       const liveAgain = await h.store.placeOrder(scopeOf(h, 'p-f2', false), {
         operationKey: 'same-key',
@@ -66,7 +66,7 @@ export function stageBConformance(label: string, pair: PairSetup): void {
       expect(liveAgain.redemption.id).toBe(live.redemption.id);
       expect(testAgain).toMatchObject({ created: false });
       expect(testAgain.redemption.id).toBe(test.redemption.id);
-      expect(await h.stockOf(itemId)).toBe(3);
+      expect(await h.stockOf(itemId)).toBe(4);
     });
 
     it('F3 inbox dedupe is per tenant: the same event id in two tenants applies in both, and still dedupes inside one', async () => {
