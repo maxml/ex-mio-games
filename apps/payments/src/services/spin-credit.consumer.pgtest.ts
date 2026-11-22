@@ -290,6 +290,7 @@ describe("D1-7 a transient failure must not lose the player's coins (decision D-
     const e = createEvent({
       type: 'identity.tenant.created',
       tenantId: t,
+      sandbox: false,
       payload: { name: 'x', slug: 'x' },
     });
     const d = await h.consume(e);

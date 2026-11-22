@@ -35,6 +35,7 @@ describe('store contracts', () => {
     const ev = createEvent({
       type: 'engagement.redemption.status_changed',
       tenantId: TENANT,
+      sandbox: false,
       payload: {
         redemption_id: RID,
         player_id: P1,

@@ -31,7 +31,7 @@ async function world() {
     email: 'boss@a.test',
     password: PW,
   });
-  const key = await k.credentials.issue(a.tenant.id, 'sim-casino');
+  const key = await k.credentials.issue(a.tenant.id, 'sim-casino', { environment: 'production' });
   const session = await k.sessions.launchWithKey(key, { externalPlayerId: 'ext-1' });
   const operator = (
     await k.sessions.login(a.tenant.id, {
@@ -170,7 +170,7 @@ async function gatewayWorld() {
     email: 'boss@a.test',
     password: PW,
   });
-  const key = await k.credentials.issue(a.tenant.id, 'sim-casino');
+  const key = await k.credentials.issue(a.tenant.id, 'sim-casino', { environment: 'production' });
   const session = await k.sessions.launchWithKey(key, { externalPlayerId: 'ext-1' });
   const operator = (
     await k.sessions.login(a.tenant.id, {
@@ -283,7 +283,9 @@ describe('RT-REDEEM: the gateway redeems a ticket over the internal identity rou
     const badLogin = await login('realtime');
     expect(badLogin.statusCode).toBe(400);
     expect(badLogin.json()).toMatchObject({ code: 'VALIDATION_FAILED' });
-    const key = await w.k.credentials.issue(w.a.tenant.id, 'sim-casino');
+    const key = await w.k.credentials.issue(w.a.tenant.id, 'sim-casino', {
+      environment: 'production',
+    });
     const launch = (audience: string) =>
       w.app.inject({
         method: 'POST',

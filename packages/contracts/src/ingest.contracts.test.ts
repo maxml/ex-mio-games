@@ -44,6 +44,7 @@ describe('ingest contracts', () => {
     const e = createEvent({
       type: 'engagement.deposit.confirmed',
       tenantId: T,
+      sandbox: false,
       payload: {
         inbound_event_id: W,
         source: 'casino-a',
@@ -81,13 +82,19 @@ describe('ingest contracts', () => {
       { ...deposit, player_id: undefined },
     ]) {
       expect(() =>
-        createEvent({ type: 'engagement.deposit.confirmed', tenantId: T, payload: bad as never }),
+        createEvent({
+          type: 'engagement.deposit.confirmed',
+          tenantId: T,
+          sandbox: false,
+          payload: bad as never,
+        }),
       ).toThrow();
     }
     expect(() =>
       createEvent({
         type: 'engagement.spin.granted',
         tenantId: T,
+        sandbox: false,
         payload: { credit_id: W, player_id: W, wheel_id: W, source_event_id: 'not-a-uuid' },
       }),
     ).toThrow();

@@ -106,6 +106,7 @@ describe('event envelope', () => {
     const e = createEvent({
       type: 'identity.tenant.created',
       tenantId: TENANT,
+      sandbox: false,
       payload: { name: 'Acme', slug: 'acme' },
     });
     expect(() => parseEvent({ ...e, tenant_id: undefined })).toThrow(InvalidEventError);
@@ -115,6 +116,7 @@ describe('event envelope', () => {
     const e = createEvent({
       type: 'identity.tenant.created',
       tenantId: TENANT,
+      sandbox: false,
       payload: { name: 'Acme', slug: 'acme' },
     });
     expect(() => parseEvent({ ...e, type: 'nope.nope.nope' })).toThrow(/unknown event/);
@@ -125,6 +127,7 @@ describe('event envelope', () => {
     const e = createEvent({
       type: 'identity.tenant.created',
       tenantId: TENANT,
+      sandbox: false,
       payload: { name: 'Acme', slug: 'acme' },
     });
     expect(() => parseEvent({ ...e, payload: { name: '' } })).toThrow(/invalid payload/);

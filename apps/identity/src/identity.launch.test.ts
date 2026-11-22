@@ -30,8 +30,12 @@ async function world() {
     email: 'boss@b.test',
     password: PW,
   });
-  const keyA = await k.credentials.issue(a.tenant.id, 'sim-casino');
-  const keyB = await k.credentials.issue(b.tenant.id, 'sim-casino');
+  const keyA = await k.credentials.issue(a.tenant.id, 'sim-casino', {
+    environment: 'production',
+  });
+  const keyB = await k.credentials.issue(b.tenant.id, 'sim-casino', {
+    environment: 'production',
+  });
   const sign = (over: Partial<Parameters<typeof signLaunchToken>[0]> = {}) =>
     signLaunchToken({
       keyId: keyA.key_id,
@@ -293,7 +297,9 @@ describe('INV-LAUNCH: a launch token becomes a player session only when every ch
   // F7, second half. Mutation: same, with a second key for another platform in the same tenant.
   it('INV-LAUNCH-11 each platform key links only under its own platform, in the same tenant', async () => {
     const { k, a, exchange } = await world();
-    const other = await k.credentials.issue(a.tenant.id, 'other-casino');
+    const other = await k.credentials.issue(a.tenant.id, 'other-casino', {
+      environment: 'production',
+    });
     const viaOther = await exchange(
       signLaunchToken({
         keyId: other.key_id,

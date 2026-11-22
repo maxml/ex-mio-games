@@ -93,6 +93,7 @@ const spinEvent = (tenantId: string, playerId: string) =>
   createEvent({
     type: 'engagement.spin.completed',
     tenantId,
+    sandbox: false,
     payload: {
       spin_id: '55555555-5555-4555-8555-555555555555',
       player_id: playerId,
@@ -164,6 +165,7 @@ describe('realtime gateway', () => {
       createEvent({
         type: 'payments.coins.captured',
         tenantId: T_A,
+        sandbox: false,
         payload: {
           transaction_id: id,
           player_id: P_1,
@@ -179,6 +181,7 @@ describe('realtime gateway', () => {
       createEvent({
         type: 'engagement.redemption.status_changed',
         tenantId: T_A,
+        sandbox: false,
         payload: { redemption_id: id, player_id: P_1, from: null, to: 'REQUESTED', cause: 'x' },
       }),
     );

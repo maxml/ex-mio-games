@@ -10,6 +10,7 @@ describe('toPush', () => {
     const spin = createEvent({
       type: 'engagement.spin.completed',
       tenantId: T,
+      sandbox: false,
       payload: { spin_id: id, player_id: P, reward_coins: 3, table_version: 2 },
     });
     expect(toPush(spin)).toMatchObject({
@@ -20,6 +21,7 @@ describe('toPush', () => {
     const other = createEvent({
       type: 'identity.tenant.created',
       tenantId: T,
+      sandbox: false,
       payload: { name: 'n', slug: 's' },
     });
     expect(toPush(other)).toBeUndefined();
@@ -29,6 +31,7 @@ describe('toPush', () => {
     const e = createEvent({
       type: 'payments.coins.credited',
       tenantId: T,
+      sandbox: false,
       payload: { credit_id: id, player_id: P, amount: 9 },
     });
     expect(toPush(e)?.frame.payload).toEqual({ reason: 'credited', amount: 9 });

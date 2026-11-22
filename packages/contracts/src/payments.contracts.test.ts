@@ -172,7 +172,7 @@ describe('payments contracts', () => {
       'payments.coins.released',
       'payments.coins.refunded',
     ] as const) {
-      const e = createEvent({ type, tenantId: U, payload });
+      const e = createEvent({ type, tenantId: U, sandbox: false, payload });
       expect(parseEvent(e).type).toBe(type);
       expect(() => parseEvent({ ...e, payload: { ...payload, amount: 0 } })).toThrow();
     }

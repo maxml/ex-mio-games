@@ -13,7 +13,11 @@ const SERVICE_SECRETS = {
   engagement: 'engagement-test-secret-0001',
   payments: 'payments-test-secret-00001',
 };
-const BODY = { base_url: 'http://casino-sim:4004', api_key: 'sim-signing-secret-a' };
+const BODY = {
+  environment: 'production',
+  base_url: 'http://casino-sim:4004',
+  api_key: 'sim-signing-secret-a',
+};
 
 async function world() {
   const ctx = await createTestApp({ serviceClients: SERVICE_SECRETS });
@@ -43,8 +47,8 @@ async function world() {
   expect(invited.statusCode).toBe(201);
   const staffA = await login(a.tenant.id, 'staff@a.test');
   // A credential per tenant: the integration exists only for a tenant with a live credential.
-  await k.credentials.issue(a.tenant.id, 'casino-a');
-  await k.credentials.issue(b.tenant.id, 'casino-a');
+  await k.credentials.issue(a.tenant.id, 'casino-a', { environment: 'production' });
+  await k.credentials.issue(b.tenant.id, 'casino-a', { environment: 'production' });
   const put = (token: string, casino: string, payload: unknown) =>
     ctx.app.inject({
       method: 'PUT',

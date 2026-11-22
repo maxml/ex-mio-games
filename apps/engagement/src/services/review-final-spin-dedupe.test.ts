@@ -181,14 +181,16 @@ describe('final review: spin dedupe after the spins UNIQUE was dropped (D-26 que
     w.addCredit(credit(2), true);
     const svc = await w.service();
 
-    const prd = await asA(() => svc.spin({ idempotencyKey: 'k1' }));
+    const prd = await asA(() => svc.spin({ idempotencyKey: 'k1', sandbox: false }));
     const sbx = await asA(() => svc.spin({ idempotencyKey: 'k1', sandbox: true }));
     expect(sbx.spin_id).not.toBe(prd.spin_id);
     expect(w.spins.size).toBe(2);
     expect(w.used()).toBe(2);
 
     // replays: each environment gets its own stored result and spends nothing
-    expect((await asA(() => svc.spin({ idempotencyKey: 'k1' }))).spin_id).toBe(prd.spin_id);
+    expect((await asA(() => svc.spin({ idempotencyKey: 'k1', sandbox: false }))).spin_id).toBe(
+      prd.spin_id,
+    );
     expect((await asA(() => svc.spin({ idempotencyKey: 'k1', sandbox: true }))).spin_id).toBe(
       sbx.spin_id,
     );
@@ -202,9 +204,11 @@ describe('final review: spin dedupe after the spins UNIQUE was dropped (D-26 que
     const w = new World();
     w.addCredit(credit(1));
     w.addCredit(credit(2));
-    const first = await asA(async () => (await w.service()).spin({ idempotencyKey: 'k1' }));
+    const first = await asA(async () =>
+      (await w.service()).spin({ idempotencyKey: 'k1', sandbox: false }),
+    );
     const restarted = await w.service();
-    const again = await asA(() => restarted.spin({ idempotencyKey: 'k1' }));
+    const again = await asA(() => restarted.spin({ idempotencyKey: 'k1', sandbox: false }));
     expect(again.spin_id).toBe(first.spin_id);
     expect(again.segment_index).toBe(first.segment_index);
     expect(w.spins.size).toBe(1);
@@ -220,8 +224,8 @@ describe('final review: spin dedupe after the spins UNIQUE was dropped (D-26 que
     const p2 = await w.service(); // separate in-flight sets: only the database can serialise them
     w.raceFinds(2); // both see "no spin yet" before either inserts
     const results = await Promise.allSettled([
-      asA(() => p1.spin({ idempotencyKey: 'k1' })),
-      asA(() => p2.spin({ idempotencyKey: 'k1' })),
+      asA(() => p1.spin({ idempotencyKey: 'k1', sandbox: false })),
+      asA(() => p2.spin({ idempotencyKey: 'k1', sandbox: false })),
     ]);
     const ok = results.filter(
       (r): r is PromiseFulfilledResult<Awaited<ReturnType<SpinService['spin']>>> =>
@@ -243,7 +247,7 @@ describe('final review: spin dedupe after the spins UNIQUE was dropped (D-26 que
       const w = new World();
       w.addCredit(credit(1));
       const svc = await w.service();
-      const outcome = await asA(() => svc.spin({ idempotencyKey: key })).then(
+      const outcome = await asA(() => svc.spin({ idempotencyKey: key, sandbox: false })).then(
         (r) => ({ ok: true as const, r }),
         (e: unknown) => ({ ok: false as const, e }),
       );
