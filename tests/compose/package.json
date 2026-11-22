@@ -25,7 +25,7 @@
     "@ex-mio/tenancy": "workspace:^1.0.0",
     "@types/amqplib": "~0.10.8",
     "@types/jest": "^30.0.0",
-    "@types/node": "24.13.3",
+    "@types/node": "26.6.6",
     "@types/pg": "^8.11.10",
     "amqplib": "~0.10.9",
     "jest": "^30.0.2",

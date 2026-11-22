@@ -39,7 +39,7 @@
   "devDependencies": {
     "@nestjs/testing": "^11.1.9",
     "@types/jest": "^30.0.0",
-    "@types/node": "24.13.3",
+    "@types/node": "26.6.6",
     "jest": "^30.0.2",
     "socket.io-client": "^4.8.1",
     "ts-jest": "^29.4.0",
