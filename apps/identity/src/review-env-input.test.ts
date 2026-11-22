@@ -172,11 +172,22 @@ describe('D30-SUSP TENANT_SUSPENDED is an AuthorizationRefused (D-30, F6)', () =
   });
 });
 
+// Fix round 2 (test owner): D-31 R4 defines "production" in D-30 as the DEPLOYMENT
+// (NODE_ENV=production), so this test now runs in a production deployment. Under jest NODE_ENV is
+// `test`, where http is allowed by the same rule, and the third assertion went red after 124a8c5.
+// The property is unchanged: production http is refused, https passes, the allow-list is honoured.
+// Mutation: `rewardApiRequiresHttps` returns false -> red.
 describe('D30-HTTPS a production reward API is https unless the host is allow-listed (D-30, F1)', () => {
   const saved = process.env.REWARD_API_ALLOW_HOSTS;
+  const savedNodeEnv = process.env.NODE_ENV;
+  beforeEach(() => {
+    process.env.NODE_ENV = 'production';
+  });
   afterEach(() => {
     if (saved === undefined) delete process.env.REWARD_API_ALLOW_HOSTS;
     else process.env.REWARD_API_ALLOW_HOSTS = saved;
+    if (savedNodeEnv === undefined) delete process.env.NODE_ENV;
+    else process.env.NODE_ENV = savedNodeEnv;
   });
   const put = async (base_url: string) => {
     const w = await world();
