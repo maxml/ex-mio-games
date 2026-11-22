@@ -37,6 +37,19 @@ export function requestHeaders(config: AdapterConfig): Record<string, string> {
 export const isRecord = (v: unknown): v is Record<string, unknown> =>
   typeof v === 'object' && v !== null && !Array.isArray(v);
 
+/**
+ * F1: the casino's rejection reason is stored on the order and shown to the operator, so it is a
+ * read channel for whatever a hostile URL answers with. Cut to 64 characters of `[A-Za-z0-9 _.-]`.
+ */
+export const REASON_MAX_LENGTH = 64;
+export const sanitizeReason = (reason: string, fallback = 'rejected'): string => {
+  const clean = reason
+    .replace(/[^A-Za-z0-9 _.-]/g, '_')
+    .slice(0, REASON_MAX_LENGTH)
+    .trim();
+  return clean === '' ? fallback : clean;
+};
+
 export const nonEmptyString = (v: unknown): v is string => typeof v === 'string' && v.length > 0;
 
 /**

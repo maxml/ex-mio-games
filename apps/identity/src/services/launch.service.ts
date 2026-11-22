@@ -11,6 +11,7 @@ import {
   type LaunchResponse,
 } from '@ex-mio/contracts';
 import { emitProductEvent } from '@ex-mio/logger';
+import { AuthorizationRefused } from '@ex-mio/service-kit';
 import { IdentityError, UniqueViolationError } from '../errors';
 import type { Clock, Repos, UnitOfWork } from '../model/ports';
 import { safeEqual } from './crypto';
@@ -87,7 +88,7 @@ export class LaunchService {
       throw invalid();
     });
     if (tenant.status !== 'active')
-      throw new IdentityError('TENANT_SUSPENDED', 'tenant is suspended');
+      throw new AuthorizationRefused({ code: 'TENANT_SUSPENDED', message: 'tenant is suspended' });
 
     try {
       await this.uow.run(tenantId, (tx) =>

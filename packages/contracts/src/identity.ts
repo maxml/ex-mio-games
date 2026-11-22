@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { CasinoRewardApiConfig, IssueDeadlineMs } from './casino-adapter';
 import { Uuid } from './ids';
+import { rewardApiUrlProblem } from './ip-guard';
 import { COIN_VALUE_ACTIONS } from './payments';
 
 // Identity contracts (feature spec). Spec: docs/specs/identity.md. Every service
@@ -471,7 +472,12 @@ export const PutRewardApiRequest = z
       .string()
       .url()
       .max(2048)
-      .refine((u) => /^https?:\/\//i.test(u), { message: 'base_url must be http or https' }),
+      .refine((u) => /^https?:\/\//i.test(u), { message: 'base_url must be http or https' })
+      // F1: no credentials in the URL, and no literal internal address. Names that resolve to one
+      // are refused at call time by engagement's transport; https-only in production likewise.
+      .refine((u) => rewardApiUrlProblem(u) === undefined, {
+        message: 'base_url must not carry credentials or point at an internal address',
+      }),
     /** The secret that signs issuance requests; sealed at rest, never returned. */
     api_key: z.string().min(1).max(512).optional(),
     /** Overrides the adapter type's default deadline; production only. */

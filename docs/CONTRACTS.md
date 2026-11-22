@@ -104,6 +104,15 @@ sandbox?, payload }`; `tenant_id` is mandatory; the payload schema is registered
   integration credential (X-3, D-13).
   A duplicate returns 200 with the first body. Money is an integer in minor units. Each adapter declares a
   recovery mode (`native_lookup` or `idempotent_replay`) so a lost reward reply is recoverable by our key.
+  **Reward API URL (D-30, F1).** `PutRewardApiRequest.base_url` refuses credentials and literal loopback,
+  private, link-local, unspecified and metadata addresses (`packages/contracts/src/ip-guard.ts`). The
+  engagement transport (`fetchTransport`) resolves the host at call time, connects only to an address that
+  passed the same check, never follows a redirect (any 3xx is an unknown outcome), and requires `https`
+  when `NODE_ENV=production`. Hosts in the `REWARD_API_ALLOW_HOSTS` env var (comma separated; compose:
+  `casino-sim`) are exempt from the address and https rules. The casino's rejection reason is truncated to
+  64 characters and limited to `[A-Za-z0-9 _.-]` before it is stored.
+  **Spin Idempotency-Key.** `scopedKey` throws `ScopedKeyTooLong` when escaping pushes a key past 512
+  characters; the spin service maps it to 422, never 500.
 - **pinned:** `packages/contracts/src/ingest.contracts.test.ts`,
   `apps/engagement/src/integrations/adapters.contract.test.ts`,
   `apps/engagement/src/controllers/ingest.controller.test.ts`,

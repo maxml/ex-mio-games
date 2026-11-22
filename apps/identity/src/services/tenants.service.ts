@@ -8,6 +8,7 @@ import {
   type TenantType,
   type TenantView,
 } from '@ex-mio/contracts';
+import { AuthorizationRefused } from '@ex-mio/service-kit';
 import { IdentityError, ProviderError, UniqueViolationError } from '../errors';
 import type { Repos, TenantRow, Tx, UnitOfWork } from '../model/ports';
 import type { IdentityProvider } from './identity-provider';
@@ -120,7 +121,10 @@ export class TenantsService {
 
   async setStatus(id: string, status: TenantStatus): Promise<TenantView> {
     if (id === PLATFORM_TENANT_ID && status !== 'active') {
-      throw new IdentityError('FORBIDDEN', 'the platform tenant cannot be suspended');
+      throw new AuthorizationRefused({
+        code: 'FORBIDDEN',
+        message: 'the platform tenant cannot be suspended',
+      });
     }
     const found = await this.uow.run(null, async (tx) => {
       const ok = await this.repos.tenants.setStatus(tx, id, status);
