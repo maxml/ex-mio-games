@@ -13,7 +13,7 @@ import { storeConformance } from './testing/store-conformance';
  *   DATABASE_URL=postgresql://engagement:engagement-dev@localhost:54329/engagement \
  *     pnpm --filter @ex-mio/engagement test:pg
  * CI runs the same script in the `compose` job, after the stack is healthy.
- * RED today: ../model/redemption.store does not exist. Mutations are listed in store-conformance.ts.
+ * Mutations are listed in store-conformance.ts.
  * The harness writes through the real tables named in the spec (§5), under the tenant's RLS context.
  * One DataSource for the whole file, destroyed in afterAll (no leaked pools, no --forceExit).
  * Every test uses fresh tenant ids, so the shared database needs no cleanup between tests.

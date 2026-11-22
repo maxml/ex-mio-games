@@ -1,5 +1,5 @@
 import { INTEGRATION_ENVIRONMENTS, TenantIntegration } from '@ex-mio/contracts';
-import { buildKernel } from './testing/kernel'; // RED: module does not exist yet
+import { buildKernel } from './testing/kernel';
 
 /*
  * Choke point: CredentialsService (services/credentials.service.ts): per-tenant API key + webhook

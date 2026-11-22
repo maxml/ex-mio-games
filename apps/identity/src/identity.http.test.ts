@@ -31,9 +31,9 @@ import {
   signJwt,
   signLaunchToken,
 } from '@ex-mio/service-kit/testing';
-import { identityControllers } from './controllers'; // RED: module does not exist yet
-import { PERMISSION_KEY, PermissionGuard } from './controllers/permissions'; // RED
-import { createTestApp } from './testing/app'; // RED
+import { identityControllers } from './controllers';
+import { PERMISSION_KEY, PermissionGuard } from './controllers/permissions';
+import { createTestApp } from './testing/app';
 
 /*
  * Choke point: the HTTP edge: the service-kit entry point ServiceAuthModule (tenant from the

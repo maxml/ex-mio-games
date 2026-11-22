@@ -21,9 +21,9 @@ import {
   type SpinCredit,
   type SpinRecord,
 } from '../model/repositories';
-import { createSeedProvider } from '../model/seeds'; // RED: module missing
-import { SpinService } from './spin.service'; // RED: module missing
-import { selectSegment } from './wheel'; // RED: module missing
+import { createSeedProvider } from '../model/seeds';
+import { SpinService } from './spin.service';
+import { selectSegment } from './wheel';
 
 /** The versioned seed store the REAL provider reads (R2-3). A rotation is `add(tenant, v + 1, ...)`. */
 class MemorySeedStore implements SeedStore {

@@ -1,5 +1,5 @@
 import { PLATFORM_TENANT_ID } from '@ex-mio/contracts';
-import { buildKernel } from './testing/kernel'; // RED: module does not exist yet
+import { buildKernel } from './testing/kernel';
 
 /*
  * Choke point: TenantsService (services/tenants.service.ts) over the tenants

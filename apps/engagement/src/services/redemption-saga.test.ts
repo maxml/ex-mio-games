@@ -7,8 +7,6 @@ import type { RedemptionRecord, SagaDeps, Scope } from '../redemptions/ports';
  * casinos behind the shared port (D-2) and a world that kills the process at named points.
  * Spec: docs/specs/engagement-store.md. Every test is named after its invariant (I-*) and its header
  * comment names the mutation that must turn it red.
- * The saga does not exist yet: every test here fails to import `./redemption-saga.service`
- * (RED for the right reason).
  *
  * Two safety nets run after EVERY test (afterEach): (1) the casino audit: the adapter may only be
  * called while the row is ISSUING with its attempt already recorded; (2) nothing else.

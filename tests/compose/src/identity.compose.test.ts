@@ -25,7 +25,6 @@ const PAYMENTS_USER_ROUTE = `${urls.payments}/v1/players/00000000-0000-4000-8000
 /*
  * Database and cross-service twins of the identity invariants (docs/specs/identity.md,
  * "Compose tests"). They need the migrated identity schema and the running stack.
- * RED today: the tables do not exist, the JWKS route does not exist.
  *
  * Every DB test runs in a transaction that is rolled back, so the shared
  * database is left as it was found.

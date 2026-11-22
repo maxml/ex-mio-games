@@ -30,7 +30,7 @@ import {
 } from '@ex-mio/contracts';
 import * as tenancy from '@ex-mio/tenancy';
 import { Public } from '@ex-mio/tenancy';
-import { currentAuth, InternalTenantless, ServiceAuthModule } from './service-auth'; // RED: module does not exist yet
+import { currentAuth, InternalTenantless, ServiceAuthModule } from './service-auth';
 import { accessClaims, generateRsaKey, serviceClaims, signJwt } from './testing/jwt-fixtures';
 
 /*

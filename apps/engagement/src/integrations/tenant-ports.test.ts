@@ -7,12 +7,12 @@ import {
   type CasinoRewardApiConfig,
 } from '@ex-mio/contracts';
 import type { Transport, TransportRequest } from './adapter';
-import { createDefaultRegistry } from './registry'; // RED: module missing
+import { createDefaultRegistry } from './registry';
 import {
   createCasinoPlayerPort,
   createRewardRequestBuilder,
   createTenantCasinoPorts,
-} from './tenant-ports'; // RED: module missing
+} from './tenant-ports';
 import type { TenantIntegration, TenantIntegrationPort } from './ports';
 
 /**

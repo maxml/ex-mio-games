@@ -1,6 +1,6 @@
 import type { CanonicalDepositEvent, RuleDefinition } from '@ex-mio/contracts';
 import type { StoredRule } from '../model/repositories';
-import { evaluateRules } from './rules.engine'; // RED: module missing
+import { evaluateRules } from './rules.engine';
 
 /**
  * Rules engine (MIO-060): a pure function, table-driven. Signature (docs/specs section 6):

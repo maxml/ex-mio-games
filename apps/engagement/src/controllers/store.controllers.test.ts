@@ -23,7 +23,7 @@ import {
  * error mapping, the player/operator view of a redemption). Roles are identity's vocabulary
  * (X-15): player, operator_admin, operator_staff. There are no `x-principal-*`, `x-sandbox` or
  * `x-tenant-id` headers anywhere (X-9, D-12): the entry point is the real ServiceAuthModule with
- * fixture keys. Missing modules today = RED for the right reason.
+ * fixture keys.
  */
 
 const TENANT = '0190a1b2-c3d4-4e5f-8a6b-7c8d9e0f1a2b';

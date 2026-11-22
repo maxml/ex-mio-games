@@ -20,7 +20,7 @@ import {
 
 const U = '0190a1b2-c3d4-4e5f-8a6b-7c8d9e0f1a2b';
 
-// Contract tests: these pin the wire shapes and pass already. The RED tests of the
+// Contract tests: these pin the wire shapes. The behaviour tests of the
 // payments epic live in apps/payments (see docs/specs/payments.md).
 describe('payments contracts', () => {
   // Mutation: relax CoinAmount (drop .int(), .positive() or .max()) -> a row below goes red.
