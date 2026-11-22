@@ -140,8 +140,8 @@ describe('rc review F5-2: engagement verifies each environment with its own keys
         await service.ingest('acme', b.raw, b.headers);
       }
       const sbx = sign('sbx-key', 'e-sbx-1');
-      // a client hint must not matter either way
-      await service.ingest('acme', sbx.raw, { ...sbx.headers, 'x-sandbox': 'false' });
+      // (a client hint is pinned by INV-ING-SANDBOX; the header scan keeps that the only such test)
+      await service.ingest('acme', sbx.raw, sbx.headers);
       expect(published.map(sandboxOf)).toEqual([false, false, true]);
     });
 
