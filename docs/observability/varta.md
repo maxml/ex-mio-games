@@ -21,11 +21,11 @@ docker compose -f docker-compose.yml -f docker-compose.varta.yml up -d
 
 For `identity`, `engagement`, `payments` and `web` (the four services that emit events) it adds:
 
-| Setting               | Value                        | Why                                                                                    |
-| --------------------- | ---------------------------- | -------------------------------------------------------------------------------------- |
-| label `varta.project` | `ex-mio`                     | the project Varta's observability layer writes on each event, from the container label |
-| label `varta.service` | the service name             | the service stamped next to it                                                         |
-| `logging.driver`      | `json-file`, 10 MB x 3 files | Varta only tails `json-file` logs, live and rotated                                    |
+| Setting               | Value                        | Why                                                                               |
+| --------------------- | ---------------------------- | --------------------------------------------------------------------------------- |
+| label `varta.project` | `ex-mio`                     | the project Varta's ingestion side writes on each event, from the container label |
+| label `varta.service` | the service name             | the service stamped next to it                                                    |
+| `logging.driver`      | `json-file`, 10 MB x 3 files | Varta only tails `json-file` logs, live and rotated                               |
 
 No ports, networks or environment variables change. Check the merged file with
 `docker compose -f docker-compose.yml -f docker-compose.varta.yml config`.
@@ -36,10 +36,10 @@ which is the checkout directory's name. Use the override so the panel shows `ex-
 ## What the Varta side must have
 
 - A collector on the same Docker host as the stack (the host agent, or the agent for a VPS without
-  the deploy plane). Its log receiver reads `/var/lib/docker/containers/*/*-json.log` and the rotated
+  the Varta server). Its log receiver reads `/var/lib/docker/containers/*/*-json.log` and the rotated
   `*-json.log.*` files, and routes any line whose JSON has `"kind":"product_event"` to the stream
   `product_events`.
-- Attribution comes from the container labels, not from Varta's inventory: the observability layer
+- Attribution comes from the container labels, not from Varta's inventory: the Varta ingestion side
   reads `varta.project` and `varta.service` and writes them as `varta_project` and `varta_service`
   (the collector does not). An inventory row for `ex-mio` is not needed for attribution. A
   container younger than about a minute has no project yet, so its first lines carry none.
