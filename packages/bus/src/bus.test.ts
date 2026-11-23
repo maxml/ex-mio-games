@@ -4,6 +4,8 @@ import { createEvent } from '@ex-mio/contracts';
 import {
   backoffMs,
   enqueueEvent,
+  outboxStats,
+  unparkOutbox,
   InboxConsumer,
   isTransientError,
   OutboxRelay,
@@ -236,6 +238,33 @@ describe('outbox', () => {
     expect(await relay.pollOnce()).toBe(1);
     expect(channel.publish).toHaveBeenCalledTimes(1);
     expect(manager.query.mock.calls.at(-1)?.[0]).toContain('UPDATE "outbox"');
+  });
+
+  // Choke point under FORCE RLS: the outbox policy shows the relay rows only with the platform scan
+  // flag and no tenant. Mutation: drop the flag from `scanTransaction` -> this goes red.
+  it('relay, stats and unpark opt into the platform scan before touching the outbox', async () => {
+    const { relay, queries } = relayWith(
+      [{ event_id: event.event_id, type: event.type, envelope: event, attempts: 0 }],
+      [],
+    );
+    await relay.pollOnce();
+    expect(queries[0]).toBe(`SET LOCAL app.platform_scan = 'on'`);
+    expect(queries[1]).toContain('FROM "outbox"');
+    for (const run of [outboxStats, unparkOutbox]) {
+      const seen: string[] = [];
+      const ds = {
+        transaction: async (fn: (m: unknown) => Promise<unknown>) =>
+          fn({
+            query: async (sql: string) => {
+              seen.push(sql);
+              return sql.startsWith('SELECT') ? [{ pending: '0', parked: '0' }] : [[], 0];
+            },
+          }),
+      } as unknown as DataSource;
+      await run(ds);
+      expect(seen[0]).toBe(`SET LOCAL app.platform_scan = 'on'`);
+      expect(seen[1]).toContain('"outbox"');
+    }
   });
 
   it('keeps an unroutable (returned) event unpublished and schedules its own retry', async () => {
