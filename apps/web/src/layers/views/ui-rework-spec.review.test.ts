@@ -57,11 +57,8 @@ describe('UIR-6 the web widget and admin views render the section 7 templates', 
   });
 
   // DEVIATION: neither view imports its template; the widget does not use SpinPanel or RedeemFlow.
-  it.fails(
-    'PlayerWidgetView renders PlayerWidgetTemplate and PlatformAdminView AdminConsoleTemplate',
-    () => {
-      expect(src('player-widget/ui/PlayerWidgetView.tsx')).toMatch(/<PlayerWidgetTemplate\b/);
-      expect(src('platform-admin/ui/PlatformAdminView.tsx')).toMatch(/<AdminConsoleTemplate\b/);
-    },
-  );
+  it('PlayerWidgetView renders PlayerWidgetTemplate and PlatformAdminView AdminConsoleTemplate', () => {
+    expect(src('player-widget/ui/PlayerWidgetView.tsx')).toMatch(/<PlayerWidgetTemplate\b/);
+    expect(src('platform-admin/ui/PlatformAdminView.tsx')).toMatch(/<AdminConsoleTemplate\b/);
+  });
 });

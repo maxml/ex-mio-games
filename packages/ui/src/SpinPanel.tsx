@@ -15,6 +15,11 @@ export interface SpinPanelProps {
   onSpinEnd?: (spinId: string) => void;
   durationMs?: number;
   size?: number;
+  /**
+   * Announce the result from this panel (default). A host that shows the panel only on one tab turns it
+   * off and keeps its own always-mounted live region, so the result is still announced from another tab.
+   */
+  live?: boolean;
 }
 
 /**
@@ -32,6 +37,7 @@ export function SpinPanel({
   onSpinEnd,
   durationMs,
   size,
+  live = true,
 }: SpinPanelProps) {
   // `clicked` is a ref as well as state: two clicks in one tick must still call onSpin once.
   const clicked = useRef(false);
@@ -80,9 +86,17 @@ export function SpinPanel({
         Spins left: <span className="font-semibold tabular-nums text-fg">{spinsLeft}</span>
       </p>
       <Button size="lg" disabled={disabled} loading={busy} onClick={click}>
-        Spin
+        {spinsLeft < 1 ? 'No spins left' : 'Spin'}
       </Button>
-      <p role="status" aria-live="polite" className="min-h-5 text-center text-sm font-semibold">
+      {spinsLeft < 1 && (
+        <p className="text-center text-sm text-fg-muted">
+          Spins come from deposits. Make a deposit to get more.
+        </p>
+      )}
+      <p
+        {...(live ? { role: 'status', 'aria-live': 'polite' as const } : {})}
+        className="min-h-5 text-center text-sm font-semibold"
+      >
         {spin && ended === spin.id ? result : ''}
       </p>
     </div>

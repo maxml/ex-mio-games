@@ -149,5 +149,6 @@ export {
   AdminConsoleTemplate,
   type PlayerWidgetTemplateProps,
   type AdminConsoleTemplateProps,
+  type AdminConsoleCopy,
   type TenantRow,
 } from './templates/PlayerAdmin';

@@ -13,10 +13,12 @@ export interface RedeemFlowProps {
   status?: RedeemStatus;
   /** The player confirmed. The caller creates the redemption (with its idempotency key). */
   onConfirm: (item: StoreItem) => void;
+  /** Ask "Redeem X for N coins?" first (default). Off: the Redeem button confirms at once. */
+  confirm?: boolean;
 }
 
 /** Redeem -> confirm -> pending -> issued, or failed and refunded. Presentational: status is a prop. */
-export function RedeemFlow({ item, balance, status, onConfirm }: RedeemFlowProps) {
+export function RedeemFlow({ item, balance, status, onConfirm, confirm = true }: RedeemFlowProps) {
   const [confirming, setConfirming] = useState(false);
   return (
     <div className="grid gap-2">
@@ -24,7 +26,7 @@ export function RedeemFlow({ item, balance, status, onConfirm }: RedeemFlowProps
         item={item}
         balance={balance}
         busy={status === 'pending'}
-        onRedeem={() => setConfirming(true)}
+        onRedeem={() => (confirm ? setConfirming(true) : onConfirm(item))}
       />
       {confirming && !status && (
         <Alert tone="warning" live="alert">
