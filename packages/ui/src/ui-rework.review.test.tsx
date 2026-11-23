@@ -44,7 +44,7 @@ describe('UIR-4 SpinPanel: a double click reaches the server once while the answ
 });
 
 describe('UIR-7 Grid cols={4} keeps one column on a phone (the admin stat tiles before a531b7b)', () => {
-  it.fails('the four-column grid starts at one column', () => {
+  it('the four-column grid starts at one column', () => {
     const { container } = render(
       <Grid cols={4}>
         <span>a</span>
