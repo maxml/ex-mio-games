@@ -31,7 +31,10 @@ version, never an edit. HTTP shapes change additively; a removal waits until no 
 - **provider:** `packages/contracts` (`src/web-api.ts`), provisional until the owning services publish
   final shapes · **consumers:** `web` (typed API client, mock adapter, HTTP adapter)
 - **spec:** zod schemas. The widget never receives odds (segments carry labels only); the server picks the
-  spin segment and the client only animates to it; acting as a tenant needs a reason.
+  spin segment and the client only animates to it; acting as a tenant needs a reason. The operator
+  redemption row's `status` is `OperatorRedemptionStatus`: the four public words plus `needs_review`, which the
+  BFF maps from engagement's `state: 'NEEDS_REVIEW'` (the public enum folds that into `pending`). The console
+  offers Resolve only on that value; the player widget never receives it.
 - **pinned:** `packages/contracts/src/web-api.contracts.test.ts`, `apps/web/src/layers/shared/api/mio`
 
 ## Event envelope and event types

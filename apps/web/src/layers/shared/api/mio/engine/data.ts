@@ -5,6 +5,7 @@ import type { StoreItemView as StoreItem } from '../../../types';
 export type Status =
   | 'pending'
   | 'issuing'
+  | 'needs_review'
   | 'issued'
   | 'failed_refunded'
   | 'trial'
@@ -125,6 +126,15 @@ export interface Redemption {
 }
 
 export const REDEMPTIONS: Redemption[] = [
+  {
+    id: 'rd-1043',
+    player: 'p_4b08',
+    item: '10 EUR bonus',
+    coins: 900,
+    status: 'needs_review',
+    at: '2026-11-21 14:10',
+    note: 'Casino answered 500 three times',
+  },
   {
     id: 'rd-1042',
     player: 'p_7f3a',

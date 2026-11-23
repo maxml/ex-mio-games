@@ -33,7 +33,7 @@ function RedemptionsBody({ readOnly, denied }: { readOnly: boolean; denied?: str
     player: r.player,
     item: r.item,
     priceCoins: r.coins,
-    status: r.status,
+    status: r.status, // already 'needs_review' for a parked row (contract OperatorRedemptionStatus)
     createdAt: r.at,
   }));
   const notice = (

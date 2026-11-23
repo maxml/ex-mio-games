@@ -503,7 +503,7 @@ export function createBff(deps: BffDeps) {
             player: 'player',
             item: byId.get(r.item_id)?.name ?? 'Item',
             coins: r.price,
-            status: r.status,
+            status: r.state === 'NEEDS_REVIEW' ? ('needs_review' as const) : r.status,
             at: r.updated_at,
           })),
           usage: usage ? mapUsage(usage) : base.usage,

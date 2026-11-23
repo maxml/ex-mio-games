@@ -12,6 +12,14 @@ import { PublicRedemptionStatus } from './store';
 export const RedemptionStatus = PublicRedemptionStatus;
 export type RedemptionStatus = PublicRedemptionStatus;
 
+/**
+ * The operator queue's status: the public word, plus `needs_review` for a redemption the saga parked
+ * (engagement `state: 'NEEDS_REVIEW'`, which the public enum folds into `pending`). Only the operator
+ * console reads it: it decides whether a row offers Resolve. Players never see it (W-5).
+ */
+export const OperatorRedemptionStatus = z.union([RedemptionStatus, z.literal('needs_review')]);
+export type OperatorRedemptionStatus = z.infer<typeof OperatorRedemptionStatus>;
+
 /** Renamed from `TenantStatus` (W-15): it mixes identity status with billing status; identity keeps `TenantStatus`. */
 export const AdminTenantStatus = z.enum(['trial', 'active', 'past_due', 'suspended']);
 export type AdminTenantStatus = z.infer<typeof AdminTenantStatus>;
@@ -164,7 +172,7 @@ export const OperatorRedemptionView = z.object({
   player: z.string(),
   item: z.string(),
   coins: z.number().int(),
-  status: RedemptionStatus,
+  status: OperatorRedemptionStatus,
   at: z.string(),
   note: z.string().optional(),
 });

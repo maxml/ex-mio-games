@@ -77,7 +77,7 @@ afterEach(() => {
 
 describe('UIR-1 an admin can open a review from the Redemptions page (spec section 2, row 5)', () => {
   // DEFECT: no row of the web operator state can be 'needs_review' (contract enum, BFF map, mock seed).
-  it.fails('the default console state offers at least one Resolve action to an admin', async () => {
+  it('the default console state offers at least one Resolve action to an admin', async () => {
     mount(<RedemptionsPage />, 'admin', createIsolatedMockApi());
     await screen.findByRole('table', { name: 'Redemptions' });
     expect(screen.getAllByRole('button', { name: /^Resolve / }).length).toBeGreaterThan(0);

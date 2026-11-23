@@ -100,11 +100,8 @@ describe('UIR-1 the operator state tells a review row apart (BFF half)', () => {
   });
 
   // DEFECT: the row comes out as { status: 'pending' } with no `state`.
-  it.fails(
-    'a NEEDS_REVIEW redemption is marked as needing review in /api/operator/state',
-    async () => {
-      const row = (await operatorState()).body.redemptions[0]!;
-      expect(row.status === 'needs_review' || row.state === 'NEEDS_REVIEW').toBe(true);
-    },
-  );
+  it('a NEEDS_REVIEW redemption is marked as needing review in /api/operator/state', async () => {
+    const row = (await operatorState()).body.redemptions[0]!;
+    expect(row.status === 'needs_review' || row.state === 'NEEDS_REVIEW').toBe(true);
+  });
 });
