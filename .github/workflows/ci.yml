@@ -2,7 +2,8 @@ name: ci
 
 # Proves that a clean clone works with no accounts and no repository secrets:
 # job "checks" runs the prompt check, format, lint, typecheck and unit tests; job "stack" brings the
-# whole docker compose stack up and runs the compose tests, the Postgres suites and the demo.
+# whole docker compose stack up and runs the compose tests, the Postgres suites and the demo; job
+# "prototype" installs, tests and builds design/prototype (outside the pnpm workspace).
 # Profile, tiers, triggers and the Dependabot policy: docs/ci.md.
 
 on:
@@ -81,6 +82,38 @@ jobs:
         run: pnpm --filter @ex-mio/ui exec playwright install --with-deps chromium
 
       - run: pnpm nx run-many -t test --parallel=2
+
+  prototype:
+    name: design prototype builds, its tests pass
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          submodules: false
+          persist-credentials: false
+
+      - run: corepack enable
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+          cache-dependency-path: |
+            pnpm-lock.yaml
+            design/prototype/pnpm-lock.yaml
+
+      # The prototype reads packages/ui (sources and dependencies) and the web page registry through
+      # aliases (design/prototype/README.md), so the workspace install comes first.
+      - run: pnpm install --frozen-lockfile
+
+      # Outside the workspace, with its own lockfile. `build` runs the contrast and raw-colour gates,
+      # tsc, the vitest suite (A-PROTO-1/2/3, the prototype A-UI-1) and the vite build.
+      - name: Install, test and build the prototype
+        working-directory: design/prototype
+        run: |
+          pnpm install --ignore-workspace --frozen-lockfile
+          pnpm run build
 
   stack:
     name: stack comes up healthy, compose tests pass

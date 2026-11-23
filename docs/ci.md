@@ -1,6 +1,6 @@
 # CI
 
-One workflow, `.github/workflows/ci.yml`, two jobs. CI is a gate ("not obviously broken"), not a proof
+One workflow, `.github/workflows/ci.yml`, three jobs. CI is a gate ("not obviously broken"), not a proof
 of correctness; the production gate is Deckhand's (health gate, smoke, rollback), see `deploy.md`.
 
 ## Profile
@@ -25,6 +25,7 @@ of correctness; the production gate is Deckhand's (health gate, smoke, rollback)
 | ------------------------------------------------------- | ----------- | ------------------------------------------------------------------- |
 | `ci/check-prompts.sh`, prettier, eslint, `tsc`          | static      | job `checks` (about 2 min), pre-push, pre-commit (staged files)     |
 | unit tests (`nx run-many -t test`)                      | unit        | job `checks`, pre-push                                              |
+| `design/prototype`: gates, `tsc`, vitest, `vite build`  | unit        | job `prototype` (own lockfile, outside the workspace); not pre-push |
 | compose tests, payments `test:db`, engagement `test:pg` | integration | job `stack` (about 13 min); pre-push with `MIO_GATE_STACK=1` [^1]   |
 | `scripts/demo.sh`                                       | end to end  | job `stack`, same throwaway stack; pre-push with `MIO_GATE_STACK=1` |
 | health gate, smoke, rollback                            | prod gate   | Deckhand, before and after cutover                                  |
@@ -35,8 +36,8 @@ of correctness; the production gate is Deckhand's (health gate, smoke, rollback)
   through a PR is gated on the PR and again on `main`; accepted because the minutes are free and the run on
   `main` is the record.
 - **Docs-only PR** (only `*.md` and `docs/`): job `stack` is skipped; job `checks` still runs, because
-  prettier checks the Markdown. Nothing in `docs/` is read by a test or a build. A push to `main` always
-  runs both jobs: a docs push diffed against the previous push would skip the stack even when that
+  prettier checks the Markdown (job `prototype` has no filter and runs too). Nothing in `docs/` is read by a test or a build. A push to `main` always
+  runs every job: a docs push diffed against the previous push would skip the stack even when that
   previous run was cancelled or red, so code could reach `main` with no stack run at all.
 - **Dependabot PRs** get job `checks` only. The full stack runs on the branch the
   bumps are combined on and on `main`.
