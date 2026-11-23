@@ -1,9 +1,15 @@
 import type { QueryRunner } from 'typeorm';
+import { ensureTenantKeys, TENANT_SETTING } from '@ex-mio/tenancy';
+
+/** The opt-in flag of a platform scan: honoured only by policies, and only with no tenant set. */
+export const PLATFORM_SCAN_SETTING = 'app.platform_scan';
 
 /**
  * DDL for the two bus tables every service that publishes or consumes owns in
- * its own database. Neither has row-level security on purpose: the relay and the
- * dedupe check work across tenants; both rows carry `tenant_id` for diagnosis.
+ * its own database. Both carry tenant data (the envelope, the consumed event ids), so
+ * `addBusTablesTenantRls` (a forward migration, run after this DDL) puts FORCE row-level
+ * security on them: a tenant sees its own rows; the relay, the stats and the unpark path
+ * read across tenants only through an explicit platform scan (see `scanTransaction`).
  *
  * outbox: one row per event, written in the same transaction as the business
  *   change. `published_at` stays NULL until the broker confirmed the publish.
@@ -46,4 +52,40 @@ export async function createBusTables(queryRunner: QueryRunner): Promise<void> {
 
 export async function dropBusTables(queryRunner: QueryRunner): Promise<void> {
   for (const sql of BUS_TABLES_DOWN) await queryRunner.query(sql);
+}
+
+const TENANT_MATCH = `"tenant_id" = NULLIF(current_setting('${TENANT_SETTING}', true), '')::uuid`;
+const NO_TENANT = `NULLIF(current_setting('${TENANT_SETTING}', true), '') IS NULL`;
+const SCAN_ON = `COALESCE(current_setting('${PLATFORM_SCAN_SETTING}', true), '') = 'on'`;
+/** Tenant rows are visible to their tenant; the platform path must opt in AND have no tenant set. */
+const BUS_POLICY = `${TENANT_MATCH} OR (${SCAN_ON} AND ${NO_TENANT})`;
+const BUS_RLS_TABLES = ['outbox', 'inbox'] as const;
+
+/**
+ * Forward migration (all three services): ENABLE + FORCE row-level security on `outbox` and `inbox`,
+ * ONE policy each (USING = WITH CHECK = tenant match OR explicit platform scan with no tenant),
+ * and keys led by `tenant_id` (outbox `(tenant_id, event_id)`, inbox `(tenant_id, consumer, event_id)`).
+ * `tenant_id` is already NOT NULL on both tables, so there is nothing to backfill.
+ */
+export async function addBusTablesTenantRls(q: QueryRunner): Promise<void> {
+  for (const t of BUS_RLS_TABLES) {
+    await q.query(`ALTER TABLE "${t}" ENABLE ROW LEVEL SECURITY`);
+    await q.query(`ALTER TABLE "${t}" FORCE ROW LEVEL SECURITY`);
+    await q.query(
+      `CREATE POLICY "${t}_tenant_isolation" ON "${t}" USING (${BUS_POLICY}) WITH CHECK (${BUS_POLICY})`,
+    );
+    await ensureTenantKeys(q, t);
+  }
+}
+
+export async function removeBusTablesTenantRls(q: QueryRunner): Promise<void> {
+  await q.query(`ALTER TABLE "inbox" DROP CONSTRAINT "inbox_pkey"`);
+  await q.query(`ALTER TABLE "inbox" ADD PRIMARY KEY ("consumer", "event_id")`);
+  await q.query(`ALTER TABLE "outbox" DROP CONSTRAINT "outbox_pkey"`);
+  await q.query(`ALTER TABLE "outbox" ADD PRIMARY KEY ("event_id")`);
+  for (const t of BUS_RLS_TABLES) {
+    await q.query(`DROP POLICY "${t}_tenant_isolation" ON "${t}"`);
+    await q.query(`ALTER TABLE "${t}" NO FORCE ROW LEVEL SECURITY`);
+    await q.query(`ALTER TABLE "${t}" DISABLE ROW LEVEL SECURITY`);
+  }
 }

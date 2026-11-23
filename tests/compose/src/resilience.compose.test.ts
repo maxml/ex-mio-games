@@ -119,7 +119,7 @@ describe('outbox: an event nobody consumes yet (F-BUS-1)', () => {
     expect(redeemed.status).toBe(202);
     const { id: redemptionId } = (await redeemed.json()) as { id: string };
 
-    const db = await pgAs('engagement_app');
+    const db = await pgAs('postgres', 'engagement'); // observer: the outbox is FORCE RLS
     try {
       const row = () =>
         db.query(

@@ -78,9 +78,13 @@ const intents = async (id: string) =>
     }),
   );
 const outboxRows = async (id: string): Promise<EventEnvelope[]> =>
-  (await ds.query(`SELECT "envelope" FROM "outbox" WHERE "event_id" = $1`, [id])).map(
-    (r: { envelope: EventEnvelope }) => r.envelope,
-  );
+  (
+    await ds.transaction(async (tx) => {
+      // The outbox is FORCE RLS: a connection with no tenant sees rows only with the platform scan.
+      await tx.query(`SET LOCAL app.platform_scan = 'on'`);
+      return tx.query(`SELECT "envelope" FROM "outbox" WHERE "event_id" = $1`, [id]);
+    })
+  ).map((r: { envelope: EventEnvelope }) => r.envelope);
 /** The runtime role cannot UPDATE intents (by design); age them as the migration owner. */
 const age = async (id: string, seconds: number) => {
   const owner = await pgAs('identity_owner');

@@ -3,7 +3,23 @@ import type { DataSource, EntityManager } from 'typeorm';
 import type { EventEnvelope } from '@ex-mio/contracts';
 import { TENANT_SETTING } from '@ex-mio/tenancy';
 import { backoffMs, type BackoffOptions } from './retry';
+import { PLATFORM_SCAN_SETTING } from './sql';
 import { EVENTS_EXCHANGE } from './topology';
+
+/**
+ * Run `fn` in a transaction that opted into the explicit platform scan (`app.platform_scan`) with no
+ * tenant set: the only way to see the outbox across tenants (relay, stats, unpark). The same flag as
+ * `Db.platformTx({ scan: true })`; the bus package cannot import service-kit, so it sets it here.
+ */
+export function scanTransaction<T>(
+  dataSource: DataSource,
+  fn: (manager: EntityManager) => Promise<T>,
+): Promise<T> {
+  return dataSource.transaction(async (manager) => {
+    await manager.query(`SET LOCAL ${PLATFORM_SCAN_SETTING} = 'on'`);
+    return fn(manager);
+  });
+}
 
 /** An event was enqueued inside a transaction of one tenant with another tenant's id. */
 export class OutboxTenantMismatchError extends Error {
@@ -19,9 +35,10 @@ export class OutboxTenantMismatchError extends Error {
  * commit or roll back together. Nothing is sent to the broker here.
  *
  * Inside a tenant transaction (`app.tenant_id` set) the envelope must belong to
- * that tenant: the outbox has no row-level security, so this is the choke point
- * that stops one tenant's code from emitting another tenant's event. Platform
- * transactions (no tenant setting) may enqueue for any tenant.
+ * that tenant (the outbox policy enforces it too: WITH CHECK, FORCE RLS). A platform
+ * transaction (no tenant setting) may enqueue for any tenant: the insert turns on the
+ * platform-scan flag for the rest of that transaction (still no tenant set), so the row
+ * passes the policy's scan branch.
  */
 export async function enqueueEvent(manager: EntityManager, envelope: EventEnvelope): Promise<void> {
   const rows: { tenant: string | null }[] = await manager.query(
@@ -31,9 +48,21 @@ export async function enqueueEvent(manager: EntityManager, envelope: EventEnvelo
   if (ambient && ambient.toLowerCase() !== envelope.tenant_id.toLowerCase()) {
     throw new OutboxTenantMismatchError();
   }
+  const params = [envelope.event_id, envelope.tenant_id, envelope.type, JSON.stringify(envelope)];
+  if (ambient) {
+    await manager.query(
+      `INSERT INTO "outbox" ("event_id", "tenant_id", "type", "envelope") VALUES ($1, $2, $3, $4)`,
+      params,
+    );
+    return;
+  }
+  // Platform transaction: opt this transaction into the platform scan (no tenant is set, so the
+  // policy's scan branch applies) in the same statement as the insert.
   await manager.query(
-    `INSERT INTO "outbox" ("event_id", "tenant_id", "type", "envelope") VALUES ($1, $2, $3, $4)`,
-    [envelope.event_id, envelope.tenant_id, envelope.type, JSON.stringify(envelope)],
+    `WITH "scan" AS (SELECT set_config('${PLATFORM_SCAN_SETTING}', 'on', true))
+     INSERT INTO "outbox" ("event_id", "tenant_id", "type", "envelope")
+     SELECT $1::uuid, $2::uuid, $3::text, $4::jsonb FROM "scan"`,
+    params,
   );
 }
 
@@ -99,7 +128,7 @@ export class OutboxRelay {
   async pollOnce(): Promise<number> {
     const { dataSource, channel, batchSize = 50, retry = DEFAULT_RELAY_RETRY } = this.options;
     const parked: ParkedRow[] = [];
-    const published = await dataSource.transaction(async (manager) => {
+    const published = await scanTransaction(dataSource, async (manager) => {
       const rows: OutboxRow[] = await manager.query(
         `SELECT "event_id", "type", "envelope", "attempts" FROM "outbox"
          WHERE "published_at" IS NULL AND "parked_at" IS NULL AND "next_attempt_at" <= now()
@@ -188,19 +217,23 @@ export interface OutboxStats {
 
 /** The numbers an alert needs: a growing `parked` means events are not being delivered. */
 export async function outboxStats(dataSource: DataSource): Promise<OutboxStats> {
-  const rows: { pending: string; parked: string }[] = await dataSource.query(
-    `SELECT count(*) FILTER (WHERE "published_at" IS NULL AND "parked_at" IS NULL) AS "pending",
-            count(*) FILTER (WHERE "published_at" IS NULL AND "parked_at" IS NOT NULL) AS "parked"
-       FROM "outbox"`,
+  const rows: { pending: string; parked: string }[] = await scanTransaction(dataSource, (m) =>
+    m.query(
+      `SELECT count(*) FILTER (WHERE "published_at" IS NULL AND "parked_at" IS NULL) AS "pending",
+              count(*) FILTER (WHERE "published_at" IS NULL AND "parked_at" IS NOT NULL) AS "parked"
+         FROM "outbox"`,
+    ),
   );
   return { pending: Number(rows[0]?.pending ?? 0), parked: Number(rows[0]?.parked ?? 0) };
 }
 
 /** Give parked rows a fresh start (after the missing consumer was deployed). Returns how many. */
 export async function unparkOutbox(dataSource: DataSource): Promise<number> {
-  const result: [unknown[], number] = await dataSource.query(
-    `UPDATE "outbox" SET "parked_at" = NULL, "attempts" = 0, "next_attempt_at" = now()
-      WHERE "published_at" IS NULL AND "parked_at" IS NOT NULL`,
+  const result: [unknown[], number] = await scanTransaction(dataSource, (m) =>
+    m.query(
+      `UPDATE "outbox" SET "parked_at" = NULL, "attempts" = 0, "next_attempt_at" = now()
+        WHERE "published_at" IS NULL AND "parked_at" IS NOT NULL`,
+    ),
   );
   return result[1];
 }

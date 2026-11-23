@@ -308,7 +308,7 @@ export async function reserveStateOf(
 
 /**
  * Outbox envelopes engagement wrote for one event type whose payload field `field` equals `value`
- * (the outbox has no RLS: the relay works across tenants, the row still carries `tenant_id`).
+ * (read as the superuser: the outbox has FORCE RLS, so the runtime role sees no row without a tenant).
  */
 export async function engagementOutbox(
   tenantId: string,
@@ -316,7 +316,7 @@ export async function engagementOutbox(
   field: string,
   value: string,
 ): Promise<Array<Record<string, unknown>>> {
-  const db = await pgAs('engagement_app');
+  const db = await pgAs('postgres', 'engagement');
   try {
     const { rows } = await db.query(
       `SELECT envelope FROM outbox

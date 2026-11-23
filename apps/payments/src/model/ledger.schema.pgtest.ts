@@ -502,8 +502,6 @@ describe('INV-L6 ledger tables are tenant-isolated by RLS', () => {
   // Mutation: create any new table without `enableTenantRls`, or remove FORCE from one.
   const GLOBAL_TABLES = [
     'billing_plans',
-    'inbox',
-    'outbox',
     'migrations',
     'reconciliation_tenants',
     // NOT `audit_intents` (stack triage, D-24): the intent row stores the whole acting envelope

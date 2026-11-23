@@ -77,9 +77,6 @@ const EXPECTED_GRANTS: Record<Service, Record<string, string[]>> = {
   },
 };
 
-/** The bus tables carry a tenant_id for diagnosis only and are read across tenants by design. */
-const BUS_TABLES = ['outbox', 'inbox'];
-
 /**
  * D-24: a truly global table that carries a tenant_id column is named here WITH its reason, never
  * skipped silently. Work queues and job tables that hold tenant data are NOT here: they get FORCE
@@ -214,7 +211,7 @@ describe.each(SERVICES)('database roles: %s', (service) => {
          FROM pg_class c
          JOIN pg_attribute a ON a.attrelid = c.oid AND a.attname = 'tenant_id' AND NOT a.attisdropped
         WHERE c.relnamespace = 'public'::regnamespace AND c.relkind = 'r' AND c.relname <> ALL($1)`,
-      [[...BUS_TABLES, ...Object.keys(PLATFORM_TABLES)]],
+      [Object.keys(PLATFORM_TABLES)],
     );
     // A platform table earns its place only while it holds no tenant data: tenant_id and nothing else.
     for (const name of Object.keys(PLATFORM_TABLES)) {

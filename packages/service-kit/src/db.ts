@@ -1,6 +1,6 @@
 import { Inject, Injectable } from '@nestjs/common';
 import type { DataSource, EntityManager } from 'typeorm';
-import { enqueueEvent } from '@ex-mio/bus';
+import { enqueueEvent, PLATFORM_SCAN_SETTING } from '@ex-mio/bus';
 import type { EventEnvelope } from '@ex-mio/contracts';
 import { runIdempotent, type IdempotentCall, type IdempotentOutcome } from '@ex-mio/idempotency';
 import { withTenantTransaction } from '@ex-mio/tenancy';
@@ -8,7 +8,7 @@ import { withTenantTransaction } from '@ex-mio/tenancy';
 export const DATA_SOURCE = Symbol('DATA_SOURCE');
 
 /** The opt-in flag of a platform scan: honoured only by policies, and only with no tenant set. */
-export const PLATFORM_SCAN_SETTING = 'app.platform_scan';
+export { PLATFORM_SCAN_SETTING };
 
 /**
  * A transaction handle. Services receive one from `Db` and pass it to

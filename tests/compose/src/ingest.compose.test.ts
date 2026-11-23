@@ -659,9 +659,6 @@ describe('engagement schema (catalog, as the admin)', () => {
              FROM pg_class c
              JOIN pg_namespace n ON n.oid = c.relnamespace AND n.nspname = 'public'
             WHERE c.relkind = 'r'
-              -- int/all review: the bus tables carry tenant_id for diagnosis and are read across
-              -- tenants by design (same exception as roles.compose.test.ts BUS_TABLES)
-              AND c.relname NOT IN ('outbox', 'inbox')
               AND EXISTS (SELECT 1 FROM pg_attribute a
                            WHERE a.attrelid = c.oid AND a.attname = 'tenant_id' AND NOT a.attisdropped)
             ORDER BY c.relname`,

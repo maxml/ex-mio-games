@@ -85,7 +85,7 @@ describe.each(SERVICES)('BUS-RLS: bus tables isolate tenants (%s)', (service) =>
   });
 
   // BUS-RLS defect: no policy on outbox, so B reads A's event envelopes.
-  it.failing('BUS-RLS-1 a tenant-B transaction cannot read tenant A outbox rows', async () => {
+  it('BUS-RLS-1 a tenant-B transaction cannot read tenant A outbox rows', async () => {
     const seen = await asTenantB(() =>
       app.query(`SELECT count(*)::int AS n FROM "outbox" WHERE "tenant_id" = $1`, [tenantA]),
     );
@@ -93,7 +93,7 @@ describe.each(SERVICES)('BUS-RLS: bus tables isolate tenants (%s)', (service) =>
   });
 
   // BUS-RLS defect: no WITH CHECK on outbox, so B enqueues an event the relay publishes as A's.
-  it.failing('BUS-RLS-2 a tenant-B transaction cannot enqueue an event for A', async () => {
+  it('BUS-RLS-2 a tenant-B transaction cannot enqueue an event for A', async () => {
     const forged = randomUUID();
     await expect(
       asTenantB(() =>
@@ -111,7 +111,7 @@ describe.each(SERVICES)('BUS-RLS: bus tables isolate tenants (%s)', (service) =>
   });
 
   // BUS-RLS defect: B updates A's row (could mark A's pending event published and drop it).
-  it.failing('BUS-RLS-3 a tenant-B transaction cannot update tenant A outbox rows', async () => {
+  it('BUS-RLS-3 a tenant-B transaction cannot update tenant A outbox rows', async () => {
     const res = await asTenantB(() =>
       app.query(`UPDATE "outbox" SET "last_error" = 'b was here' WHERE "event_id" = $1`, [
         outboxId,
@@ -121,7 +121,7 @@ describe.each(SERVICES)('BUS-RLS: bus tables isolate tenants (%s)', (service) =>
   });
 
   // BUS-RLS defect: no policy on inbox, so B reads A's consumed event ids and activity volume.
-  it.failing('BUS-RLS-4 a tenant-B transaction cannot read tenant A inbox rows', async () => {
+  it('BUS-RLS-4 a tenant-B transaction cannot read tenant A inbox rows', async () => {
     const seen = await asTenantB(() =>
       app.query(`SELECT count(*)::int AS n FROM "inbox" WHERE "tenant_id" = $1`, [tenantA]),
     );
@@ -129,7 +129,7 @@ describe.each(SERVICES)('BUS-RLS: bus tables isolate tenants (%s)', (service) =>
   });
 
   // BUS-RLS defect: B writes a dedupe row tagged A, so A's event with that id is dropped as a duplicate.
-  it.failing('BUS-RLS-5 a tenant-B transaction cannot write a tenant A inbox row', async () => {
+  it('BUS-RLS-5 a tenant-B transaction cannot write a tenant A inbox row', async () => {
     await expect(
       asTenantB(() =>
         app.query(`INSERT INTO "inbox" ("consumer", "event_id", "tenant_id") VALUES ($1, $2, $3)`, [

@@ -94,6 +94,10 @@ sandbox, payload }`; `tenant_id` is mandatory; the payload schema is registered 
   `inbox` in the same transaction as the effect; a conflict means already applied. Invalid or failing
   messages are rejected without requeue into `<service>.dlq`. Topology: exchange `mio.events` (topic, routing
   key = event type), dead-letter exchange `mio.events.dlx`.
+  Both tables have FORCE RLS: a tenant transaction sees and writes only its own rows. The relay,
+  `outboxStats` and `unparkOutbox` run through `scanTransaction` (`app.platform_scan`, no tenant);
+  `enqueueEvent` from a platform transaction turns the scan flag on for its insert. Keys lead with
+  `tenant_id`.
 - **pinned:** `packages/bus/src/bus.test.ts`; `tests/compose/src/bus.compose.test.ts`
 
 ## Idempotency

@@ -96,10 +96,14 @@ storeConformance('postgres', async () => {
         return rows[0]?.stock ?? null;
       }),
     outbox: async (tenant) => {
-      const rows: { envelope: EventEnvelope }[] = await ds.query(
-        `SELECT envelope FROM outbox WHERE tenant_id = $1 ORDER BY created_at, event_id`,
-        [tenant],
-      );
+      // The outbox is FORCE RLS: read it in the tenant's own transaction.
+      const rows: { envelope: EventEnvelope }[] = await ds.transaction(async (m) => {
+        await m.query(`SELECT set_config('app.tenant_id', $1, true)`, [tenant]);
+        return m.query(
+          `SELECT envelope FROM outbox WHERE tenant_id = $1 ORDER BY created_at, event_id`,
+          [tenant],
+        );
+      });
       return rows.map((r) => r.envelope);
     },
   };

@@ -175,7 +175,7 @@ Both casinos go through the same rules, wheel, ledger and store code. Only the a
 - No double rewards. A repeated deposit, a repeated redemption and parallel spins each produce one result.
 - No negative coin balance, including when two redemptions race for the same coins.
 - Tenant isolation. Each casino sees only its own data, enforced in the database with row-level security as
-  well as in the services, on every tenant data table (the bus tables `outbox`/`inbox` and three platform tables are cross-tenant by design, and the sweeper and audit tables have a narrow platform-read branch). The exact list, and the known gap for the bus tables, is in [`docs/architecture/overview.md`](docs/architecture/overview.md) (section 3) and S-27 in the known gaps.
+  well as in the services, on every tenant data table (three platform tables are cross-tenant by design, and the sweeper, audit and bus tables have a narrow platform branch behind an explicit scan flag). The exact list is in [`docs/architecture/overview.md`](docs/architecture/overview.md) (section 3); the bus-table gap (S-27) is closed.
 - Sandbox and production are separate environments. Spin credits, event deduplication and tokens are kept per
   environment, so a sandbox token cannot use a production credit. Production here is a separate environment inside the local
   stack; no production deployment exists.
