@@ -36,7 +36,21 @@ const awards = (t: string, spin: string) =>
   n('journal_transactions', t, `AND operation_type = 'spin_award' AND operation_id = '${spin}'`);
 const allJournal = (t: string) => n('journal_transactions', t);
 const credited = (t: string) => n('outbox', t, `AND type = 'payments.coins.credited'`);
-const inboxRows = (t: string) => n('inbox', t, `AND consumer = 'payments'`);
+// Inbox rows of the deliveries THIS test makes. In CI the suite runs next to the live payments
+// container: its relay publishes the `payments.coins.*` events this file's credits write to the
+// outbox, and payments consumes its own coin events (PAYMENTS_BINDINGS, the cache drop), which adds
+// a `payments` inbox row for the tenant at an arbitrary moment (CI run 45056173898, D1-6 inbox 1 -> 2,
+// journal, outbox and wallet unchanged). Those rows carry the event id of one of this tenant's own
+// outbox rows, which is committed before any consumer can see the event; nothing a test delivers
+// (`spin.completed`, produced by engagement) is in the payments outbox, so this excludes only them.
+// Mutation (still red): commit the inbox insert outside the handler's transaction -> D1-6 and D1-2.
+const inboxRows = (t: string) =>
+  n(
+    'inbox',
+    t,
+    `AND consumer = 'payments'
+     AND event_id NOT IN (SELECT o.event_id FROM outbox o WHERE o.tenant_id = $1)`,
+  );
 const spinsMetered = (t: string) => h.as(t, () => h.usage.report('2026-11')).then((r) => r.spins);
 
 describe('D1-1 a spin delivered twice credits once', () => {

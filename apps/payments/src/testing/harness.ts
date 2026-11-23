@@ -127,8 +127,14 @@ type Rows = Record<string, unknown>[];
 type Channel = InboxOptions['channel'];
 type ConsumeMessage = Parameters<InboxConsumer['onMessage']>[0];
 
+// `inbox` leaves out the rows of this tenant's OWN outbox events. Next to a live stack (CI), the
+// payments container relays the `payments.coins.*` events a test's credit writes and consumes them
+// itself (PAYMENTS_BINDINGS), committing an inbox row between the two snapshot reads below; counted,
+// it makes `after_inbox` look misplaced (committed caught up with the transaction) and the hook
+// throws instead of firing. A test's own deliveries are never in the payments outbox.
 const SNAPSHOT_SQL = `
-  SELECT (SELECT count(*)::int FROM inbox WHERE tenant_id = $1) AS inbox,
+  SELECT (SELECT count(*)::int FROM inbox WHERE tenant_id = $1
+             AND event_id NOT IN (SELECT o.event_id FROM outbox o WHERE o.tenant_id = $1)) AS inbox,
          (SELECT count(*)::int FROM journal_transactions WHERE tenant_id = $1) AS journal,
          (SELECT count(*)::int FROM ledger_entries WHERE tenant_id = $1) AS entries,
          (SELECT count(*)::int FROM outbox WHERE tenant_id = $1) AS outbox,

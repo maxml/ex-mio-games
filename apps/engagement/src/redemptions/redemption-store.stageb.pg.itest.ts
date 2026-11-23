@@ -85,3 +85,33 @@ stageBConformance('postgres', async () => {
   const clock = new TestClock();
   return [await harness(ds, clock), await harness(ds, clock)];
 });
+
+/*
+ * Flaky F5 (review/flaky-f5-d16): this suite shares the database with a live stack whose engagement
+ * worker claims work-queue rows due by the REAL clock. A test order that is due for it gets claimed,
+ * rejected for funds and its stock restored mid-test (F5 read 89 for 88). Pinned where the due time
+ * is written, so a store that dated the queue row by the database clock is caught too.
+ * Mutations (each red): the TestClock default back to 2026-11-22T10:00Z; `next_attempt_at` from
+ * `now()` in SQL instead of the injected clock.
+ */
+describe('a test order is never due for a worker on the real clock', () => {
+  it('the work-queue row of a production order placed with the default TestClock is due after the real now', async () => {
+    const ds = await shared();
+    const h = await harness(ds, new TestClock());
+    const itemId = await h.addItem({ price: 10, stock: 5, perPlayerLimit: null });
+    const { redemption } = await h.store.placeOrder(
+      { tenantId: h.tenantId, playerId: uuidv7(), sandbox: false },
+      { operationKey: 'due-probe', itemId },
+    );
+    const rows: { next_attempt_at: Date | null }[] = await ds.transaction(async (m) => {
+      await m.query(`SELECT set_config('app.tenant_id', $1, true)`, [h.tenantId]);
+      return m.query(`SELECT next_attempt_at FROM redemption_work_queue WHERE redemption_id = $1`, [
+        redemption.id,
+      ]);
+    });
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.next_attempt_at).not.toBeNull();
+    // A day of margin covers any skew between this process and the worker's clock.
+    expect(rows[0]!.next_attempt_at!.getTime()).toBeGreaterThan(Date.now() + 24 * 3600 * 1000);
+  });
+});
