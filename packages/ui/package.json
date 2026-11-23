@@ -25,7 +25,7 @@
     "lint": "eslint src .storybook --max-warnings=0",
     "check:contrast": "node scripts/check-contrast.mjs",
     "check:no-raw-colors": "node scripts/check-no-raw-colors.mjs",
-    "test": "pnpm run check:contrast && pnpm run check:no-raw-colors && vitest run --maxWorkers=2",
+    "test": "pnpm run check:contrast && pnpm run check:no-raw-colors && bash scripts/vitest-netns.sh --maxWorkers=2",
     "storybook": "storybook dev -p 6006",
     "build-storybook": "storybook build"
   },

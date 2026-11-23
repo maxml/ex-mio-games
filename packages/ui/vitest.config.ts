@@ -4,15 +4,22 @@ import react from '@vitejs/plugin-react';
 import { storybookTest } from '@storybook/addon-vitest/vitest-plugin';
 import { playwright } from '@vitest/browser-playwright';
 import { defineConfig } from 'vitest/config';
+import { StallGuard } from './vitest.stall-guard';
 
 const dirname = path.dirname(fileURLToPath(import.meta.url));
 
+// No test result, file start or file end for this long fails the run (see vitest.stall-guard.ts).
+// The longest legitimate quiet stretch is the browser start plus the first story file under load
+// (about a minute at load 40); a single test times out after 15 s.
+const STALL_LIMIT_MS = 180_000;
+
 // Two projects. `unit` is the jsdom suite. `storybook` runs every story in headless Chromium: the
 // story renders, its `play` function runs, and the a11y addon (a11y.test = 'error') fails a story
-// with an axe violation. `vitest run` (the package `test` script) runs both.
+// with an axe violation. The package `test` script runs both through scripts/vitest-netns.sh.
 export default defineConfig({
   plugins: [react()],
   test: {
+    reporters: ['default', new StallGuard(STALL_LIMIT_MS)],
     projects: [
       {
         extends: true,
