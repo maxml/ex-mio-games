@@ -52,9 +52,12 @@ export const Spin: Story = {
   },
 };
 
-/** A double click must reach the server once. */
+/**
+ * A double click must reach the server once. The server has NOT answered (`spin` stays null, `busy` is
+ * unset), so no animation or disabled state from a result can stop the second click: only the click lock
+ * can. Removing the lock in SpinPanel turns this red (A-SB-3).
+ */
 export const DoubleClick: Story = {
-  render: (args) => <Wired {...args} />,
   play: async ({ canvasElement, args }) => {
     await userEvent.dblClick(within(canvasElement).getByRole('button', { name: 'Spin' }));
     await expect(args.onSpin).toHaveBeenCalledTimes(1);

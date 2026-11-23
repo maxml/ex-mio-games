@@ -202,11 +202,8 @@ describe('A-RO-1 read-only pages draw no write control', () => {
     expect(screen.getByRole('button', { name: 'Add item' })).toBeInTheDocument();
   });
 
-  it('staff on Redemptions', async () => {
-    mount(<RedemptionsPage />, 'staff');
-    await screen.findByRole('heading', { name: 'Redemptions' });
-    expect(screen.queryByRole('button', { name: /resolve/i })).toBeNull();
-  });
+  // "staff on Redemptions" lives in ui-rework.review.test.tsx (UIR-2): it has a review row and an admin
+  // positive control, which this queue-without-a-review-row version lacked.
 
   it('support on Insights has no Pay button', async () => {
     mount(<InsightsPage />, 'support');
