@@ -4,6 +4,10 @@ import { cn } from './cn';
 export interface HeadingProps extends HTMLAttributes<HTMLHeadingElement> {
   /** Document outline level; the look follows the level, not the other way round. */
   level?: 1 | 2 | 3;
+  /** Centre the text. */
+  center?: boolean;
+  /** Keep one line of height when empty, so a result that appears later does not move the layout. */
+  reserve?: boolean;
 }
 
 const HEADING_SIZE = {
@@ -12,9 +16,20 @@ const HEADING_SIZE = {
   3: 'text-base font-semibold',
 } as const;
 
-export function Heading({ level = 2, className, ...rest }: HeadingProps) {
+export function Heading({ level = 2, center, reserve, className, ...rest }: HeadingProps) {
   const Tag = `h${level}` as const;
-  return <Tag className={cn('font-display', HEADING_SIZE[level], className)} {...rest} />;
+  return (
+    <Tag
+      className={cn(
+        'font-display',
+        HEADING_SIZE[level],
+        center && 'text-center',
+        reserve && 'min-h-7',
+        className,
+      )}
+      {...rest}
+    />
+  );
 }
 
 export type TextTone = 'default' | 'muted' | 'success' | 'danger';
@@ -30,13 +45,28 @@ export interface TextProps extends HTMLAttributes<HTMLParagraphElement> {
   tone?: TextTone;
   size?: keyof typeof TEXT_SIZE;
   strong?: boolean;
+  /** Centre the text. */
+  center?: boolean;
 }
 
 /** A paragraph. Tone is colour plus (where it matters) words; never colour alone. */
-export function Text({ tone = 'default', size = 'sm', strong, className, ...rest }: TextProps) {
+export function Text({
+  tone = 'default',
+  size = 'sm',
+  strong,
+  center,
+  className,
+  ...rest
+}: TextProps) {
   return (
     <p
-      className={cn(TEXT_TONE[tone], TEXT_SIZE[size], strong && 'font-semibold', className)}
+      className={cn(
+        TEXT_TONE[tone],
+        TEXT_SIZE[size],
+        strong && 'font-semibold',
+        center && 'text-center',
+        className,
+      )}
       {...rest}
     />
   );

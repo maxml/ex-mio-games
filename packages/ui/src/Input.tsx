@@ -35,10 +35,12 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(function Input(
 
 export interface SelectProps extends Omit<SelectHTMLAttributes<HTMLSelectElement>, 'size'> {
   size?: keyof typeof SIZE;
+  /** Shorthand for plain choices, so a page never writes a raw `<option>`. */
+  options?: { value: string; label: string }[];
 }
 
 export const Select = forwardRef<HTMLSelectElement, SelectProps>(function Select(
-  { size = 'md', className, ...rest },
+  { size = 'md', options, className, children, ...rest },
   ref,
 ) {
   return (
@@ -51,7 +53,15 @@ export const Select = forwardRef<HTMLSelectElement, SelectProps>(function Select
         className,
       )}
       {...rest}
-    />
+    >
+      {options
+        ? options.map((o) => (
+            <option key={o.value} value={o.value}>
+              {o.label}
+            </option>
+          ))
+        : children}
+    </select>
   );
 });
 

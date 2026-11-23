@@ -55,8 +55,9 @@ export function Toast({
   tone?: AlertTone;
   className?: string;
 }) {
+  // `empty:hidden`: with no message the (still mounted) live region takes no space in a Stack.
   return (
-    <div role="status" aria-live="polite" className={className}>
+    <div role="status" aria-live="polite" className={cn('empty:hidden', className)}>
       {message && (
         <Alert tone={tone}>
           <span className="flex items-start justify-between gap-2">

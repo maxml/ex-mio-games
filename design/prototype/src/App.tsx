@@ -5,7 +5,7 @@ import {
   SkipLink,
   Text,
   ThemeSwitcher,
-  themeStyle,
+  Main,
   useTheme,
   type NavItem,
 } from '@ex-mio/ui';
@@ -102,14 +102,7 @@ export function App() {
           }}
         />
       </SiteHeader>
-      <main
-        id="main"
-        tabIndex={-1}
-        className="outline-none"
-        style={resolved.kind === 'player' ? themeStyle(theme) : undefined}
-      >
-        {view}
-      </main>
+      <Main theme={resolved.kind === 'player' ? theme : undefined}>{view}</Main>
     </>
   );
 }

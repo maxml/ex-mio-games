@@ -47,14 +47,7 @@ const EXCLUDED_SLICES = ['src/layers/views/home/'];
  * Files that break the rule on main today. Each entry names the violation; remove it when the file is
  * clean (the `it.fails` test then fails and tells you to).
  */
-const KNOWN_RED: Record<string, string> = {
-  'src/layers/views/player-widget/ui/PlayerWidgetView.tsx':
-    'section 7: raw elements (spin area, aria-live region) that become SpinPanel; className props',
-  'src/layers/views/player-widget/ui/EmbeddedPlayerWidget.tsx':
-    'section 7: one raw element with className',
-  'src/layers/views/platform-admin/ui/PlatformAdminView.tsx':
-    'section 7: raw elements with className',
-};
+const KNOWN_RED: Record<string, string> = {};
 
 interface Violation {
   line: number;

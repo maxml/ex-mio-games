@@ -1,4 +1,4 @@
-import type { HTMLAttributes } from 'react';
+import type { FormHTMLAttributes, HTMLAttributes } from 'react';
 import { cn } from './cn';
 
 type Gap = 1 | 2 | 3 | 4 | 6 | 8;
@@ -54,6 +54,16 @@ export interface GridProps extends HTMLAttributes<HTMLDivElement> {
   gap?: Gap;
   /** Columns at the widest breakpoint; the grid collapses on narrow screens. */
   cols?: keyof typeof COLS;
+}
+
+export interface FormProps extends FormHTMLAttributes<HTMLFormElement> {
+  /** Let the form fill its parent instead of capping it at a readable width. */
+  wide?: boolean;
+}
+
+/** A vertical form with token spacing. Submit handling stays with the caller. */
+export function Form({ wide, className, ...rest }: FormProps) {
+  return <form className={cn('grid gap-4', !wide && 'max-w-md', className)} {...rest} />;
 }
 
 /** Responsive equal-width grid. */

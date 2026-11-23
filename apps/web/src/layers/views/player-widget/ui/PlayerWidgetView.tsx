@@ -18,19 +18,21 @@ import {
   Button,
   Card,
   CoinBalance,
+  Grid,
+  LiveRegion,
+  SignedAmount,
+  Stack,
   StatusPill,
   StoreItemCard,
   TabPanel,
   Tabs,
   Text,
+  ThemeScope,
   Toast,
   Wheel,
   Checkbox,
   Heading,
-  themeStyle,
-  useTheme,
 } from '@/layers/shared/ui';
-import { cn } from '@/layers/shared/lib';
 import type { DepositResult } from '@/layers/shared/types';
 
 type Tab = 'wheel' | 'store' | 'history';
@@ -60,7 +62,6 @@ export function PlayerWidgetView({
 }: {
   recheckDelaysMs?: readonly number[];
 } = {}) {
-  const { theme } = useTheme();
   const api = useMioApi();
   const qc = useQueryClient();
   const { data: player, isPending, isError, refetch } = usePlayerState();
@@ -130,10 +131,12 @@ export function PlayerWidgetView({
   if (isError || !player) {
     return (
       <Card aria-label="MIO Games widget" title="Daily Wheel">
-        <Alert tone="danger">The wheel could not be loaded.</Alert>
-        <Button className="mt-3" variant="secondary" onClick={() => void refetch()}>
-          Try again
-        </Button>
+        <Stack gap={3} align="start">
+          <Alert tone="danger">The wheel could not be loaded.</Alert>
+          <Button variant="secondary" onClick={() => void refetch()}>
+            Try again
+          </Button>
+        </Stack>
       </Card>
     );
   }
@@ -250,150 +253,128 @@ export function PlayerWidgetView({
     : null;
 
   return (
-    <div style={themeStyle(theme)} className="text-fg">
+    <ThemeScope>
       <Card
         aria-label="MIO Games widget"
         title="Daily Wheel"
         actions={
-          <div className="flex items-center gap-2">
+          <Stack row gap={2} align="center">
             <CoinBalance coins={balance} />
             {pendingCoins > 0 && (
               <Badge>
                 {stalled ? `+${pendingCoins} pending (delayed)` : `+${pendingCoins} pending`}
               </Badge>
             )}
-          </div>
+          </Stack>
         }
         description={spinsLabel}
       >
         {/* Always mounted, so the result is announced even when the Wheel tab is not showing. */}
-        <div className="sr-only" role="status" aria-live="polite" data-testid="result-live">
-          {result}
-        </div>
+        <LiveRegion data-testid="result-live">{result}</LiveRegion>
 
-        <Tabs
-          tabs={TABS}
-          value={tab}
-          onChange={setTab}
-          label="Widget sections"
-          idPrefix="pw"
-          className="mb-4"
-        />
-        <Toast
-          message={toast?.text ?? ''}
-          tone={toast?.tone}
-          onDismiss={() => setToast(null)}
-          className="mb-3 empty:hidden"
-        />
+        <Stack gap={4}>
+          <Tabs tabs={TABS} value={tab} onChange={setTab} label="Widget sections" idPrefix="pw" />
+          <Toast message={toast?.text ?? ''} tone={toast?.tone} onDismiss={() => setToast(null)} />
 
-        {tab === 'wheel' && (
-          <TabPanel idPrefix="pw" id="wheel">
-            <Wheel
-              segments={player.wheel}
-              spin={wheelSpin}
-              onSpinEnd={(id) =>
-                id === player.lastSpin?.id && finishReveal(id, player.lastSpin.coins)
-              }
-              size={300}
-            />
-            <Heading
-              level={3}
-              className="mt-3 min-h-7 text-center text-lg font-bold"
-              data-testid="result-text"
-            >
-              {spinning ? 'Spinning...' : result}
-            </Heading>
-            <div className="mt-2 flex flex-col gap-2">
-              <Button
-                size="lg"
-                onClick={() => void doSpin()}
-                loading={busy || spinning}
-                aria-disabled={player.spins < 1 || busy || spinning || undefined}
-              >
-                {player.spins < 1 ? 'No spins left' : 'Spin'}
-              </Button>
-              {player.spins < 1 && (
-                <Text tone="muted" className="text-center">
-                  Spins come from deposits. Make a deposit to get more.
-                </Text>
-              )}
-              {demoControls && (
-                <Button
-                  variant="secondary"
-                  loading={deposit.isPending}
-                  onClick={() => void doDeposit()}
-                >
-                  Simulate a 40 EUR deposit at the casino
-                </Button>
-              )}
-            </div>
-          </TabPanel>
-        )}
-
-        {tab === 'store' && (
-          <TabPanel idPrefix="pw" id="store">
-            {demoControls && (
-              <Checkbox
-                className="mb-3 text-fg-muted"
-                label="Demo: make the casino fail the next reward (shows failed, then refunded)"
-                checked={player.casinoDown}
-                onChange={(e) => casinoDown.mutate(e.target.checked)}
-              />
-            )}
-            <div className="grid gap-3 sm:grid-cols-2">
-              {player.store.map((it) => (
-                <StoreItemCard
-                  key={it.id}
-                  item={it}
-                  balance={balance}
-                  busy={busyItem === it.id}
-                  onRedeem={(i) => void redeem(i.id)}
+          {tab === 'wheel' && (
+            <TabPanel idPrefix="pw" id="wheel">
+              <Stack gap={3}>
+                <Wheel
+                  segments={player.wheel}
+                  spin={wheelSpin}
+                  onSpinEnd={(id) =>
+                    id === player.lastSpin?.id && finishReveal(id, player.lastSpin.coins)
+                  }
+                  size={300}
                 />
-              ))}
-            </div>
-            <Heading level={3} className="mb-2 mt-5">
-              Your redemptions
-            </Heading>
-            <ActivityList
-              bordered
-              empty="Nothing redeemed yet."
-              items={player.redemptions.map((r) => ({
-                id: r.id,
-                title: r.item,
-                trailing: (
-                  <>
-                    {r.status === 'failed_refunded' && <Badge>{`+${r.coins} coins back`}</Badge>}
-                    <StatusPill status={r.status} />
-                  </>
-                ),
-              }))}
-            />
-          </TabPanel>
-        )}
-
-        {tab === 'history' && (
-          <TabPanel idPrefix="pw" id="history">
-            <ActivityList
-              items={history.map((h) => ({
-                id: h.id,
-                title: h.what,
-                subtitle: h.at,
-                trailing: (
-                  <span
-                    className={cn(
-                      'font-semibold tabular-nums',
-                      h.delta > 0 && 'text-success',
-                      h.delta < 0 && 'text-fg-muted',
-                    )}
+                <Heading level={3} center reserve data-testid="result-text">
+                  {spinning ? 'Spinning...' : result}
+                </Heading>
+                <Stack gap={2}>
+                  <Button
+                    size="lg"
+                    onClick={() => void doSpin()}
+                    loading={busy || spinning}
+                    aria-disabled={player.spins < 1 || busy || spinning || undefined}
                   >
-                    {h.delta > 0 ? `+${h.delta}` : h.delta < 0 ? `${h.delta}` : 'spins'}
-                  </span>
-                ),
-              }))}
-            />
-          </TabPanel>
-        )}
+                    {player.spins < 1 ? 'No spins left' : 'Spin'}
+                  </Button>
+                  {player.spins < 1 && (
+                    <Text tone="muted" center>
+                      Spins come from deposits. Make a deposit to get more.
+                    </Text>
+                  )}
+                  {demoControls && (
+                    <Button
+                      variant="secondary"
+                      loading={deposit.isPending}
+                      onClick={() => void doDeposit()}
+                    >
+                      Simulate a 40 EUR deposit at the casino
+                    </Button>
+                  )}
+                </Stack>
+              </Stack>
+            </TabPanel>
+          )}
+
+          {tab === 'store' && (
+            <TabPanel idPrefix="pw" id="store">
+              <Stack gap={3}>
+                {demoControls && (
+                  <Checkbox
+                    muted
+                    label="Demo: make the casino fail the next reward (shows failed, then refunded)"
+                    checked={player.casinoDown}
+                    onChange={(e) => casinoDown.mutate(e.target.checked)}
+                  />
+                )}
+                <Grid cols={2} gap={3}>
+                  {player.store.map((it) => (
+                    <StoreItemCard
+                      key={it.id}
+                      item={it}
+                      balance={balance}
+                      busy={busyItem === it.id}
+                      onRedeem={(i) => void redeem(i.id)}
+                    />
+                  ))}
+                </Grid>
+                <Heading level={3}>Your redemptions</Heading>
+                <ActivityList
+                  bordered
+                  empty="Nothing redeemed yet."
+                  items={player.redemptions.map((r) => ({
+                    id: r.id,
+                    title: r.item,
+                    trailing: (
+                      <>
+                        {r.status === 'failed_refunded' && (
+                          <Badge>{`+${r.coins} coins back`}</Badge>
+                        )}
+                        <StatusPill status={r.status} />
+                      </>
+                    ),
+                  }))}
+                />
+              </Stack>
+            </TabPanel>
+          )}
+
+          {tab === 'history' && (
+            <TabPanel idPrefix="pw" id="history">
+              <ActivityList
+                items={history.map((h) => ({
+                  id: h.id,
+                  title: h.what,
+                  subtitle: h.at,
+                  trailing: <SignedAmount value={h.delta} />,
+                }))}
+              />
+            </TabPanel>
+          )}
+        </Stack>
       </Card>
-    </div>
+    </ThemeScope>
   );
 }

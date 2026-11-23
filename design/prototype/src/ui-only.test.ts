@@ -249,9 +249,8 @@ describe('A-UI-1: prototype screens are built only from @ex-mio/ui', () => {
 });
 
 describe('A-UI-1 (T4 brief, outside the section 5 glob): the prototype app shell', () => {
-  // KNOWN RED on main: src/App.tsx renders `<main id="main" tabIndex={-1} className="outline-none">`,
-  // an intrinsic element with a className. Flip to `it` once App.tsx uses a @ex-mio/ui landmark.
-  it.fails('src/App.tsx is built only from @ex-mio/ui [known red: raw <main className>]', () => {
+  // Was red: src/App.tsx rendered a raw `<main className>`. It now uses the @ex-mio/ui `Main` landmark.
+  it('src/App.tsx is built only from @ex-mio/ui', () => {
     expect(checkFile('src/App.tsx', SCANNED)).toEqual([]);
   });
 });

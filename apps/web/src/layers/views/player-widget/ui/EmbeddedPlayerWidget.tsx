@@ -1,6 +1,6 @@
 'use client';
 
-import { Alert, Card, Text, ThemeProvider } from '@/layers/shared/ui';
+import { Alert, Card, Main, Stack, Text, ThemeProvider } from '@/layers/shared/ui';
 import { useLaunch } from '../model/use-launch';
 import { useWidgetOpened } from '../model/use-widget-opened';
 import { PlayerWidgetView } from './PlayerWidgetView';
@@ -17,7 +17,7 @@ export function EmbeddedPlayerWidget({
   const launch = useLaunch(launchToken);
   return (
     <ThemeProvider initialId={themeId ?? 'mio'}>
-      <main id="main" tabIndex={-1} className="mx-auto w-full max-w-xl p-2 outline-none">
+      <Main narrow>
         {launch === 'launching' ? (
           <Card aria-label="MIO Games widget" title="Daily Wheel">
             <Text role="status" tone="muted">
@@ -25,19 +25,17 @@ export function EmbeddedPlayerWidget({
             </Text>
           </Card>
         ) : (
-          <>
+          <Stack gap={2}>
             {launch === 'rejected' && (
-              <Alert tone="warning" className="mb-2">
-                <span role="status">
-                  The casino link was not accepted (it may have expired or been used already). Open
-                  the widget again from your casino.
-                </span>
+              <Alert tone="warning" live="status">
+                The casino link was not accepted (it may have expired or been used already). Open
+                the widget again from your casino.
               </Alert>
             )}
             <PlayerWidgetView />
-          </>
+          </Stack>
         )}
-      </main>
+      </Main>
     </ThemeProvider>
   );
 }
