@@ -53,3 +53,20 @@ Desktop shots are 1280 px wide, widget shots also at 390 px (phone). How the moc
 | `operator-3-keys-sandbox.png`    | Step 3, integration keys: the sandbox (test) keys and webhook secret, revealed.                                        |
 | `operator-4-production-keys.png` | Step 5, go live: production keys unlocked after a paid plan and a passed sandbox test; the first live deposit arrived. |
 | `operator-5-usage-invoice.png`   | Step 10, usage and invoice: spins per day and the monthly invoice.                                                     |
+
+## Operator console by role (IA rework)
+
+Mock mode, 1280 px, written by `apps/web/e2e/operator-roles.spec.ts` (`NEXT_PUBLIC_MIO_API=mock pnpm --filter @ex-mio/web e2e operator-roles`). The role is the shell's Role picker. A guard that denies a page sends the role to its landing page with `?denied=`, which is what the landing shots show.
+
+| Image                               | Caption                                                                                   |
+| ----------------------------------- | ----------------------------------------------------------------------------------------- |
+| `operator-ia-admin-nav.png`         | Admin: all seven pages in the nav.                                                        |
+| `operator-ia-admin-landing.png`     | Admin lands on Setup (the shop is not live yet).                                          |
+| `operator-ia-admin-setup.png`       | Admin, Setup: the six steps and only the open one.                                        |
+| `operator-ia-admin-rules.png`       | Admin, Rules.                                                                             |
+| `operator-ia-admin-redemptions.png` | Admin, Redemptions: the queue, a review row with Resolve, and the resolve panel open.     |
+| `operator-ia-admin-insights.png`    | Admin, Insights: usage, the player funnel (preview) and invoices with Pay.                |
+| `operator-ia-staff-nav.png`         | Staff: Store, Redemptions, Insights, Team.                                                |
+| `operator-ia-staff-landing.png`     | Staff lands on Redemptions after Rules was denied: the access notice, no Resolve button.  |
+| `operator-ia-support-nav.png`       | Support: Insights and Team.                                                               |
+| `operator-ia-support-landing.png`   | Support lands on Insights after Redemptions was denied: the access notice, no Pay button. |

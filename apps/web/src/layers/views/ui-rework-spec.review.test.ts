@@ -35,7 +35,7 @@ describe('UIR-5 A-SHOT-1 screenshots per role', () => {
   });
 
   // MISSING: e2e/operator-roles.spec.ts and docs/screens/operator-ia-*.png are absent at a531b7b.
-  it.fails('the Playwright spec exists and the ten screenshots are committed and listed', () => {
+  it('the Playwright spec exists and the ten screenshots are committed and listed', () => {
     expect(existsSync(path.join(WEB, 'e2e/operator-roles.spec.ts'))).toBe(true);
     const have = readdirSync(path.join(REPO, 'docs/screens'));
     const readme = readFileSync(path.join(REPO, 'docs/screens/README.md'), 'utf8');
