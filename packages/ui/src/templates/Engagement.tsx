@@ -20,7 +20,9 @@ export interface StoreAdminItem {
   id: string;
   name: string;
   priceCoins: number;
-  bonusEur: number;
+  /** Shown under the name when there is no bonus amount to show. */
+  description?: string;
+  bonusEur?: number;
   visible: boolean;
 }
 
@@ -220,7 +222,12 @@ export function StoreTemplate({
                     key: 'n',
                     header: 'Item',
                     render: (i) => (
-                      <CellText primary={i.name} secondary={`Bonus ${i.bonusEur} EUR`} />
+                      <CellText
+                        primary={i.name}
+                        secondary={
+                          i.bonusEur === undefined ? i.description : `Bonus ${i.bonusEur} EUR`
+                        }
+                      />
                     ),
                   },
                   {

@@ -494,3 +494,71 @@ describe('player launch exchange', () => {
     expect(w.calls).toHaveLength(1);
   });
 });
+
+describe('A-SESSION-1 GET /api/session: the console reads its role here', () => {
+  it('is 401 without a session', async () => {
+    const w = world({});
+    const r = await w.req('GET', '/api/session');
+    expect(r.status).toBe(401);
+  });
+
+  it('answers the roles and acting=false for a signed-in operator, and carries no token', async () => {
+    const w = await signedIn();
+    const r = await w.req('GET', '/api/session');
+    expect(r.status).toBe(200);
+    expect(r.body).toEqual({
+      kind: 'operator',
+      roles: ['operator_admin'],
+      tenantId: U(8),
+      acting: false,
+    });
+    expect(r.text).not.toMatch(/h\.[A-Za-z0-9_-]+\.s/);
+    expect(w.calls).toHaveLength(0); // no service is called
+  });
+
+  // Mutation: report `acting: false` always (or ignore the grant) and this goes red.
+  it('reports acting=true while an acting grant is held', async () => {
+    const w = await signedIn({
+      'POST /v1/auth/acting': (c) =>
+        tokenReply(`acting-${(c.body as { audience: string }).audience}`),
+    });
+    await w.req('POST', '/api/platform/act-as', { tenantId: U(30), reason: 'Support ticket 1042' });
+    expect((await w.req('GET', '/api/session')).body.acting).toBe(true);
+  });
+});
+
+describe('Support (acting) reads the operator state without engagement', () => {
+  const PAY = {
+    'POST /v1/auth/acting': (c: Call) =>
+      tokenReply(`acting-${(c.body as { audience: string }).audience}`),
+    'GET /v1/billing/plans': { body: [] },
+    'GET /v1/billing/subscription': { status: 404, body: { message: 'x', code: 'not_found' } },
+    'GET /v1/billing/invoices': { body: [] },
+    'GET /v1/billing/usage': { status: 404, body: { message: 'x', code: 'not_found' } },
+  };
+  const FORBIDDEN = { status: 403, body: { message: 'forbidden', code: 'FORBIDDEN' } };
+
+  it('answers the payments part when engagement answers 403 to the acting token', async () => {
+    const w = await signedIn({
+      ...PAY,
+      'GET /v1/store/items': FORBIDDEN,
+      'GET /v1/operator/redemptions': FORBIDDEN,
+    });
+    await w.req('POST', '/api/platform/act-as', { tenantId: U(30), reason: 'Support ticket 1042' });
+    const r = await w.req('GET', '/api/operator/state');
+    expect(r.status).toBe(200);
+    expect(r.body.catalog).toEqual([]);
+    expect(r.body.redemptions).toEqual([]);
+  });
+
+  // Mutation: tolerate the 403 for every session and this goes red (an admin must see the refusal).
+  it('an operator who is not acting still gets the refusal', async () => {
+    const w = await signedIn({
+      ...PAY,
+      'GET /v1/store/items': FORBIDDEN,
+      'GET /v1/operator/redemptions': FORBIDDEN,
+    });
+    const r = await w.req('GET', '/api/operator/state');
+    expect(r.status).toBe(403);
+  });
+});

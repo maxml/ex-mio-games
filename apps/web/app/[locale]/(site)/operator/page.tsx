@@ -1,3 +1,4 @@
-import { OperatorConsoleView } from '@/layers/views/operator-console';
+import { OperatorIndex } from '@/layers/views/operator-console';
 
-export default OperatorConsoleView;
+// `/operator` redirects to the role's landing page.
+export default OperatorIndex;

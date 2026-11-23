@@ -194,6 +194,19 @@ export function createBff(deps: BffDeps) {
         return { body: { kind: s.kind, roles: s.roles, tenantId: s.tenantId } };
       },
     ],
+    // IA spec A-SESSION-1: what the console needs to pick its pages. No service is called; the roles come from
+    // the session the login or acting exchange created, and `acting` is true only while the grant is valid.
+    [
+      'GET',
+      /^\/api\/session$/,
+      async (ctx) => {
+        const s = need(ctx.session);
+        bearerFor(s, 'identity', now()); // drops an expired acting grant before it is reported
+        return {
+          body: { kind: s.kind, roles: s.roles, tenantId: s.tenantId, acting: s.acting !== null },
+        };
+      },
+    ],
     [
       'POST',
       /^\/api\/session\/launch$/,
@@ -418,6 +431,15 @@ export function createBff(deps: BffDeps) {
         const s = need(ctx.session);
         const pay = token(s, 'payments');
         const eng = token(s, 'engagement');
+        // Engagement refuses an acting (Support) token every operator read (IA spec section 1). The payments half
+        // of the state still answers, so Support sees usage and invoices with an empty catalog and queue.
+        const unlessSupportRefused = <T>(read: Promise<T>, fallback: T): Promise<T> =>
+          s.acting
+            ? read.catch((e: unknown) => {
+                if (e instanceof BffError && e.status === 403) return fallback;
+                throw e;
+              })
+            : read;
         const [plans, sub, invoices, usage, items, redemptions, attempt] = await Promise.all([
           up('payments', 'GET', '/v1/billing/plans', { token: pay, schema: listOf(BillingPlan) }),
           up('payments', 'GET', '/v1/billing/subscription', {
@@ -437,11 +459,17 @@ export function createBff(deps: BffDeps) {
               nullOn404: true,
             },
           ),
-          up('engagement', 'GET', '/v1/store/items', { token: eng, schema: listOf(StoreItem) }),
-          up('engagement', 'GET', '/v1/operator/redemptions', {
-            token: eng,
-            schema: listOf(Redemption),
-          }),
+          unlessSupportRefused(
+            up('engagement', 'GET', '/v1/store/items', { token: eng, schema: listOf(StoreItem) }),
+            [],
+          ),
+          unlessSupportRefused(
+            up('engagement', 'GET', '/v1/operator/redemptions', {
+              token: eng,
+              schema: listOf(Redemption),
+            }),
+            [],
+          ),
           s.attemptId
             ? up('payments', 'GET', `/v1/billing/attempts/${encodeURIComponent(s.attemptId)}`, {
                 token: pay,

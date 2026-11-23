@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from 'react';
+import { useRef, useState, type FormEvent } from 'react';
 import { Button } from './Button';
 import { Card } from './Card';
 import { CardForm } from './CardForm';
@@ -14,27 +14,31 @@ import { Alert } from './Toast';
 // The six panels of the Setup page (Get started). Each is a Card with one job.
 
 export interface SignupPanelProps {
-  onSubmit: (values: { company: string; email: string }) => void;
+  onSubmit: (values: { company: string; email: string; password: string }) => void;
   busy?: boolean;
   /** Shown when the account already exists. */
   done?: boolean;
   error?: string;
+  /** Starting values for the demo, so a reviewer only types an email. */
+  defaults?: { company?: string; password?: string };
 }
 
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 /** Create the operator account. */
-export function SignupPanel({ onSubmit, busy, done, error }: SignupPanelProps) {
-  const [company, setCompany] = useState('');
+export function SignupPanel({ onSubmit, busy, done, error, defaults }: SignupPanelProps) {
+  const [company, setCompany] = useState(defaults?.company ?? '');
   const [email, setEmail] = useState('');
+  const [password, setPassword] = useState(defaults?.password ?? '');
   const [tried, setTried] = useState(false);
   const companyError = company.trim() ? undefined : 'Enter the company name.';
   const emailError = EMAIL.test(email.trim()) ? undefined : 'Enter a valid email address.';
+  const passwordError = password ? undefined : 'Enter a password.';
   function submit(e: FormEvent) {
     e.preventDefault();
     setTried(true);
-    if (busy || companyError || emailError) return;
-    onSubmit({ company: company.trim(), email: email.trim() });
+    if (busy || companyError || emailError || passwordError) return;
+    onSubmit({ company: company.trim(), email: email.trim(), password });
   }
   if (done)
     return (
@@ -70,6 +74,18 @@ export function SignupPanel({ onSubmit, busy, done, error }: SignupPanelProps) {
             />
           )}
         </Field>
+        <Field label="Password" error={tried ? passwordError : undefined}>
+          {({ id, invalid, describedBy }) => (
+            <Input
+              id={id}
+              type="password"
+              value={password}
+              invalid={invalid}
+              aria-describedby={describedBy}
+              onChange={(e) => setPassword(e.target.value)}
+            />
+          )}
+        </Field>
         {error && (
           <Alert tone="danger" live="alert">
             {error}
@@ -93,11 +109,14 @@ export interface PlanPanelProps {
   paid?: boolean;
   processing?: boolean;
   failure?: string;
-  onPay: (last4: string) => void;
+  /** `cardNumber` is the full test card number (test mode only, see CardForm `onSubmitCard`). */
+  onPay: (last4: string, cardNumber?: string) => void;
   onCancel?: () => void;
+  /** One line under "Plan active", for example what was charged. */
+  paidNote?: string;
 }
 
-/** Choose a plan and pay with the test card. */
+/** Choose a plan, then pay with the test card. */
 export function PlanPanel({
   plans,
   planId,
@@ -107,31 +126,54 @@ export function PlanPanel({
   failure,
   onPay,
   onCancel,
+  paidNote,
 }: PlanPanelProps) {
   const plan = plans.find((p) => p.id === planId);
-  return (
-    <div className="grid gap-4">
-      <Card title="Plan" description="Pick the plan that fits your players.">
-        <PlanPicker plans={plans} value={planId} onChange={onSelectPlan} disabled={paid} />
-      </Card>
-      {paid ? (
+  const [paying, setPaying] = useState(false);
+  const card = useRef<string | undefined>(undefined);
+  if (paid)
+    return (
+      <Card
+        title="Plan active"
+        description="Payment received through the fake provider (test mode)."
+      >
         <Alert tone="success" live="status">
-          Plan paid{plan ? `: ${plan.name}` : ''}.
+          {paidNote ?? `Plan paid${plan ? `: ${plan.name}` : ''}.`}
         </Alert>
-      ) : (
-        plan && (
-          <CardForm
-            amount={plan.price}
-            description={`${plan.name} plan, first month`}
-            testMode
-            processing={processing}
-            failure={failure}
-            onSubmit={onPay}
-            onCancel={onCancel}
-          />
-        )
-      )}
-    </div>
+      </Card>
+    );
+  if (plan && (paying || processing))
+    return (
+      <CardForm
+        amount={plan.price}
+        description={`${plan.name} plan, first month`}
+        testMode
+        processing={processing}
+        failure={failure}
+        onSubmitCard={(digits) => {
+          card.current = digits;
+        }}
+        onSubmit={(last4) => onPay(last4, card.current)}
+        onCancel={() => {
+          setPaying(false);
+          onCancel?.();
+        }}
+      />
+    );
+  return (
+    <Card
+      title="Choose a plan"
+      description="Billed monthly. Pay now to activate it; cancel any time."
+    >
+      <div className="grid gap-4">
+        <PlanPicker plans={plans} value={planId} onChange={onSelectPlan} />
+        <div>
+          <Button disabled={!plan} onClick={() => setPaying(true)}>
+            Choose plan and pay
+          </Button>
+        </div>
+      </div>
+    </Card>
   );
 }
 

@@ -17,6 +17,10 @@ export interface ShellProps {
   environment: Environment;
   /** Mock mode only: lets a reviewer change the role. */
   onRoleChange?: (role: ConsoleRole) => void;
+  /** The host app already draws the site header, skip link and `<main>` (the web app's SiteShell). */
+  embedded?: boolean;
+  /** Shown above the page: an access notice after a guard redirect, or a server refusal. */
+  notice?: ReactNode;
 }
 
 export interface OperatorShellProps extends ShellProps {
@@ -34,29 +38,40 @@ export function OperatorShell({
   siteItems = [],
   environment,
   onRoleChange,
+  embedded,
+  notice,
   current,
   title,
   intro,
   children,
 }: OperatorShellProps) {
+  const Main = embedded ? 'div' : 'main';
   return (
     <div>
-      <SkipLink />
-      <SiteHeader items={siteItems} current="operator">
-        {onRoleChange && <RoleSwitcher value={role} onChange={onRoleChange} />}
-      </SiteHeader>
+      {!embedded && (
+        <>
+          <SkipLink />
+          <SiteHeader items={siteItems} current="operator">
+            {onRoleChange && <RoleSwitcher value={role} onChange={onRoleChange} />}
+          </SiteHeader>
+        </>
+      )}
       <div className="mx-auto grid max-w-5xl gap-6 px-4 py-6 md:grid-cols-[13rem_minmax(0,1fr)]">
-        <RoleNav pages={pages} role={role} current={current} />
-        <main id="main" tabIndex={-1} className="min-w-0">
+        <div className="grid content-start gap-4">
+          {embedded && onRoleChange && <RoleSwitcher value={role} onChange={onRoleChange} />}
+          <RoleNav pages={pages} role={role} current={current} />
+        </div>
+        <Main {...(embedded ? {} : { id: 'main', tabIndex: -1 })} className="min-w-0">
           <Page title={title} intro={intro} className="max-w-none p-0">
             <p className="mb-4">
               <Badge tone={environment === 'live' ? 'success' : 'warning'} icon>
                 {environment === 'live' ? 'Live environment' : 'Sandbox environment'}
               </Badge>
             </p>
+            {notice && <div className="mb-4 grid gap-2">{notice}</div>}
             {children}
           </Page>
-        </main>
+        </Main>
       </div>
     </div>
   );
