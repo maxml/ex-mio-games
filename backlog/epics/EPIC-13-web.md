@@ -30,3 +30,6 @@ backend demo never depends on it.
 | MIO-135 | Decision: widget embedding path (iframe or signed-token SDK) and its player session            | P0       |
 | MIO-202 | Service routes for the sandbox check and go-live, and the console switched to them             | P1       |
 | MIO-203 | Routes for coin history, cross-tenant admin tables and the usage chart, with the consoles live | P2       |
+| MIO-219 | The Spin button keeps keyboard focus                                                           | P2       |
+| MIO-220 | UI guard follow-ups from the re-review                                                         | P2       |
+| MIO-221 | Run the operator-roles e2e in CI and find the flaky web test                                   | P2       |

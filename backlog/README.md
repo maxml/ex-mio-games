@@ -111,7 +111,7 @@ Planning conversion used in `docs/scaling/README.md` (Part E): 6 productive hour
 | EPIC-10 Product analytics                      | 11      | 100        | 125                   |
 | EPIC-11 Realtime websocket                     | 4       | 70         | 85                    |
 | EPIC-12 Design and design system               | 6       | 126        | 154                   |
-| EPIC-13 Web                                    | 8       | 212        | 256                   |
+| EPIC-13 Web                                    | 11      | 222        | 269                   |
 | EPIC-14 Reliability and security tests         | 17      | 260        | 318                   |
 | EPIC-15 Observability, audit, deploy           | 11      | 106        | 131                   |
 | EPIC-16 AI-native development                  | 10      | 104        | 131                   |
@@ -119,9 +119,9 @@ Planning conversion used in `docs/scaling/README.md` (Part E): 6 productive hour
 | EPIC-18 Performance, capacity and load testing | 5       | 80         | 99                    |
 | P0 (the first sellable slice)                  | 49      | 988        | 1,200                 |
 | P1                                             | 83      | 1,010      | 1,249                 |
-| P2                                             | 30      | 239        | 302                   |
+| P2                                             | 33      | 249        | 315                   |
 | P3                                             | 6       | 70         | 87                    |
-| **Grand total**                                | **168** | **2,307**  | **2,838**             |
+| **Grand total**                                | **171** | **2,317**  | **2,851**             |
 
 The P0 row is the first sellable slice: MIO-005, MIO-121 and everything they depend on. With the buffer it
 is 1,200 hours, 200 person-days, 9.5 person-months. P0 and P1 together are 2,449 hours.
@@ -134,7 +134,7 @@ awk 'FNR==1{fm=0} /^---$/{fm++; if(fm==2){N[e]++;B[e]+=b;H[e]+=h;PN[p]++;PB[p]+=
 ```
 
 Each output row is `kind name tasks base_hours buffered_hours`. A second read-only check confirms the buffer
-rule on every task (it prints nothing when all 168 tasks agree):
+rule on every task (it prints nothing when all 171 tasks agree):
 
 ```sh
 awk '/^estimate_hours_base:/{b=$2} /^estimate_hours:/{if($2!=int((b*12+9)/10))print FILENAME}' backlog/tasks/*.md
@@ -238,13 +238,13 @@ idempotency_key_reused` for the same key with a different request; the stored re
 | [EPIC-10](epics/EPIC-10-analytics.md)                  | Product analytics through Varta                                             | P0       | 11      | 4      | 4      | 2      | 1     |
 | [EPIC-11](epics/EPIC-11-realtime.md)                   | Realtime websocket                                                          | P1       | 4       | 0      | 3      | 1      | 0     |
 | [EPIC-12](epics/EPIC-12-design.md)                     | Design and design system                                                    | P0       | 6       | 3      | 2      | 1      | 0     |
-| [EPIC-13](epics/EPIC-13-web.md)                        | Web: player widget, operator console, platform admin console                | P0       | 8       | 4      | 3      | 1      | 0     |
+| [EPIC-13](epics/EPIC-13-web.md)                        | Web: player widget, operator console, platform admin console                | P0       | 11      | 4      | 3      | 4      | 0     |
 | [EPIC-14](epics/EPIC-14-reliability-security.md)       | Reliability and security test suite (Part C)                                | P1       | 17      | 0      | 16     | 1      | 0     |
 | [EPIC-15](epics/EPIC-15-observability-audit-deploy.md) | Observability, audit, security baseline, deploy                             | P1       | 11      | 0      | 5      | 6      | 0     |
 | [EPIC-16](epics/EPIC-16-ai-native-development.md)      | AI-native development and AI-readiness (Part D)                             | P1       | 10      | 0      | 4      | 1      | 5     |
 | [EPIC-17](epics/EPIC-17-submission-docs.md)            | Submission documents, scaling plan, publication gate (Deliverables, Part E) | P1       | 13      | 0      | 11     | 2      | 0     |
 | [EPIC-18](epics/EPIC-18-performance-capacity.md)       | Performance, capacity and load testing                                      | P1       | 5       | 0      | 4      | 1      | 0     |
-| **Total**                                              |                                                                             |          | **168** | **49** | **83** | **30** | **6** |
+| **Total**                                              |                                                                             |          | **171** | **49** | **83** | **33** | **6** |
 
 ## Waiting on someone
 

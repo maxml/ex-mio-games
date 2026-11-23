@@ -163,7 +163,7 @@ Answer: the slice already exists (P0 is implemented, demoed and deployed to a pr
 
 ### Weeks 1 and 2: take the existing slice to production
 
-- Deliverables: the follow-ups MIO-198 to MIO-218 and the known gaps; real per-service secrets and separate database credentials; a production identity provider; monitoring and alerts on the SLO table with a load-test baseline; backups with a restore drill; the proven Deckhand deploy repeated on the production host.
+- Deliverables: the follow-ups MIO-198 to MIO-221 and the known gaps; real per-service secrets and separate database credentials; a production identity provider; monitoring and alerts on the SLO table with a load-test baseline; backups with a restore drill; the proven Deckhand deploy repeated on the production host.
 - Exit criteria: production deploy drill passes; restore time measured; an induced broker outage alerts and recovers with a clean reconciliation.
 
 ### Days 15 to 30: first real casino integration
