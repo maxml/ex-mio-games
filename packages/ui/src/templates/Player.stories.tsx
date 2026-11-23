@@ -26,7 +26,7 @@ type Story = StoryObj<typeof meta>;
 const withArgs = (a: Partial<PlayerWidgetTemplateProps>): Story => ({ args: a as never });
 
 // A player has no operator role, so there are no Admin, Staff or Support variants here.
-export const Default: Story = {};
+export const Default: Story = withArgs({});
 export const Sandbox: Story = withArgs({ environment: 'sandbox' });
 export const Live: Story = withArgs({ environment: 'live' });
 /** The casino-page layout the web app ships: a card with tabs, the pending note and one-click redeem. */

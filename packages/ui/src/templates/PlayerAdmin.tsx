@@ -27,11 +27,9 @@ const WIDGET_TABS: { id: WidgetTab; label: string }[] = [
   { id: 'history', label: 'History' },
 ];
 
-export interface PlayerWidgetTemplateProps {
+interface PlayerWidgetBase {
   state?: PageState;
   errorText?: string;
-  /** The environment badge of the full-page layout. Not drawn when `embedded` or when unset. */
-  environment?: Environment;
   balance: number;
   spinsLeft: number;
   segments: WheelSegment[];
@@ -48,12 +46,6 @@ export interface PlayerWidgetTemplateProps {
   history: ActivityItem[];
   /** Ask "Redeem X for N coins?" before `onRedeem` (default). Off: the Redeem button redeems at once. */
   confirmRedeem?: boolean;
-  /**
-   * The casino-page layout: a card with the balance in its header and Wheel / Bonus Store / History
-   * tabs, instead of the full page of cards. The result is announced from one always-mounted live region,
-   * so it is heard from any tab.
-   */
-  embedded?: { ariaLabel: string; title: string; description?: string };
   /** Next to the balance, for example "+40 pending". */
   balanceNote?: ReactNode;
   /** The player's redemptions, listed under the store as "Your redemptions". */
@@ -68,32 +60,45 @@ export interface PlayerWidgetTemplateProps {
   resultTestId?: string;
 }
 
+/**
+ * The layout of the widget. A full page names its environment (the badge is drawn from it). The
+ * `embedded` casino-page layout is a card with the balance in its header and Wheel / Bonus Store /
+ * History tabs; it draws no environment, so it takes none. The embedded layout announces the result
+ * from one always-mounted live region, so it is heard from any tab.
+ */
+type PlayerWidgetFrame =
+  | { environment: Environment; embedded?: undefined }
+  | { embedded: { ariaLabel: string; title: string; description?: string } };
+
+export type PlayerWidgetTemplateProps = PlayerWidgetBase & PlayerWidgetFrame;
+
 /** The player widget: balance, spin, store and history. Full page by default, or `embedded` as tabs. */
-export function PlayerWidgetTemplate({
-  state,
-  errorText,
-  environment,
-  balance,
-  spinsLeft,
-  segments,
-  spin,
-  result,
-  busy,
-  onSpin,
-  onSpinEnd,
-  items,
-  redeemStatus = {},
-  onRedeem,
-  history,
-  confirmRedeem,
-  embedded,
-  balanceNote,
-  redemptions,
-  notice,
-  wheelExtra,
-  storeExtra,
-  resultTestId,
-}: PlayerWidgetTemplateProps) {
+export function PlayerWidgetTemplate(props: PlayerWidgetTemplateProps) {
+  const environment = props.embedded ? undefined : props.environment;
+  const {
+    state,
+    errorText,
+    balance,
+    spinsLeft,
+    segments,
+    spin,
+    result,
+    busy,
+    onSpin,
+    onSpinEnd,
+    items,
+    redeemStatus = {},
+    onRedeem,
+    history,
+    confirmRedeem,
+    embedded,
+    balanceNote,
+    redemptions,
+    notice,
+    wheelExtra,
+    storeExtra,
+    resultTestId,
+  } = props;
   const [tab, setTab] = useState<WidgetTab>('wheel');
   const spinPanel = (
     <SpinPanel
