@@ -6,7 +6,7 @@
   "description": "Clickable design prototype of MIO Games: player widget, operator console, platform admin. Mock data only.",
   "scripts": {
     "dev": "vite",
-    "check:contrast": "node scripts/check-contrast.mjs",
+    "check:contrast": "node ../../packages/ui/scripts/check-contrast.mjs",
     "check:no-raw-colors": "node scripts/check-no-raw-colors.mjs",
     "typecheck": "tsc -b",
     "test": "vitest run",

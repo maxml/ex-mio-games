@@ -111,7 +111,8 @@ export function PlayerWidgetTemplate({
 export interface TenantRow {
   id: string;
   name: string;
-  plan: Extract<Status, 'active' | 'trial' | 'past_due' | 'suspended'>;
+  /** The plan's name, for example "Growth". */
+  plan: string;
   status: Extract<Status, 'active' | 'trial' | 'past_due' | 'suspended'>;
   mrrEur: number;
 }
@@ -168,7 +169,7 @@ export function AdminConsoleTemplate({
               rows={tenants}
               columns={[
                 { key: 'n', header: 'Tenant', render: (t) => t.name },
-                { key: 'p', header: 'Plan', render: (t) => <StatusPill status={t.plan} /> },
+                { key: 'p', header: 'Plan', render: (t) => t.plan },
                 { key: 's', header: 'Status', render: (t) => <StatusPill status={t.status} /> },
                 { key: 'm', header: 'MRR', align: 'right', render: (t) => `${t.mrrEur} EUR` },
               ]}

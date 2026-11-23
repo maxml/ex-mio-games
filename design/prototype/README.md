@@ -1,34 +1,62 @@
-# MIO Games design prototype v1
+# MIO Games design prototype v2
 
-Clickable prototype of the three surfaces: player widget, operator console, platform admin. Vite, React, TypeScript, Tailwind v4, CSS-variable tokens. Everything is mock data; there is no backend. It is the owner's pre-code design gate (MIO-121); its components move to Storybook later (MIO-124).
+Clickable prototype of the three surfaces: player widget, operator console, platform admin. Vite, React, TypeScript, Tailwind v4, CSS-variable tokens. Everything is mock data; there is no backend. It is the owner's pre-code design gate (MIO-121).
+
+Since v2 the prototype is restructured by role, the same way as the web app (IA spec, T2 and T3), and every UI element comes from `@ex-mio/ui` (`packages/ui`).
 
 ## Run
 
 ```sh
 cd design/prototype
-pnpm install
+pnpm install --ignore-workspace   # the prototype is outside the pnpm workspace and has its own lockfile
 pnpm dev        # http://localhost:5173
-pnpm test       # vitest: store/reducer (money rules) and Wheel mount behaviour
+pnpm test       # vitest: store/reducer (money rules)
 pnpm build      # contrast gate, raw-colour gate, typecheck, tests, production build into dist/
 ```
 
-Screens are hash routes: `#/player`, `#/operator`, `#/admin`. The header has a tenant theme switcher (MIO default, Lucky Star Casino, Northbet); the choice is kept in localStorage.
+The root `pnpm install --frozen-lockfile` must have run too: the prototype reads the sources and the dependencies of `packages/ui` through the alias below.
 
-## Screens
+## Roles and pages
 
-- **Player widget** (`#/player`): casino page mock with the widget embedded; a phone-width (375 px) toggle. Wheel with spin animation, spins available, coin balance, Bonus Store grid, redemption status (pending, issuing, issued, failed then refunded), history. "Simulate a deposit" adds spins under the operator's saved rules; a store checkbox makes the casino fail the next reward to show the refund path.
-- **Operator console** (`#/operator`): ten steps, each with Back and Continue, and a step bar that ticks only finished steps: signup, plan with a mock checkout (fake provider, test-mode banner, card form; test card 4242 4242 4242 4242, 4000 0000 0000 0002 is declined) that activates the plan and pays the invoice, integration keys, sandbox casino test, go live (live keys, first live deposit), spin rules (Save persists), wheel reward table (draft versus published weights, publish a new version), store catalog, redemptions, usage and invoice (an open invoice has a Pay action and moves to Paid).
-- **Shared state**: one in-memory store (`src/state/`) backs all three screens. Saved rules, published weights and catalog edits made in the operator console are what the player widget uses on its next deposit, spin or store view. It is lost on reload.
-- **Platform admin** (`#/admin`): tenants, MRR, usage per operator, operator funnel.
+The header has a role switcher (`session/role` in the app store, not localStorage, so a test can set it). Each role sees only its own pages and nav, and no page mixes roles. Pages are hash routes; `#/operator` redirects to the role's landing, and a page the role may not open redirects to the landing with `?denied=<page>` and an access notice.
 
-## Components (`src/components/`)
+| Role                     | Pages (nav)                                              | Landing                                                                |
+| ------------------------ | -------------------------------------------------------- | ---------------------------------------------------------------------- |
+| Admin (`operator_admin`) | Setup, Rules, Wheel, Store, Redemptions, Insights, Team  | `#/operator/setup`, then `#/operator/operations/redemptions` once live |
+| Staff (`operator_staff`) | Store, Redemptions, Insights, Team (all read-only)       | `#/operator/operations/redemptions`                                    |
+| Support (acting session) | Insights, Team (read-only), under a reason banner        | `#/operator/insights`                                                  |
+| Platform admin           | `#/admin` only: tenants, MRR, funnel, act-as with reason | `#/admin`                                                              |
+| Player                   | `#/player` only: the widget and the demo casino controls | `#/player`                                                             |
 
-Button, Card, StatusPill (and Badge), Table, StatTile, Wheel, CoinBalance, StoreItemCard, Stepper, Input / Select / Field, Tabs / TabPanel, Alert / Toast. The player widget root applies the tenant theme with `themeStyle()`. Tokens and tenant theming: see `TOKENS.md`.
+Routes: `#/operator/setup[/step]` (steps: signup, plan, keys, reward-api, sandbox, golive), `#/operator/engagement/{rules,wheel,store}`, `#/operator/operations/redemptions`, `#/operator/insights`, `#/operator/team`, `#/admin`, `#/player`.
+
+- Read roles get the template with `readOnly`: the write controls (Add item, price, visibility, Resolve, Pay, invite) are not rendered at all.
+- Support is a platform admin with an acting session. Start one from `#/admin` (Act as an operator, reason of 3 to 500 characters); the Support role then shows the reason in a banner. Support cannot read redemptions or the store (engagement refuses `platform_admin`), so it sees Insights and Team only.
+- Elements with no service behind them yet (key list, reward API, sandbox, go live, resolve, player funnel, team and audit) carry the `PreviewNotice` text, as in the web app.
+- Setup counts only the six steps the store (or the reward-API draft) says are done. Rules, wheel, store, redemptions and billing are pages of their own.
+- **Shared state**: one in-memory store (`src/state/`) backs all surfaces. Saved rules, published weights and catalog edits made by an admin are what the player widget uses on its next deposit, spin or store view. It is lost on reload.
+
+## Structure
+
+- `src/config/operator-pages.ts`: the page registry (ids, groups, hrefs, role access) and `landing`. It is a copy, as data, of `apps/web/src/layers/shared/config/operator-pages.ts`; the two must stay equal (IA spec A-PROTO-3).
+- `src/router.ts`: hash parsing and the pure `resolveRoute` guard.
+- `src/screens/operator/*Screen.tsx`: one thin screen per page. Each reads the store and renders one `@ex-mio/ui` template. `src/screens/PlayerWidget.tsx` and `AdminConsole.tsx` do the same for the other two surfaces.
+- `src/App.tsx`: skip link, site header with the theme and role switchers, and `<main>`.
+
+## Design system
+
+The old `src/components/*`, `src/theme/*`, `screens/operator/Checkout.tsx` and `StepNav.tsx` are gone; they duplicated `packages/ui`.
+
+- `vite.config.ts` and `tsconfig.json` alias `@ex-mio/ui` to `../../packages/ui/src/index.ts`, and pin one copy of React.
+- `src/index.css` imports `@ex-mio/ui/tokens.css` and `base.css`.
+- **Tailwind: stayed on v4.** The ui package's v3 preset (`tailwind-preset.cjs`) loads in Tailwind v4 through `@config '../../../packages/ui/tailwind-preset.cjs'`, and `@source '../../../packages/ui/src'` makes v4 scan the ui sources. No move to Tailwind 3 was needed.
+- The contrast gate in `pnpm build` is the ui package's `scripts/check-contrast.mjs` (tokens and tenant themes live in `packages/ui`).
+- Tokens and tenant theming: see `TOKENS.md` (the source is `packages/ui/src/tokens.css` and `packages/ui/src/theme/`).
 
 ## Accessibility basics
 
-Skip link (focuses the current page's main), visible focus ring (also on plan cards), labelled form fields with 3:1 borders, tab pattern where arrows, Home and End move focus with the selection, a busy Spin button that keeps keyboard focus, an always-mounted `aria-live` region for the spin result, toasts, status never by colour alone, `prefers-reduced-motion` respected (wheel finishes without the long animation), AA contrast enforced per theme in the build.
+Skip link (focuses the main), visible focus ring, labelled form fields with 3:1 borders, a busy Spin button that keeps keyboard focus, an always-mounted `aria-live` result region, status never by colour alone, `prefers-reduced-motion` respected, AA contrast enforced per theme in the build. These come from the ui components.
 
 ## What is mocked
 
-All data (`src/mock/data.ts`), signup, plans and payment (fake provider), keys (fake strings, copy does nothing), the sandbox test (timed list), go live, spin outcomes (client-side weighted random standing in for the server: a result has an id and is credited once in the store; the wheel only animates it), redemption lifecycle (timers in the store), versioned wheel publishing (in memory, lost on reload), invoices and the funnel. Unit tests cover the store and the Wheel mount rule; the UI flows are checked by a headless browser script outside the repo.
+All data (`src/mock/data.ts`), signup, plans and payment (fake provider), keys (fake strings), the sandbox test (timed list), go live, the acting session, spin outcomes (client-side weighted random standing in for the server: a result has an id and is credited once in the store; the wheel only animates it), redemption lifecycle (timers in the store), versioned wheel publishing, invoices and the funnels. Unit tests cover the store; the UI flows were checked with a headless browser script outside the repo.

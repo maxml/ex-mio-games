@@ -82,26 +82,29 @@ export function RoleNav({ pages, role, current, className }: RoleNavProps) {
   );
 }
 
-export interface RoleSwitcherProps {
-  value: ConsoleRole;
-  onChange: (role: ConsoleRole) => void;
+export interface RoleSwitcherProps<R extends string = ConsoleRole> {
+  value: R;
+  onChange: (role: R) => void;
   /** Roles offered. Defaults to the three operator-console roles. */
-  roles?: ConsoleRole[];
+  roles?: R[];
+  /** Option text per role; a role without one uses `ROLE_LABEL`, then its id. The prototype adds the player. */
+  labels?: Partial<Record<R, string>>;
 }
 
 /** Mock-mode role picker for the site header (shown only when the adapter is `mock`). */
-export function RoleSwitcher({
+export function RoleSwitcher<R extends string = ConsoleRole>({
   value,
   onChange,
-  roles = ['admin', 'staff', 'support'],
-}: RoleSwitcherProps) {
+  roles = ['admin', 'staff', 'support'] as R[],
+  labels,
+}: RoleSwitcherProps<R>) {
   return (
     <label className="flex items-center gap-2 text-sm">
       <span className="text-fg-muted">Role</span>
-      <Select size="sm" value={value} onChange={(e) => onChange(e.target.value as ConsoleRole)}>
+      <Select size="sm" value={value} onChange={(e) => onChange(e.target.value as R)}>
         {roles.map((r) => (
           <option key={r} value={r}>
-            {ROLE_LABEL[r]}
+            {labels?.[r] ?? ROLE_LABEL[r as ConsoleRole] ?? r}
           </option>
         ))}
       </Select>

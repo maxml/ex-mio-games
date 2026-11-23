@@ -1,5 +1,7 @@
 # Design tokens
 
+> Since prototype v2 the tokens, the tenant themes and their schema live in `packages/ui` (`src/tokens.css`, `src/theme/`, `scripts/check-contrast.mjs`), and the Tailwind mapping is the ui preset (`tailwind-preset.cjs`), loaded by `src/index.css` with `@config`. Read `src/theme/...` below as `packages/ui/src/theme/...`. The prototype no longer has its own copy.
+
 All colours, radii, fonts and shadows are CSS variables defined in `src/theme/tokens.css`. The values are neutral placeholders: no brand material exists yet (backlog MIO-120). Components never contain raw colours; `pnpm check:no-raw-colors` fails the build if one appears outside `src/theme/`: hex, `rgb()` and friends, Tailwind palette classes, and CSS named colours in style props, `.css` declarations and SVG colour attributes.
 
 ## Token set

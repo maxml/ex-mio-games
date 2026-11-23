@@ -1,57 +1,13 @@
 @import 'tailwindcss';
-@import './theme/tokens.css';
+@import '@ex-mio/ui/tokens.css';
+@import '@ex-mio/ui/base.css';
 
 /*
- * Map semantic tokens to Tailwind utilities. `inline` makes the utility reference the variable
- * itself, so a tenant override on any ancestor element re-themes everything below it at runtime.
+ * The design system's Tailwind preset (v3 config format) maps the tokens to utilities. Tailwind v4 loads
+ * it through `@config`; `@source` makes it scan the ui package's sources for the classes they use.
  */
-@theme inline {
-  --color-bg: var(--bg);
-  --color-surface: var(--surface);
-  --color-surface-2: var(--surface-2);
-  --color-border: var(--border);
-  --color-input-border: var(--input-border);
-  --color-fg: var(--fg);
-  --color-fg-muted: var(--fg-muted);
-  --color-primary: var(--primary);
-  --color-primary-fg: var(--primary-fg);
-  --color-accent: var(--accent);
-  --color-accent-fg: var(--accent-fg);
-  --color-ring: var(--ring);
-  --color-success: var(--success);
-  --color-warning: var(--warning);
-  --color-danger: var(--danger);
-  --color-info: var(--info);
-  --color-coin: var(--coin);
-  --radius-sm: var(--radius-sm);
-  --radius-md: var(--radius-md);
-  --radius-lg: var(--radius-lg);
-  --font-sans: var(--font-sans);
-  --font-display: var(--font-display);
-  --shadow-card: var(--shadow-card);
-}
-
-html,
-body {
-  background: var(--bg);
-  color: var(--fg);
-  font-family: var(--font-sans);
-}
-
-/* One visible focus style for every interactive element (keyboard users). */
-:focus-visible {
-  outline: 2px solid var(--ring);
-  outline-offset: 2px;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  *,
-  *::before,
-  *::after {
-    animation-duration: 0.01ms !important;
-    transition-duration: 0.01ms !important;
-  }
-}
+@config '../../../packages/ui/tailwind-preset.cjs';
+@source '../../../packages/ui/src';
 
 .sr-only {
   position: absolute;

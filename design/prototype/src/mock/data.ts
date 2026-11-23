@@ -1,6 +1,5 @@
 // All data in the prototype is static and invented. Nothing here comes from a real system.
-import type { Status } from '../components';
-import type { StoreItem } from '../components';
+import type { Status, StoreItem } from '@ex-mio/ui';
 
 export interface WheelReward {
   id: string;
@@ -125,6 +124,15 @@ export const REDEMPTIONS: Redemption[] = [
     coins: 500,
     status: 'pending',
     at: '2026-11-21 13:58',
+  },
+  {
+    id: 'rd-1043',
+    player: 'p_3b19',
+    item: '5 EUR bonus',
+    coins: 500,
+    status: 'needs_review',
+    at: '2026-11-21 14:20',
+    note: 'Casino answered twice with different results',
   },
   {
     id: 'rd-1040',
@@ -274,6 +282,14 @@ export const FUNNEL = [
   { step: 'Sandbox test passed', value: 74 },
   { step: 'First live deposit', value: 41 },
   { step: 'Paid invoice', value: 29 },
+];
+
+/** Preview: the operator's player funnel has no read API (Varta only, D-19), so these numbers are invented. */
+export const FUNNEL_PLAYER_PREVIEW = [
+  { step: 'Widget opened', value: 1200 },
+  { step: 'Deposited', value: 340 },
+  { step: 'Spun', value: 310 },
+  { step: 'Redeemed', value: 96 },
 ];
 
 export const USAGE_DAYS = [31, 36, 33, 41, 44, 39, 47, 52, 49, 55, 58, 54, 61, 66];

@@ -6,7 +6,8 @@
 //     animates a result that already exists; it never credits anything.
 //   - Operator changes (rules, published weights, catalog) are state here, so the player widget
 //     reads the same values.
-import type { Status, StoreItem } from '../components';
+import type { Status, StoreItem } from '@ex-mio/ui';
+import type { ProtoRole } from '../config/operator-pages';
 import {
   PLAYER_HISTORY,
   PLANS,
@@ -28,29 +29,26 @@ export interface Payment {
   status: 'processing' | 'declined' | 'cancelled' | 'paid';
 }
 
-export type StepId =
-  | 'signup'
-  | 'plan'
-  | 'keys'
-  | 'sandbox'
-  | 'golive'
-  | 'rules'
-  | 'wheel'
-  | 'store'
-  | 'redemptions'
-  | 'billing';
+/**
+ * The setup steps the store tracks as done. Rules, wheel, store, redemptions and billing are pages of
+ * their own now (IA spec section 3), not setup steps. The reward-API step has no state in the store.
+ */
+export type StepId = 'signup' | 'plan' | 'keys' | 'sandbox' | 'golive';
 export const STEPS: { id: StepId; label: string }[] = [
-  { id: 'signup', label: 'Sign up' },
+  { id: 'signup', label: 'Account' },
   { id: 'plan', label: 'Plan' },
   { id: 'keys', label: 'Keys' },
   { id: 'sandbox', label: 'Sandbox test' },
   { id: 'golive', label: 'Go live' },
-  { id: 'rules', label: 'Rules' },
-  { id: 'wheel', label: 'Wheel' },
-  { id: 'store', label: 'Store' },
-  { id: 'redemptions', label: 'Redemptions' },
-  { id: 'billing', label: 'Usage & invoice' },
 ];
+
+/** Who is signed in to the prototype. `actingReason` is set while Support is in an acting session. */
+export interface Session {
+  role: ProtoRole;
+  /** Why the platform admin opened the tenant (the acting-session reason, audited). */
+  actingReason: string | null;
+}
+export const DEMO_ACTING_REASON = 'Ticket MIO-4471: operator reports a wrong invoice total';
 
 export interface Rules {
   min: number;
@@ -79,6 +77,7 @@ export interface CatalogItem extends StoreItem {
 export type LiveState = 'off' | 'awaiting' | 'live';
 
 export interface State {
+  session: Session;
   player: {
     coins: number;
     spins: number;
@@ -91,7 +90,6 @@ export interface State {
     casinoDown: boolean;
   };
   operator: {
-    step: number;
     done: Record<StepId, boolean>;
     accountCreated: boolean;
     plan: string;
@@ -116,6 +114,7 @@ export const DEFAULT_RULES: Rules = { min: 20, spins: 1, per: true, cap: 10 };
 export function createInitialState(): State {
   const done = Object.fromEntries(STEPS.map((s) => [s.id, false])) as Record<StepId, boolean>;
   return {
+    session: { role: 'admin', actingReason: null },
     player: {
       coins: 420,
       spins: 3,
@@ -127,7 +126,6 @@ export function createInitialState(): State {
       casinoDown: false,
     },
     operator: {
-      step: 0,
       done,
       accountCreated: false,
       plan: 'growth',
@@ -158,7 +156,8 @@ export type Action =
   | { type: 'redeem/start'; id: string; itemId: string }
   | { type: 'redeem/status'; id: string; status: Status }
   | { type: 'redeem/refund'; id: string }
-  | { type: 'step/set'; step: number }
+  | { type: 'session/role'; role: ProtoRole }
+  | { type: 'session/act'; reason: string }
   | { type: 'step/complete'; id: StepId }
   | { type: 'account/create' }
   | { type: 'plan/select'; id: string }
@@ -171,6 +170,7 @@ export type Action =
   | { type: 'live/deposit' }
   | { type: 'rules/save'; rules: Rules }
   | { type: 'wheel/publish'; weights: number[]; at?: string }
+  | { type: 'catalog/add'; id: string; name: string; price: number; bonusEur: number }
   | { type: 'catalog/price'; id: string; price: number }
   | { type: 'catalog/visible'; id: string; on: boolean };
 
@@ -287,8 +287,23 @@ export function reducer(s: State, a: Action): State {
       });
     }
 
-    case 'step/set':
-      return patchO({ step: Math.max(0, Math.min(STEPS.length - 1, a.step)) });
+    case 'session/role':
+      if (s.session.role === a.role) return s;
+      // Support is an acting session, so it always carries a reason; every other role has none.
+      return {
+        ...s,
+        session: {
+          role: a.role,
+          actingReason:
+            a.role === 'support' ? (s.session.actingReason ?? DEMO_ACTING_REASON) : null,
+        },
+      };
+    case 'session/act': {
+      // A platform admin starts an acting session: the reason is required (3 to 500 characters).
+      const reason = a.reason.trim();
+      if (s.session.role !== 'platform' || reason.length < 3 || reason.length > 500) return s;
+      return { ...s, session: { role: 'support', actingReason: reason } };
+    }
     case 'step/complete':
       return patchO({ done: complete(a.id) });
     case 'account/create':
@@ -354,9 +369,7 @@ export function reducer(s: State, a: Action): State {
     case 'live/deposit':
       return o.live === 'awaiting' ? patchO({ live: 'live', done: complete('golive') }) : s;
     case 'rules/save':
-      return rulesValid(a.rules)
-        ? patchO({ rules: { ...a.rules }, rulesSaved: true, done: complete('rules') })
-        : s;
+      return rulesValid(a.rules) ? patchO({ rules: { ...a.rules }, rulesSaved: true }) : s;
     case 'wheel/publish': {
       if (!weightsValid(a.weights) || sameWeights(a.weights, o.wheel.weights)) return s;
       const version = o.wheel.version + 1;
@@ -375,7 +388,29 @@ export function reducer(s: State, a: Action): State {
             ...o.wheel.versions.map((v) => ({ ...v, state: 'archived' as Status })),
           ],
         },
-        done: complete('wheel'),
+      });
+    }
+    case 'catalog/add': {
+      const name = a.name.trim();
+      if (
+        !name ||
+        !Number.isInteger(a.price) ||
+        a.price < 1 ||
+        o.catalog.some((i) => i.id === a.id)
+      )
+        return s;
+      return patchO({
+        catalog: [
+          ...o.catalog,
+          {
+            id: a.id,
+            name,
+            description: a.bonusEur > 0 ? `${a.bonusEur} EUR bonus` : 'Added by the operator.',
+            priceCoins: a.price,
+            kind: a.bonusEur > 0 ? 'cash_bonus' : 'merch',
+            visible: true,
+          },
+        ],
       });
     }
     case 'catalog/price':
