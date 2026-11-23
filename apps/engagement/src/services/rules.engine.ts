@@ -9,6 +9,17 @@ export interface Grant {
 }
 
 /**
+ * The single choke point for when a rule version starts: the START OF ITS PUBLISH SECOND, in ms.
+ * Casino A reports the deposit time only in whole seconds (`occurred_at = ts * 1000`), while
+ * `active_from` is the publish instant in ms. Compared exactly, a deposit made after a publish
+ * within the same second would be judged as before it and the newer rule skipped. So the window
+ * start is truncated to the precision of the coarsest casino (A: seconds). Decision D-33.
+ */
+export function startOfPublishSecond(activeFrom: string): number {
+  return Math.floor(Date.parse(activeFrom) / 1000) * 1000;
+}
+
+/**
  * Pure: the same rules, event and prior grant counts always give the same grants, and nothing is
  * read from the clock (the window is judged at the deposit's `occurred_at`).
  *
@@ -27,7 +38,7 @@ export function evaluateRules(
   const newest = new Map<string, StoredRule>();
   for (const rule of rules) {
     const d = rule.definition;
-    if (Date.parse(d.active_from) > at) continue;
+    if (startOfPublishSecond(d.active_from) > at) continue;
     if (d.active_to !== null && Date.parse(d.active_to) <= at) continue;
     const best = newest.get(rule.rule_id);
     if (!best || rule.version > best.version) newest.set(rule.rule_id, rule);

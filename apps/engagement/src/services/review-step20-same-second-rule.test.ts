@@ -107,11 +107,11 @@ describe('review STEP20: a casino A deposit in the second a rule was published',
   });
 
   // Defect STEP20: green while a same-second deposit misses the rule, RED once a fix lands.
-  it.failing('S20-1 failing CI timeline: A deposits after v2 is published, v2 grants', () => {
+  it('S20-1failing CI timeline: A deposits after v2 is published, v2 grants', () => {
     expect(evaluateRules(RULES, depositA(at('2026-11-23T05:37:37.804Z')), {})).toEqual(GRANT_V2);
   });
 
-  it.failing('S20-2 any publish offset: a later deposit in that second is judged by it', () => {
+  it('S20-2any publish offset: a later deposit in that second is judged by it', () => {
     const second = at('2026-11-23T05:37:37.000Z');
     const missed: number[] = [];
     for (const offset of [1, 100, 250, 454, 500, 750, 998]) {

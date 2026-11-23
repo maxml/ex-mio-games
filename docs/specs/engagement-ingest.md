@@ -202,7 +202,9 @@ reason code and slug, never the body, signature or secret.
 ## 6. Rules (`services/rules.engine.ts`)
 
 `evaluateRules(rules, event, priorGrants) -> {rule_id, rule_version, wheel_id, spins}[]`, pure. A rule
-version applies when `active_from <= occurred_at < active_to` (null = open) and the conditions hold
+version applies when `active_from <= occurred_at < active_to` (null = open) and the conditions hold,
+where `active_from` is compared at whole-second precision (`startOfPublishSecond`): a rule takes effect
+from the start of its publish second, because casino A reports deposit time only in whole seconds (D-33)
 (`amount_minor >= min_amount_minor`, optional currency). Per `rule_id`, only the HIGHEST version active
 at `occurred_at` fires, so a v2 published without closing v1 never double-grants; the result carries that
 version's number. `max_grants_per_player` caps how many times a rule fires for one player
